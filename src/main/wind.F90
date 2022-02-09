@@ -295,6 +295,8 @@ subroutine wind_step(state)
  type(wind_state), intent(inout) :: state
  real :: rvT(3), dt_next, v_old, dlnQ_dlnT, Q_code
  real :: alpha_old, kappa_old, rho_old, Q_old, tau_lucy_bounded,alpha_dust
+ real :: piston_velocity, omega_osc
+ integer :: pulsation
 
  kappa_old  = state%kappa
  alpha_old  = state%alpha
@@ -315,10 +317,10 @@ subroutine wind_step(state)
  endif
  state%alpha = alpha_dust+alpha_rad
  if (state%time > 0.) state%dalpha_dr = (state%alpha-alpha_old)/(1.e-10+state%r-state%r_old)
+ v_old  = state%v
  rvT(1) = state%r
  rvT(2) = state%v
  rvT(3) = state%Tg
- v_old  = state%v
  state%r_old = state%r
  call evolve_hydro(state%dt, rvT, state%Rstar, Mdot_cgs, state%mu, state%gamma, state%alpha, state%dalpha_dr, &
       state%Q, state%dQ_dr, state%spcode, state%dt_force, dt_next)
@@ -598,7 +600,7 @@ subroutine get_initial_wind_speed(r0, T0, v0, rsonic, tsonic, stype)
           print *,'r0 = ',r0,', Rs = ',rs,', Gamma_max =',gmax,', alpha_rad =',alpha_rad
           print '(/," WARNING : alpha_rad > Gamma_max = ",f7.5," breeze type solution (dv/dr < 0)",/)',gmax
        endif
-       print '(" sub-sonic wind : v0/cs = ",f7.5,", Gamma_max = ",f7.5)',v0/cs,gmax
+       print '(/" sub-sonic wind : v0/cs = ",f7.5,", Gamma_max = ",f7.5,/)',v0/cs,gmax
     endif
     !call calc_wind_profile(r0, v0, T0, 0., state)
     rsonic = 0.!state%r
@@ -891,7 +893,6 @@ subroutine save_windprofile(r0, v0, T0, rout, tend, tcross, filename)
     &" Tgas = ",f6.0,", r/rout = ",f7.5," iter = ",i7,/)') &
     state%time/time_end,state%dt/time_end,state%Tg,state%r/rout,iter
  else
-    print *,'integration succesful, #',iter,' iterations required'
     print *,'integration succesful, #',iter,' iterations required, rout = ',state%r/au
  endif
  close(1337)

@@ -40,24 +40,20 @@ module setup
 
  private
  real, public :: wind_gamma = 5./3.
-#ifdef ISOTHERMAL
- real, public :: T_wind = 30000.
- real :: primary_racc_au       = 0.465
- real :: primary_mass_msun     = 1.5
- real :: primary_lum_lsun      = 0.
- real :: primary_Reff_au       = 0.465240177008 !100 Rsun
-#else
- real, public :: T_wind = 3000.
- real :: primary_racc_au       = 1.
  real :: primary_mass_msun     = 1.5
  real :: primary_lum_lsun      = 20000.
- real :: primary_Reff_au       = 0.
+ real :: primary_Reff_au       = 1.0 
+ real :: primary_racc_au       = 1.0
+#ifdef ISOTHERMAL
+ real, public :: T_wind = 50000.
+#else
+ real, public :: T_wind = 2500.
 #endif
  integer, public :: icompanion_star = 0
  integer :: iwind
  real :: semi_major_axis       = 4.0
  real :: eccentricity          = 0.
- real :: primary_Teff          = 3000.
+ real :: primary_Teff          = 2500.
  real :: primary_Reff
  real :: primary_lum
  real :: primary_mass
