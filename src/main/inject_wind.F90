@@ -45,7 +45,6 @@ module inject
  real::    wind_temperature = 2500.
 #endif
  integer :: sonic_type                = 0
- integer :: sonic_type_off            = 0
  real    :: wind_velocity_km_s        = 30.
  real    :: wind_mass_rate_Msun_yr    = 1.d-8
  real    :: wind_injection_radius_au  = 1.1
@@ -100,7 +99,7 @@ subroutine init_inject(dumpfile,ierr)
  integer, intent(out) :: ierr
  integer :: ires_min,nzones_per_sonic_point,new_nfill
  real :: mV_on_MdotR,initial_wind_velocity_cgs,dist_to_sonic_point,semimajoraxis_cgs
- real :: dr,dp,mass_of_particles1,tcross,tend,vesc,rsonic,tsonic,initial_Rinject
+ real :: dr,dp,mass_of_particles1,tcross,tend,vesc,rsonic,tsonic,initial_Rinject,v_puls
  real :: separation_cgs,wind_mass_rate_cgs, wind_velocity_cgs,ecc(3),eccentricity
  character(len=len(dumpfile)+1) :: file1D
 
@@ -243,7 +242,7 @@ subroutine init_inject(dumpfile,ierr)
  call compute_corners(geodesic_v)
 
 !compute full evolution (to get tcross) and save 1D profile for comparison
- if (nfill_domain > 0) then
+ if ( nfill_domain > 0) then
     tend = max(tmax,(iboundary_spheres+nfill_domain)*time_between_spheres)*utime
     if (dumpfile(len(dumpfile)-2:len(dumpfile)) == 'tmp') then
        file1D = dumpfile(1:len(dumpfile)-9) // '1D.dat'
@@ -251,7 +250,7 @@ subroutine init_inject(dumpfile,ierr)
        file1D = dumpfile(1:len(dumpfile)-5) // '1D.dat'
     endif
     call save_windprofile(Rinject*udist,wind_injection_speed*unit_velocity,&
-         wind_temperature, outer_boundary_au*au, tend, tcross, file1D)
+       wind_temperature, outer_boundary_au*au, tend, tcross, file1D)
     if ((iboundary_spheres+nfill_domain)*time_between_spheres > tmax) then
        print *,'simulation time < time to reach the last boundary shell'
     endif
@@ -330,7 +329,7 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,&
                             npart,npartoftype,dtinject)
  use physcon,           only:pi,au
  use io,                only:fatal,iverbose
- use wind,              only:interp_wind_profile !,wind_profile
+ use wind,              only:interp_wind_profile,wind_profile
  use part,              only:igas,iTeff,iReff,iboundary,nptmass,delete_particles_outside_sphere,&
       delete_dead_particles_inside_radius,dust_temp,n_nucleation
  use partinject,        only:add_or_update_particle
@@ -424,20 +423,22 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,&
     !compute the radius, velocity, temperature, chemistry of a sphere at the current local time
     v = wind_injection_speed
     r = Rinject
-!     if (pulsating_wind.and.released) then
-!        call pulsating_wind_profile(time,local_time, r, v, u, rho, e, GM, i, &
-!             inner_sphere,inner_boundary_sphere,dr3,rho_ini)
-!     else
-    if (idust_opacity == 2) then
-      call interp_wind_profile(time, local_time, r, v, u, rho, e, GM, fdone, JKmuS)
-      !call wind_profile(local_time, r, v, u, rho, e, GM, wind_temperature, fdone, JKmuS)
+    
+    if ( pulsating_wind .and. released ) then
+       v = wind_injection_speed + piston_velocity*sin(omega_osc*time)
+       call wind_profile(local_time, r, v, u, rho, e, GM, wind_temperature ,fdone,JKmuS)
     else
-      call interp_wind_profile(time, local_time, r, v, u, rho, e, GM, fdone)
-      !call wind_profile(local_time, r, v, u, rho, e, GM, wind_temperature, fdone)
+       if (idust_opacity == 2) then
+         call interp_wind_profile(time, local_time, r, v, u, rho, e, GM, fdone, JKmuS)
+         !call wind_profile(local_time, r, v, u, rho, e, GM, wind_temperature, fdone, JKmuS)
+       else
+         call interp_wind_profile(time, local_time, r, v, u, rho, e, GM, fdone)
+         !call wind_profile(local_time, r, v, u, rho, e, GM, wind_temperature, fdone)
+       endif
+       if (iverbose > 0) print '(" ##### boundary sphere ",i4,3(i4),i7,9(1x,es12.5))',i,&
+            inner_sphere,nboundaries,outer_sphere,npart,time,local_time,r,v,fdone
     endif
-    if (iverbose > 0) print '(" ##### boundary sphere ",i4,3(i4),i7,9(1x,es12.5))',i,&
-        inner_sphere,nboundaries,outer_sphere,npart,time,local_time,r,v,fdone
-!     endif
+
 
     if (i > inner_sphere) then
        ! boundary sphere
@@ -514,19 +515,20 @@ subroutine pulsating_wind_profile(time,local_time,r,v,u,rho,e,GM,sphere_number, 
  real :: inner_radius,r3
  logical :: verbose = .true.
 
- v = wind_velocity + piston_velocity* cos(omega_osc*time) !same velocity for all wall particles
+!  v = wind_velocity + piston_velocity* cos(omega_osc*time) !same velocity for all wall particles
 !  inner_radius = wind_injection_radius + deltaR_osc*sin(omega_osc*time)
- !ejected spheres
- if (sphere_number <= inner_sphere) then
-    r = inner_radius
-    v = max(piston_velocity,wind_velocity)
- else
-    !boundary spheres
-    r3 = inner_radius**3-dr3
-    do k = 2,sphere_number-inner_sphere
-       r3 = r3-dr3*(r3/inner_radius**3)**(nrho_index/3.)
-    enddo
-    r = r3**(1./3)
+!  !ejected spheres
+ if (sphere_number == inner_boundary_sphere) then
+!     r = inner_radius
+!     v = max(piston_velocity,wind_velocity)
+    v = wind_velocity + piston_velocity*sin(omega_osc*time)
+!  else
+!     !boundary spheres
+!     r3 = inner_radius**3-dr3
+!     do k = 2,sphere_number-inner_sphere
+!        r3 = r3-dr3*(r3/inner_radius**3)**(nrho_index/3.)
+!     enddo
+!     r = r3**(1./3)
  endif
  !r = (inner_radius**3-(sphere_number-inner_sphere)*dr3)**(1./3)
  !rho = rho_ini
@@ -647,7 +649,7 @@ subroutine write_options_inject(iunit)
  if (pulsation==0) then
     call write_inopt(sonic_type,'sonic_type','find transonic solution (1=yes,0=no)',iunit)
  else
-    call write_inopt(sonic_type_off,'sonic_type','find transonic solution (1=yes,0=no)',iunit)
+    call write_inopt(0,'sonic_type','find transonic solution (1=yes,0=no)',iunit)
     call write_inopt(pulsation_period_days,'pulsation_period','stellar pulsation period (days)',iunit)
     call write_inopt(piston_velocity_km_s,'piston_velocity','velocity amplitude of the pulsation (km/s)',iunit)
  endif

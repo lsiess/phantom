@@ -333,7 +333,7 @@ subroutine calc_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot)
     pH = pH_tot
  elseif (T > 450.) then
 ! iterate to get consistently pH, T, mu and gamma
-    tol = 1.d-3
+    tol = 1.d-2
     converged = .false.
     isolve = 0
     !T = atomic_mass_unit*mu*(gamma-1)*u/kboltz

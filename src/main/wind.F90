@@ -24,7 +24,7 @@ module wind
 
  implicit none
  public :: setup_wind
- public :: wind_state,save_windprofile,interp_wind_profile!,wind_profile
+ public :: wind_state,save_windprofile,interp_wind_profile, wind_profile
 
  private
  ! Shared variables
@@ -416,7 +416,6 @@ subroutine calc_wind_profile(r0, v0, T0, time_end, state)
 end subroutine calc_wind_profile
 
 
-#ifdef TO_BE_REMOVED
 !-----------------------------------------------------------------------
 !+
 !  integrate wind equation up to time=local_time
@@ -458,7 +457,6 @@ subroutine wind_profile(local_time,r,v,u,rho,e,GM,T0,fdone,JKmuS)
  endif
 
 end subroutine wind_profile
-#endif
 
 !-----------------------------------------------------------------------
 !
