@@ -39,7 +39,6 @@ module set_dust_options
 !   options, part, prompting
 !
  use dim,       only:maxdusttypes,maxdustsmall,maxdustlarge,use_dustgrowth
- use prompting, only:prompt
  implicit none
 
  integer, public :: dust_method
@@ -148,6 +147,7 @@ end subroutine set_dust_default_options
 !+
 !--------------------------------------------------------------------------
 subroutine set_dust_interactively()
+ use prompting, only:prompt
 
  call prompt('Which dust method do you want? (1=one fluid,2=two fluid,3=Hybrid)',dust_method,1,3)
  if (use_dustgrowth) then
@@ -226,6 +226,7 @@ end subroutine set_dust_interactively
 !+
 !--------------------------------------------------------------------------
 subroutine set_log_dist_options(igsizelog)
+ use prompting, only:prompt
 
  integer, intent(out) :: igsizelog
 

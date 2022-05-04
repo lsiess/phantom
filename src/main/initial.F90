@@ -527,7 +527,7 @@ subroutine startrun(infile,logfile,evfile,dumpfile,noread)
 !--inject particles at t=0, and get timestep constraint on this
 !
 #ifdef INJECT_PARTICLES
-call init_inject(ierr)
+ call init_inject(ierr)
  if (ierr /= 0) call fatal('initial','error initialising particle injection')
  !rename wind profile filename
  inquire(file='wind_profile1D.dat',exist=iexist)

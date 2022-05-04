@@ -784,17 +784,35 @@ ifeq ($(SETUP), isowind)
     ISOTHERMAL=yes
     WIND=yes
 endif
+ifeq ($(SETUP), isowind_drag)
+#   isothermal spherical wind
+    FPPFLAGS= -DWIND -DSINK_RADIATION -DDUST_NUCLEATION
+    ISOTHERMAL=yes
+    WIND=yes
+    DUST=yes
+endif
+
 ifeq ($(SETUP), wind)
 #   wind setup with dust nucleation
     FPPFLAGS= -DWIND -DSINK_RADIATION -DDUST_NUCLEATION
     ANALYSIS= analysis_dustywind.F90 dust_formation.F90
     WIND=yes
 endif
+ifeq ($(SETUP), wind_drag)
+#   wind setup with dust nucleation
+    FPPFLAGS= -DWIND -DSINK_RADIATION -DDUST_NUCLEATION
+    ANALYSIS= analysis_dustywind.F90 dust_formation.F90
+    WIND=yes
+    DUST=yes
+endif
 
 ifeq ($(WIND), yes)
 #   wind particle injection setup
     SETUPFILE= setup_wind.F90
     SRCINJECT= utils_binary.f90 set_binary.f90 wind_equations.f90 wind.F90 inject_wind.f90
+ifeq ($(DUST), yes)
+    SRCWINDUST= prompting.f90 set_dust_options.f90
+endif
     KNOWN_SETUP=yes
     IND_TIMESTEPS=no
     STS_TIMESTEPS=no

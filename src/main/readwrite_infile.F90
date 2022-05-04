@@ -297,7 +297,7 @@ end subroutine write_infile
 !+
 !-----------------------------------------------------------------
 subroutine read_infile(infile,logfile,evfile,dumpfile)
- use dim,             only:maxvxyzu,maxptmass,gravity,sink_radiation,nucleation
+ use dim,             only:maxvxyzu,maxptmass,gravity,sink_radiation,nucleation,use_dust
  use timestep,        only:tmax,dtmax,nmax,nout,C_cour,C_force
  use eos,             only:use_entropy,read_options_eos,ieos
  use io,              only:ireadin,iwritein,iprint,warn,die,error,fatal,id,master
@@ -670,6 +670,10 @@ subroutine read_infile(infile,logfile,evfile,dumpfile)
          call fatal(label,'no radiation pressure force! adapt isink_radiation/idust_opacity/alpha_rad')
     if (isink_radiation > 1 .and. idust_opacity == 0 ) &
          call fatal(label,'dust opacity not used! change isink_radiation or idust_opacity')
+#ifdef INJECT_PARTICLES
+    if (isink_radiation > 1 .and. use_dust ) &
+         call fatal(label,'radiation pressure on dust grains not implemented. please set isink_radiation = 0')
+#endif
  endif
  return
 
