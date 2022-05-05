@@ -46,7 +46,7 @@ subroutine add_or_update_particle(itype,position,velocity,h,u,particle_number,np
  use part, only:divcurlv,divcurlB,ndivcurlv,ndivcurlB,ntot
 #ifdef DUST
  use dim,              only:maxdusttypes
- use part,             only:dustfrac,deltav,ndusttypes,ndustsmall
+ use part,             only:dustfrac,dustevol,deltav,ndusttypes,ndustsmall
  use set_dust_options, only:dust_to_gas,dustbinfrac
  use options,          only:use_dustfrac
 #endif
@@ -112,8 +112,12 @@ subroutine add_or_update_particle(itype,position,velocity,h,u,particle_number,np
 #ifdef DUST
  if (ndusttypes > 1) then
     dustfrac(:,particle_number) = dustbinfrac(1:ndusttypes)*dust_to_gas
+    dustevol(1:ndustsmall,particle_number) = sqrt(dustfrac(1:ndustsmall,particle_number)/&
+         (1.-dustfrac(1:ndustsmall,particle_number)))
  else
     dustfrac(:,particle_number) = dust_to_gas/(1.+dust_to_gas)
+    dustevol(1:ndustsmall,particle_number) = sqrt(dustfrac(1:ndustsmall,particle_number)/&
+         (1.-dustfrac(1:ndustsmall,particle_number)))
  endif
  if (use_dustfrac) then
     do l=1,ndustsmall
