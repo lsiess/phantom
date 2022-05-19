@@ -211,6 +211,9 @@ subroutine set_dust_interactively()
                ' 0=equal'//new_line('A')// &
                ' 1=manually'//new_line('A'),igraindens,0,1)
     endif
+ else
+    call prompt('Enter grain size (cm)',grainsizeinp(1),1e-8,1e2)
+    call prompt('Enter grain density (g/cm3)',graindensinp(1),1e-2,1e2)
  endif
 
  call prompt('How do you want to set the dust density profile?'//new_line('A')// &
