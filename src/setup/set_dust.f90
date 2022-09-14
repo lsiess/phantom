@@ -17,10 +17,17 @@ module set_dust
 ! :Dependencies: table_utils
 !
 
+ use dim,     only:maxdusttypes
  implicit none
+
+ !we need to store these quantities when new particles are created (e.g. by wind)
+ integer, public  :: dust_method
+ real,    public  :: dust_to_gas
+ real,    public  :: dustbinfrac(maxdusttypes)
 
  public :: set_dustfrac
  public :: set_dustbinfrac
+
  private
 
 contains

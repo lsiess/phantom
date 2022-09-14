@@ -64,7 +64,8 @@ module setup
  use options,          only:calc_erot
  use dust,             only:grainsizecgs,graindenscgs
  use set_dust_options, only:grainsizeinp,graindensinp,igrainsize,igraindens,&
-                            smincgs,smaxcgs,sindex,dustbinfrac
+                            smincgs,smaxcgs,sindex
+
  implicit none
 
  public :: setpart
@@ -105,7 +106,7 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact_
  use eos,          only:polyk2,ieos,gmw
  use eos_barotropic, only:rhocrit0cgs,drhocrit0
  use part,         only:Bxyz,Bextx,Bexty,Bextz,igas,idust,set_particle_type,hfact,dustfrac
- use set_dust_options, only:dustbinfrac,set_dust_default_options,set_dust_interactively,dust_method
+ use set_dust_options, only:set_dust_default_options,set_dust_interactively
  use dust,         only:ilimitdustflux
  use timestep,     only:dtmax,tmax,dtmax_dratio,dtmax_min
  use centreofmass, only:reset_centreofmass
@@ -115,7 +116,7 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact_
  use ptmass,       only:icreate_sinks,r_crit,h_acc,h_soft_sinksink
  use velfield,     only:set_velfield_from_cubes
  use datafiles,    only:find_phantom_datafile
- use set_dust,     only:set_dustfrac,set_dustbinfrac
+ use set_dust,     only:set_dustfrac,set_dustbinfrac,dustbinfrac,dust_method
  use utils_shuffleparticles, only:shuffleparticles
  integer,           intent(in)    :: id
  integer,           intent(inout) :: npart

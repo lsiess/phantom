@@ -1510,7 +1510,10 @@ subroutine fill_header(sphNGdump,t,nparttot,npartoftypetot,nblocks,nptmass,hdr,i
                           phantom_version_major,phantom_version_minor,phantom_version_micro,periodic
  use units,          only:udist,umass,utime,unit_Bfield
  use dust_formation, only:write_headeropts_dust_formation
-
+#ifdef DUST
+ use dim,            only:maxdusttypes
+ use set_dust,       only:dust_to_gas,dustbinfrac
+#endif
  logical,         intent(in)    :: sphNGdump
  real,            intent(in)    :: t
  integer(kind=8), intent(in)    :: nparttot,npartoftypetot(:)
@@ -1581,6 +1584,11 @@ subroutine fill_header(sphNGdump,t,nparttot,npartoftypetot,nblocks,nptmass,hdr,i
     call add_to_rheader(alphaB,'alphaB',hdr,ierr)
     call add_to_rheader(massoftype,'massoftype',hdr,ierr) ! array
     if (do_nucleation) call write_headeropts_dust_formation(hdr,ierr)
+#ifdef DUST
+    ! initial dust mass fraction/grains size distribution
+    call add_to_rheader(dust_to_gas,'dust_to_gas',hdr,ierr) ! scalar
+    call add_to_rheader(dustbinfrac,'dustbinfrac',hdr,ierr) ! array
+#endif
     call add_to_rheader(Bextx,'Bextx',hdr,ierr)
     call add_to_rheader(Bexty,'Bexty',hdr,ierr)
     call add_to_rheader(Bextz,'Bextz',hdr,ierr)
@@ -1642,6 +1650,10 @@ subroutine unfill_rheader(hdr,phantomdump,ntypesinfile,nptmass,&
  use units,          only:unit_density,udist
  use timestep,       only:dtmax0
  use dust_formation, only:read_headeropts_dust_formation
+#ifdef DUST
+ use dim,            only:maxdusttypes
+ use set_dust,       only:dust_to_gas,dustbinfrac
+#endif
  type(dump_h), intent(in)  :: hdr
  logical,      intent(in)  :: phantomdump
  integer,      intent(in)  :: iprint,ntypesinfile,nptmass
@@ -1689,7 +1701,10 @@ subroutine unfill_rheader(hdr,phantomdump,ntypesinfile,nptmass,&
        call read_headeropts_dust_formation(hdr,ierr)
        if (ierr /= 0) ierr = 6
     endif
-
+#ifdef DUST
+    call extract('dust_to_gas',dust_to_gas,hdr,ierr) ! scalar
+    call extract('dustbinfrac',dustbinfrac(1:maxdusttypes),hdr,ierr) ! array
+#endif
     call extract('iexternalforce',iextern_in_file,hdr,ierrs(1))
     if (extract_iextern_from_hdr) iexternalforce = iextern_in_file
     if (iexternalforce /= 0) then

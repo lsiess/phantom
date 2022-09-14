@@ -30,48 +30,51 @@ module set_dust_options
 !   options, part, prompting
 !
  use dim,       only:maxdusttypes,maxdustsmall,maxdustlarge,use_dustgrowth
- use prompting, only:prompt
+ use set_dust,  only:dust_method,dust_to_gas,dustbinfrac
+
  implicit none
 
- integer, public :: dust_method
- real,    public :: dust_to_gas
+ private
+
+ !integer, public :: dust_method
+ !real,    public :: dust_to_gas
  integer, public :: ndusttypesinp
  integer, public :: ndustsmallinp
  integer, public :: ndustlargeinp
  real,    public :: grainsizeinp(maxdusttypes)
  real,    public :: graindensinp(maxdusttypes)
  integer, public :: igrainsize
- integer, public :: igrainsizelog
- integer, public :: igrainsizelogsmall
- integer, public :: igrainsizeloglarge
+ integer :: igrainsizelog
+ integer :: igrainsizelogsmall
+ integer :: igrainsizeloglarge
  integer, public :: igraindens
- integer, public :: igrainsizelarge
- integer, public :: igraindenslarge
- integer, public :: igrainsizesmall
- integer, public :: igraindenssmall
+ integer :: igrainsizelarge
+ integer :: igraindenslarge
+ integer :: igrainsizesmall
+ integer :: igraindenssmall
  integer, public :: isetdust
  real,    public :: smincgs
  real,    public :: smaxcgs
- real,    public :: s1cgs
- real,    public :: sNcgs
- real,    public :: logds
+ real :: s1cgs
+ real :: sNcgs
+ real :: logds
  real,    public :: sindex
- real,    public :: sminsmallcgs
- real,    public :: smaxsmallcgs
- real,    public :: s1smallcgs
- real,    public :: sNsmallcgs
- real,    public :: logdssmall
- real,    public :: sindexsmall
- real,    public :: sminlargecgs
- real,    public :: smaxlargecgs
- real,    public :: s1largecgs
- real,    public :: sNlargecgs
- real,    public :: logdslarge
- real,    public :: sindexlarge
- real,    public :: dustbinfrac(maxdusttypes)
- real,    public :: Kdrag
- logical, public :: ilimitdustfluxinp
- logical, public :: iusesamepowerlaw
+ real :: sminsmallcgs
+ real :: smaxsmallcgs
+ real :: s1smallcgs
+ real :: sNsmallcgs
+ real :: logdssmall
+ real :: sindexsmall
+ real :: sminlargecgs
+ real :: smaxlargecgs
+ real :: s1largecgs
+ real :: sNlargecgs
+ real :: logdslarge
+ real :: sindexlarge
+ !real,    public :: dustbinfrac(maxdusttypes)
+ real :: Kdrag
+ logical, public :: ilimitdustfluxinp !
+ logical :: iusesamepowerlaw
 
  public :: set_dust_default_options
  public :: set_dust_interactively
@@ -79,7 +82,6 @@ module set_dust_options
  public :: write_dust_setup_options
  public :: check_dust_method
 
- private
 
 contains
 
@@ -139,6 +141,7 @@ end subroutine set_dust_default_options
 !+
 !--------------------------------------------------------------------------
 subroutine set_dust_interactively()
+ use prompting, only:prompt
 
  call prompt('Which dust method do you want? (1=one fluid,2=two fluid,3=Hybrid)',dust_method,1,3)
  if (use_dustgrowth) then
@@ -202,6 +205,9 @@ subroutine set_dust_interactively()
                ' 0=equal'//new_line('A')// &
                ' 1=manually'//new_line('A'),igraindens,0,1)
     endif
+ else
+    call prompt('Enter grain size (cm)',grainsizeinp(1),1e-8,1e2)
+    call prompt('Enter grain density (g/cm3)',graindensinp(1),1e-2,1e2)
  endif
 
  call prompt('How do you want to set the dust density profile?'//new_line('A')// &
@@ -217,7 +223,7 @@ end subroutine set_dust_interactively
 !+
 !--------------------------------------------------------------------------
 subroutine set_log_dist_options(igsizelog)
-
+ use prompting, only:prompt
  integer, intent(out) :: igsizelog
 
  call prompt('Which parameters do you want to fix?'//new_line('A')// &

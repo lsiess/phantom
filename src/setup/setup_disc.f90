@@ -100,9 +100,9 @@ module setup
                             VrelVf,rad,radprop,ikappa,iradxi
  use physcon,          only:au,solarm,jupiterm,earthm,pi,years
  use setdisc,          only:scaled_sigma,get_disc_mass
- use set_dust_options, only:set_dust_default_options,dust_method,dust_to_gas,&
-                            ndusttypesinp,ndustlargeinp,ndustsmallinp,isetdust,&
-                            dustbinfrac,check_dust_method
+ use set_dust,         only:dust_method,dust_to_gas,dustbinfrac
+ use set_dust_options, only:set_dust_default_options,ndusttypesinp,ndustlargeinp,ndustsmallinp,&
+                            isetdust,check_dust_method
  use units,            only:umass,udist,utime
  use dim,              only:do_radiation
  use radiation_utils,  only:set_radiation_and_gas_temperature_equal

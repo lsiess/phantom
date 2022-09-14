@@ -137,6 +137,17 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
  use io,        only: master
  use eos,       only: gmw,ieos,isink,qfacdisc
  use spherical, only:set_sphere
+#ifdef DUST
+ use dim,              only:maxdustsmall
+ use part,             only:ndusttypes,ndustsmall,grainsize,graindens
+ use units,            only:udist
+ use dust,             only:grainsizecgs,graindenscgs
+ use set_dust,         only:set_dustbinfrac,dust_method
+ use options,          only:use_dustfrac
+ use set_dust_options, only:set_dust_default_options,smincgs,smaxcgs,sindex,&
+      ndustsmallinp,ndusttypesinp,grainsizeinp
+#endif
+
  integer,           intent(in)    :: id
  integer,           intent(inout) :: npart
  integer,           intent(out)   :: npartoftype(:)
@@ -145,6 +156,9 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
  real,              intent(out)   :: massoftype(:)
  real,              intent(out)   :: polyk,gamma,hfact
  real,              intent(inout) :: time
+#ifdef DUST
+ real :: dustbinfrac(maxdustsmall)
+#endif
  character(len=*),  intent(in)    :: fileprefix
  character(len=len(fileprefix)+6) :: filename
  integer :: ierr,k
@@ -154,6 +168,17 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
 !
 !--general parameters
 !
+#ifdef DUST
+ grainsize     = 0.
+ graindens     = 0.
+ grainsizecgs  = 1e-4
+ graindenscgs  = 3.
+ ndustsmall    = 1
+ call set_dust_default_options()
+ grainsizeinp  = 1e-4
+ ndustsmallinp = 1
+ dust_method   = 1
+#endif
  time = 0.
  filename = trim(fileprefix)//'.setup'
  inquire(file=filename,exist=iexist)
@@ -164,6 +189,24 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
        call write_setupfile(filename)
     endif
  endif
+
+#if DUST
+ !--setup grain size distribution
+ if (id==master) then
+    use_dustfrac = .true.
+    ndusttypes   = ndusttypesinp
+    ndustsmall   = ndusttypes
+    if (ndusttypes > 1) then
+       call set_dustbinfrac(smincgs,smaxcgs,sindex,dustbinfrac(1:ndusttypes),grainsize(1:ndusttypes))
+       grainsize(1:ndusttypes) = grainsize(1:ndusttypes)/udist
+       graindens(1:ndusttypes) = graindenscgs/umass*udist**3
+    else
+       print *,'dust properties : grainsize=',grainsizecgs,', grain density=',graindenscgs
+       grainsize(1) = grainsizecgs/udist
+       graindens(1) = graindenscgs/umass*udist**3
+    endif
+ endif
+#endif
 
 !
 !--space available for injected gas particles
@@ -189,6 +232,7 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
     xyzmh_ptmass(iTeff,2) = secondary_Teff
     xyzmh_ptmass(iReff,2) = secondary_Reff
     xyzmh_ptmass(iLum,2)  = secondary_lum
+
  elseif (icompanion_star == 2) then
     !-- hierarchical triple
     nptmass  = 0
@@ -272,13 +316,13 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
 #ifdef ISOTHERMAL
  gamma = 1.
  if (iwind == 3) then
-    ieos = 6
+    ieos     = 6
     qfacdisc = 0.5*temp_exponent
-    isink = 1
-    T_wind = primary_Teff
+    isink    = 1
+    T_wind   = primary_Teff
  else
     isink = 1
-    ieos = 1
+    ieos  = 1
  endif
 #else
  gamma = wind_gamma
@@ -297,6 +341,10 @@ subroutine setup_interactive()
  use physcon,   only:au,solarm
  use units,     only:umass,udist
  use io,        only:fatal
+#ifdef DUST
+ use set_dust        , only:dust_method
+ use set_dust_options, only:set_dust_interactively
+#endif
  integer :: ichoice
 
 #ifdef ISOTHERMAL
@@ -496,11 +544,19 @@ subroutine setup_interactive()
        print "(a)",'Stellar parameters'
     endif
     ichoice = 2
-    print "(a)",' 2: Mass = 1.2 Msun, accretion radius = 0.2568 au',&
+    print "(a)",' 3: Mass = 0.0019 Msun, accretion radius = 0.500 au',&
+        ' 2: Mass = 1.2 Msun, accretion radius = 0.2568 au',&
         ' 1: Mass = 1.0 Msun, accretion radius = 1.2568 au', &
         ' 0: custom'
-    call prompt('select mass and radius of primary',ichoice,0,2)
+    call prompt('select mass and radius of primary',ichoice,0,3)
     select case(ichoice)
+    case(3)
+       primary_mass_msun = 0.0019
+       primary_racc_au   = 0.5
+       primary_lum_lsun  = 0.015
+       primary_Teff      = 68.
+       primary_Reff_au   = 0.500
+       T_wind            = 68
     case(2)
        primary_mass_msun = 1.2
        primary_racc_au   = 0.2568
@@ -519,9 +575,16 @@ subroutine setup_interactive()
     if (icompanion_star == 1) then
        ichoice = 1
        print "(a)",'Secondary star parameters'
-       print "(a)",' 1: Mass = 1.0 Msun, accretion radius = 0.1 au',' 0: custom'
-       call prompt('select mass and radius of secondary',ichoice,0,1)
+       print "(a)",' 2: Mass = 1.0 Msun, accretion radius = 0.00465 au',&
+            ' 1: Mass = 1.0 Msun, accretion radius = 0.1 au',' 0: custom'
+       call prompt('select mass and radius of secondary',ichoice,0,2)
        select case(ichoice)
+       case(2)
+          secondary_mass_msun = 1.
+          secondary_racc_au   = 0.00465
+          secondary_lum_LSUN  = 25.
+          secondary_Teff      = 1.297E+04
+          secondary_Reff_au   = 0.00465
        case(1)
           secondary_mass_msun = 1.
           secondary_racc_au   = 0.1
@@ -552,6 +615,11 @@ subroutine setup_interactive()
     endif
  endif
 
+#ifdef DUST
+ call set_dust_interactively()
+ if (dust_method == 2 .or. dust_method == 3) call fatal('setup','Only the one fluid dust treatment is currently implemented')
+#endif
+
 end subroutine setup_interactive
 
 !----------------------------------------------------------------
@@ -563,6 +631,9 @@ subroutine write_setupfile(filename)
  use infile_utils, only:write_inopt
  use physcon,      only:au,steboltz,solarl,solarm,pi
  use units,        only:utime,unit_energ,udist
+#ifdef DUST
+ use set_dust_options, only: write_dust_setup_options
+#endif
  character(len=*), intent(in) :: filename
  integer, parameter           :: iunit = 20
 
@@ -580,7 +651,7 @@ subroutine write_setupfile(filename)
 
  if (icompanion_star == 2) then
     if (secondary_Teff == 0. .and. secondary_lum_lsun > 0. .and. secondary_Reff_au > 0.) &
-         secondary_Teff = (secondary_lum_lsun*solarl/(4.*pi*steboltz*(secondary_Reff_au*au)**2))**0.25
+        secondary_Teff = (secondary_lum_lsun*solarl/(4.*pi*steboltz*(secondary_Reff_au*au)**2))**0.25
     if (secondary_Reff_au == 0. .and. secondary_lum_lsun > 0. .and. secondary_Teff > 0.) &
         secondary_Reff_au = sqrt(secondary_lum_lsun*solarl/(4.*pi*steboltz*secondary_Teff**4))/au
     if (secondary_Reff_au > 0. .and. secondary_lum_lsun == 0. .and. secondary_Teff > 0.) &
@@ -679,6 +750,12 @@ subroutine write_setupfile(filename)
 #else
  call write_inopt(wind_gamma,'wind_gamma','adiabatic index (initial if Krome chemistry used)',iunit)
 #endif
+
+#ifdef DUST
+ print "(a)",' append dust setup options to '//trim(filename)
+ call write_dust_setup_options(iunit)
+#endif
+
  close(iunit)
 
 end subroutine write_setupfile
@@ -692,6 +769,13 @@ subroutine read_setupfile(filename,ierr)
  use infile_utils, only:open_db_from_file,inopts,read_inopt,close_db
  use physcon,      only:au,steboltz,solarl,solarm,pi
  use units,        only:udist,umass,utime,unit_energ
+#ifdef DUST
+ use options,          only:use_dustfrac
+ use dust,             only:ilimitdustflux
+ use part,             only:ndusttypes,ndustsmall,ndustlarge
+ use set_dust        , only:dust_method
+ use set_dust_options, only:read_dust_setup_options,ndusttypesinp,ilimitdustfluxinp
+#endif
  character(len=*), intent(in)  :: filename
  integer,          intent(out) :: ierr
  integer, parameter            :: iunit = 21
@@ -777,7 +861,6 @@ subroutine read_setupfile(filename,ierr)
 #else
  call read_inopt(wind_gamma,'wind_gamma',db,min=1.,max=4.,errcount=nerr)
 #endif
- call close_db(db)
  if (primary_Teff == 0. .and. primary_lum_lsun > 0. .and. primary_Reff > 0.) then
     ichange = ichange+1
     primary_Teff = (primary_lum_lsun*solarl/(4.*pi*steboltz*(primary_Reff*udist)**2))**0.25
@@ -802,6 +885,28 @@ subroutine read_setupfile(filename,ierr)
        secondary_Reff_au = secondary_Reff * udist / au
     endif
  endif
+
+#ifdef DUST
+ call read_dust_setup_options(db,nerr)
+ !--dust method
+ select case(dust_method)
+ case(1)
+    use_dustfrac = .true.
+    ilimitdustflux = ilimitdustfluxinp
+    ndustsmall = ndusttypesinp
+ case(2)
+    use_dustfrac = .false.
+    ndustlarge = ndusttypesinp
+ ! case(3)
+ !    use_dustfrac   = .true.
+ !    use_hybrid     = .true.
+ !    ndustlarge     = ndustlargeinp
+ !    ndustsmall     = ndustsmallinp
+ !    ilimitdustflux = ilimitdustfluxinp
+ end select
+ ndusttypes = ndusttypesinp
+#endif
+ call close_db(db)
  ierr = nerr
  call write_setupfile(filename)
 

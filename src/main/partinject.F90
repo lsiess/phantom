@@ -43,6 +43,12 @@ subroutine add_or_update_particle(itype,position,velocity,h,u,particle_number,np
  use part, only:maxalpha,alphaind,maxgradh,gradh,fxyzu,fext,set_particle_type
  use part, only:mhd,Bevol,dBevol,Bxyz,divBsymm!,dust_temp
  use part, only:divcurlv,divcurlB,ndivcurlv,ndivcurlB,ntot
+#ifdef DUST
+ use dim,      only:maxdusttypes
+ use part,     only:dustfrac,dustevol,deltav,ndusttypes,ndustsmall
+ use set_dust, only:dust_to_gas,dustbinfrac
+ use options,  only:use_dustfrac
+#endif
  use io,   only:fatal
 #ifdef IND_TIMESTEPS
  use part,         only:ibin
@@ -55,7 +61,7 @@ subroutine add_or_update_particle(itype,position,velocity,h,u,particle_number,np
  integer, intent(inout) :: npart, npartoftype(:)
  real,    intent(inout) :: xyzh(:,:), vxyzu(:,:)
  logical :: new_particle
- integer :: itype_old
+ integer :: itype_old,l
 
  new_particle = .false.
  if (particle_number == npart+1) then
@@ -101,7 +107,23 @@ subroutine add_or_update_particle(itype,position,velocity,h,u,particle_number,np
 #ifdef IND_TIMESTEPS
  ibin(particle_number) = nbinmax
 #endif
- if (present(jKmuS)) nucleation(:,particle_number) = JKmuS(:)
+ if (present(JKmuS)) nucleation(:,particle_number) = JKmuS(:)
+#ifdef DUST
+ if (ndusttypes > 1) then
+    dustfrac(:,particle_number) = dustbinfrac(1:ndusttypes)*dust_to_gas
+    dustevol(1:ndustsmall,particle_number) = sqrt(dustfrac(1:ndustsmall,particle_number)/&
+         (1.-dustfrac(1:ndustsmall,particle_number)))
+ else
+    dustfrac(:,particle_number) = dust_to_gas/(1.+dust_to_gas)
+    dustevol(1:ndustsmall,particle_number) = sqrt(dustfrac(1:ndustsmall,particle_number)/&
+         (1.-dustfrac(1:ndustsmall,particle_number)))
+ endif
+ if (use_dustfrac) then
+    do l=1,ndustsmall
+       deltav(:,l,particle_number) = 0.
+    enddo
+ endif
+#endif
 
 end subroutine add_or_update_particle
 
