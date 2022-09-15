@@ -17,7 +17,7 @@ program phantomanalysis
 ! :Dependencies: analysis, dim, eos, fileutils, infile_utils, io, part,
 !   readwrite_dumps
 !
- use dim,             only:tagline,do_nucleation
+ use dim,             only:tagline,do_nucleation,inucleation
  use part,            only:xyzh,hfact,massoftype,vxyzu,npart !,npartoftype
  use io,              only:set_io_unit_numbers,iprint,idisk1,ievfile,ianalysis
  use readwrite_dumps, only:init_readwrite_dumps,read_dump,read_smalldump,is_small_dump
@@ -74,7 +74,10 @@ program phantomanalysis
           close(ianalysis)
        endif
     endif
-    if (idust_opacity == 2) do_nucleation = .true.
+    if (idust_opacity == 2) then
+       do_nucleation = .true.
+       inucleation = 1
+    endif
 !
 !--read particle setup from dumpfile
 !

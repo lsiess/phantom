@@ -35,7 +35,7 @@ subroutine do_analysis(dumpfile,num,xyzh,vxyzu,particlemass,npart,time,iunit)
  use part,  only:nptmass,xyzmh_ptmass,vxyz_ptmass,iLum,iTeff,iReff,massoftype,rhoh
  use part,  only:dust_temp,isdead_or_accreted,nucleation,idK0,idK1,idgamma,idmu
  use dust_formation, only: set_abundances
- use dust,     only:get_ts,idrag,K_code
+ use dust,     only:get_ts,idrag,K_code,init_drag
  use set_dust, only:dust_to_gas
  use units,    only:udist,unit_density
  use eos,      only:get_spsound
@@ -52,23 +52,26 @@ subroutine do_analysis(dumpfile,num,xyzh,vxyzu,particlemass,npart,time,iunit)
  real :: L_star,T_star,R_star,xa,ya,za
  real :: a0,rhoC,sgrain,densgrain,rhogas,rhodust,spsoundgas,dv2,ts,&
       rhoj,gammaj,muj
- integer :: j,iregime,idust,ncols
+ integer :: j,iregime,idust,ncols,i,ierr
 
  !case 7 variables
- character(len=17), dimension(:), allocatable :: columns
+ character(len=12), dimension(:), allocatable :: columns
  real, allocatable   :: drag_data(:,:)
 
  a0 = a0_cgs/udist
  rhoC = rhoC_cgs/unit_density
  idust = 1
+ call init_drag(ierr)
 
- ncols = 7
+ ncols = 9
  allocate(columns(ncols))
  columns = (/'           x', &
              '           y', &
              '           z', &
              '           r', &
              '           v', &
+             '          K0', &
+             '          K1', &
              '      sgrain', &
              ' stopping ts'/)
  allocate(drag_data(ncols,npart))
@@ -84,27 +87,32 @@ subroutine do_analysis(dumpfile,num,xyzh,vxyzu,particlemass,npart,time,iunit)
  ! za = xyzmh_ptmass(3,j)
 !call get_Teq_from_Lucy(npart,xyzh,xa,ya,za,R_star,T_star,dust_temp)
 
- print *,allocated(nucleation),size(nucleation),npart
-
  dust_to_gas = 0.01
+ i = 0
  do j = 1,npart
-    sgrain     = a0*nucleation(idK1,j)/nucleation(idK0,j)
-    densgrain  = rhoC
-    rhoj       = rhoh(xyzh(4,j),massoftype(1))
-    rhogas     = (1. - dust_to_gas)*rhoj
-    gammaj     = nucleation(idgamma,j)
-    muj        = nucleation(idmu,j)
-    rhodust    = dust_to_gas*rhoj
-    spsoundgas = get_spsound(ieos,xyzh(1:3,j),rhogas,vxyzu(:,j),gammaj,muj)
-    call get_ts(idrag,idust,sgrain,densgrain,rhogas,rhodust,spsoundgas,0.,ts,iregime)
-    drag_data(1:3,j) = xyzh(1:3,j)
-    drag_data(4,j) = sqrt(xyzh(1,j)**2+xyzh(2,j)**2+xyzh(3,j)**2)
-    drag_data(5,j) = sqrt(vxyzu(1,j)**2+vxyzu(2,j)**2+vxyzu(3,j)**2)
-    drag_data(6,j) = sgrain
-    drag_data(7,j) = ts
+    if (nucleation(idK0,j)>0. ) then
+       i = i+1
+       sgrain     = a0*nucleation(idK1,j)/nucleation(idK0,j)
+       densgrain  = rhoC
+       rhoj       = rhoh(xyzh(4,j),massoftype(1))
+       rhogas     = (1. - dust_to_gas)*rhoj
+       gammaj     = nucleation(idgamma,j)
+       muj        = nucleation(idmu,j)
+       rhodust    = dust_to_gas*rhoj
+       spsoundgas = get_spsound(ieos,xyzh(1:3,j),rhogas,vxyzu(:,j),gammaj,muj)
+       call get_ts(idrag,idust,sgrain,densgrain,rhogas,rhodust,spsoundgas,0.,ts,iregime)
+       drag_data(1:3,i) = xyzh(1:3,j)
+       drag_data(4,i) = sqrt(xyzh(1,j)**2+xyzh(2,j)**2+xyzh(3,j)**2)
+       drag_data(5,i) = sqrt(vxyzu(1,j)**2+vxyzu(2,j)**2+vxyzu(3,j)**2)
+       drag_data(6,i) = nucleation(idK0,j)
+       drag_data(7,i) = nucleation(idK1,j)
+       drag_data(8,i) = sgrain*udist
+       drag_data(9,i) = ts
+    endif
  enddo
 
- call write_file('drag_quantities', 'drag', columns, drag_data, size(drag_data(1,:)), ncols, num)
+! call write_file('drag_quantities', 'drag', columns, drag_data, size(drag_data(1,:)), ncols, num)
+ call write_file('drag_quantities', 'drag', columns, drag_data, i, ncols, num)
 
 
  deallocate(drag_data,columns)
@@ -116,7 +124,7 @@ subroutine write_file(name_in, dir_in, cols, data_in, npart, ncols, num)
  character(len=*), intent(in) :: name_in, dir_in
  integer, intent(in)          :: npart, ncols, num
  character(len=*), dimension(ncols), intent(in) :: cols
- character(len=20), dimension(ncols) :: columns
+ character(len=16), dimension(ncols) :: columns
  character(len=40)             :: data_formatter, column_formatter
  character(len(name_in)+9)    :: file_name
 
@@ -132,11 +140,11 @@ subroutine write_file(name_in, dir_in, cols, data_in, npart, ncols, num)
 
  open(unit=unitnum, file='./'//dir_in//'/'//file_name, status='replace')
 
- write(column_formatter, "(a,I2.2,a)") "('#',2x,", ncols, "('[',a15,']',3x))"
+ write(column_formatter, "(a,I2.2,a)") "('#',2x,", ncols, "('[',a16,']',3x))"
  write(data_formatter, "(a,I2.2,a)") "(", ncols, "(2x,es19.11e3))"
 
  do i=1,ncols
-    write(columns(i), "(I2.2,a)") i, cols(i)
+    write(columns(i), "(I2.2,2x,a)") i, cols(i)
  enddo
 
  !set column headings
