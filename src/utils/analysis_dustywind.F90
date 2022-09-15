@@ -26,14 +26,20 @@ module analysis
  integer, parameter :: N = 1024 !32
  double precision, parameter :: theta = 0., phi = 0.
  double precision, parameter :: u(3) = (/ sin(theta)*cos(phi), sin(theta)*sin(phi), cos(theta) /)
+ integer :: dump_number = 0
 
 contains
 
 subroutine do_analysis(dumpfile,num,xyzh,vxyzu,particlemass,npart,time,iunit)
 
- use part,  only: nptmass,xyzmh_ptmass,vxyz_ptmass,iLum,iTeff,iReff
- use part,  only: dust_temp,isdead_or_accreted,nucleation
+ use part,  only:nptmass,xyzmh_ptmass,vxyz_ptmass,iLum,iTeff,iReff,massoftype,rhoh
+ use part,  only:dust_temp,isdead_or_accreted,nucleation,idK0,idK1,idgamma,idmu
  use dust_formation, only: set_abundances
+ use dust,     only:get_ts,idrag,K_code
+ use set_dust, only:dust_to_gas
+ use units,    only:udist,unit_density
+ use eos,      only:get_spsound
+ use options,  only:ieos
 
  !general variables
  character(len=*), intent(in) :: dumpfile
@@ -41,22 +47,112 @@ subroutine do_analysis(dumpfile,num,xyzh,vxyzu,particlemass,npart,time,iunit)
  real,             intent(inout) :: xyzh(:,:),vxyzu(:,:)
  real,             intent(in) :: particlemass,time
 
- real    :: L_star,T_star,R_star,xa,ya,za
- integer :: j
+ real, parameter :: a0_cgs = 1.28d-8, rhoC_cgs = 2.25 !for carbon
 
- call set_abundances
+ real :: L_star,T_star,R_star,xa,ya,za
+ real :: a0,rhoC,sgrain,densgrain,rhogas,rhodust,spsoundgas,dv2,ts,&
+      rhoj,gammaj,muj
+ integer :: j,iregime,idust,ncols
+
+ !case 7 variables
+ character(len=17), dimension(:), allocatable :: columns
+ real, allocatable   :: drag_data(:,:)
+
+ a0 = a0_cgs/udist
+ rhoC = rhoC_cgs/unit_density
+ idust = 1
+
+ ncols = 7
+ allocate(columns(ncols))
+ columns = (/'           x', &
+             '           y', &
+             '           z', &
+             '           r', &
+             '           v', &
+             '      sgrain', &
+             ' stopping ts'/)
+ allocate(drag_data(ncols,npart))
+
+ !call set_abundances
  !property of the sink particle
- j = 1
- T_star = xyzmh_ptmass(iTeff,j)
- L_star = xyzmh_ptmass(iLum,j)
- R_star = xyzmh_ptmass(iReff,j) !sqrt(L_star/(4.*pi*steboltz*utime**3/umass*R_star**4))
- xa = xyzmh_ptmass(1,j)
- ya = xyzmh_ptmass(2,j)
- za = xyzmh_ptmass(3,j)
- call get_Teq_from_Lucy(npart,xyzh,xa,ya,za,R_star,T_star,dust_temp)
+ ! j = 1
+ ! T_star = xyzmh_ptmass(iTeff,j)
+ ! L_star = xyzmh_ptmass(iLum,j)
+ ! R_star = xyzmh_ptmass(iReff,j) !sqrt(L_star/(4.*pi*steboltz*utime**3/umass*R_star**4))
+ ! xa = xyzmh_ptmass(1,j)
+ ! ya = xyzmh_ptmass(2,j)
+ ! za = xyzmh_ptmass(3,j)
+!call get_Teq_from_Lucy(npart,xyzh,xa,ya,za,R_star,T_star,dust_temp)
 
+ print *,allocated(nucleation),size(nucleation),npart
+
+ dust_to_gas = 0.01
+ do j = 1,npart
+    sgrain     = a0*nucleation(idK1,j)/nucleation(idK0,j)
+    densgrain  = rhoC
+    rhoj       = rhoh(xyzh(4,j),massoftype(1))
+    rhogas     = (1. - dust_to_gas)*rhoj
+    gammaj     = nucleation(idgamma,j)
+    muj        = nucleation(idmu,j)
+    rhodust    = dust_to_gas*rhoj
+    spsoundgas = get_spsound(ieos,xyzh(1:3,j),rhogas,vxyzu(:,j),gammaj,muj)
+    call get_ts(idrag,idust,sgrain,densgrain,rhogas,rhodust,spsoundgas,0.,ts,iregime)
+    drag_data(1:3,j) = xyzh(1:3,j)
+    drag_data(4,j) = sqrt(xyzh(1,j)**2+xyzh(2,j)**2+xyzh(3,j)**2)
+    drag_data(5,j) = sqrt(vxyzu(1,j)**2+vxyzu(2,j)**2+vxyzu(3,j)**2)
+    drag_data(6,j) = sgrain
+    drag_data(7,j) = ts
+ enddo
+
+ call write_file('drag_quantities', 'drag', columns, drag_data, size(drag_data(1,:)), ncols, num)
+
+
+ deallocate(drag_data,columns)
 
 end subroutine do_analysis
+
+subroutine write_file(name_in, dir_in, cols, data_in, npart, ncols, num)
+ !outputs a file from a single dump
+ character(len=*), intent(in) :: name_in, dir_in
+ integer, intent(in)          :: npart, ncols, num
+ character(len=*), dimension(ncols), intent(in) :: cols
+ character(len=20), dimension(ncols) :: columns
+ character(len=40)             :: data_formatter, column_formatter
+ character(len(name_in)+9)    :: file_name
+
+ real, dimension(ncols,npart), intent(in) :: data_in
+ integer                      :: i, unitnum
+
+ unitnum = 1000 + num
+ if (dump_number == 0) then
+    call system('mkdir ' // dir_in )
+ endif
+
+ write(file_name, "(2a,i5.5,a)") trim(name_in), "_", num, ".ev"
+
+ open(unit=unitnum, file='./'//dir_in//'/'//file_name, status='replace')
+
+ write(column_formatter, "(a,I2.2,a)") "('#',2x,", ncols, "('[',a15,']',3x))"
+ write(data_formatter, "(a,I2.2,a)") "(", ncols, "(2x,es19.11e3))"
+
+ do i=1,ncols
+    write(columns(i), "(I2.2,a)") i, cols(i)
+ enddo
+
+ !set column headings
+ write(unitnum, column_formatter) columns(:)
+
+ !Write data to file
+ do i=1,npart
+    write(unitnum,data_formatter) data_in(:ncols,i)
+ enddo
+
+ close(unit=unitnum)
+end subroutine write_file
+
+
+
+
 
 !-------------------------------------------------------------------------------
 !+
