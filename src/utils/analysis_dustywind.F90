@@ -33,7 +33,7 @@ contains
 subroutine do_analysis(dumpfile,num,xyzh,vxyzu,particlemass,npart,time,iunit)
 
  use part,  only:nptmass,xyzmh_ptmass,vxyz_ptmass,iLum,iTeff,iReff,massoftype,rhoh
- use part,  only:dust_temp,isdead_or_accreted,nucleation,idK0,idK1,idgamma,idmu
+ use part,  only:dust_temp,isdead_or_accreted,nucleation,idK0,idK1,idgamma,idmu,dust_temp
  use dust_formation, only: set_abundances
  use dust,     only:get_ts,idrag,K_code,init_drag
  use set_dust, only:dust_to_gas
@@ -63,17 +63,19 @@ subroutine do_analysis(dumpfile,num,xyzh,vxyzu,particlemass,npart,time,iunit)
  idust = 1
  call init_drag(ierr)
 
- ncols = 9
+ ncols = 11
  allocate(columns(ncols))
  columns = (/'           x', &
              '           y', &
              '           z', &
              '           r', &
              '           v', &
+             '           T', &
              '          K0', &
              '          K1', &
              '      sgrain', &
-             ' stopping ts'/)
+             ' stopping ts', &
+             '          cs'/)
  allocate(drag_data(ncols,npart))
 
  !call set_abundances
@@ -104,10 +106,12 @@ subroutine do_analysis(dumpfile,num,xyzh,vxyzu,particlemass,npart,time,iunit)
        drag_data(1:3,i) = xyzh(1:3,j)
        drag_data(4,i) = sqrt(xyzh(1,j)**2+xyzh(2,j)**2+xyzh(3,j)**2)
        drag_data(5,i) = sqrt(vxyzu(1,j)**2+vxyzu(2,j)**2+vxyzu(3,j)**2)
-       drag_data(6,i) = nucleation(idK0,j)
-       drag_data(7,i) = nucleation(idK1,j)
-       drag_data(8,i) = sgrain*udist
-       drag_data(9,i) = ts
+       drag_data(6,i) = dust_temp(j)
+       drag_data(7,i) = nucleation(idK0,j)
+       drag_data(8,i) = nucleation(idK1,j)
+       drag_data(9,i) = sgrain*udist
+       drag_data(10,i) = ts
+       drag_data(11,i) = spsoundgas
     endif
  enddo
 
