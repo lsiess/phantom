@@ -423,6 +423,10 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,&
  if (inner_sphere-outer_sphere > nboundaries) call fatal(label,'ejection of more than 1 sphere, timestep likely too large!')
 
  do i=inner_boundary_sphere,outer_sphere,-1
+    !
+    ! setup the new properties of the boundary shells and eject particles
+    !
+
     local_time = time + (iboundary_spheres+nfill_domain-i) * time_between_spheres
     !compute the radius, velocity, temperature, chemistry of a sphere at the current local time
     v = wind_injection_speed
@@ -457,7 +461,7 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,&
        if (isink_radiation > 0) dust_temp(first_particle:first_particle+particles_per_sphere-1) = &
             xyzmh_ptmass(iTeff,wind_emitting_sink)
     else
-       ! ejected particles + create new  inner sphere
+       ! ejected particles + create new inner sphere
        if (idust_opacity == 2) then
           call inject_geodesic_sphere(time, i, npart+1, iresolution, r, v, u, rho, geodesic_R, geodesic_V,&
                npart, npartoftype, xyzh, vxyzu, igas, x0, v0, JKmuS, age)
@@ -465,27 +469,24 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,&
           call inject_geodesic_sphere(time, i, npart+1, iresolution, r, v, u, rho, geodesic_R, geodesic_V,&
                npart, npartoftype, xyzh, vxyzu, igas, x0, v0, age=age)
        endif
+
        !initialize dust temperature to star's effective temperature
        if (isink_radiation > 0) dust_temp(npart+1:npart+particles_per_sphere) = xyzmh_ptmass(iTeff,wind_emitting_sink)
+
        ! update the sink particle mass
        if (nptmass > 0 .and. wind_emitting_sink <= nptmass) then
           xyzmh_ptmass(4,wind_emitting_sink) = xyzmh_ptmass(4,wind_emitting_sink) - mass_of_spheres
+          if (pulsating_wind) then
+            inner_radius = wind_injection_radius + deltaR_osc*sin(omega_osc*time)
+            !xyzmh_ptmass(5,wind_emitting_sink) = (inner_radius**3-dr3)**(1./3.) !accretion radius
+            xyzmh_ptmass(5,wind_emitting_sink) = inner_radius
+          endif
        endif
        print '(" ##### eject sphere ",4(i4),i7,9(1x,es12.5))',i,inner_sphere,nboundaries,&
             outer_sphere,npart,time,local_time,r/xyzmh_ptmass(iReff,1),v,u,rho
     endif
     !cs2max = max(cs2max,gamma*(gamma-1)*u)
  enddo
- ! update sink particle properties
- if (nptmass > 0 .and. wind_emitting_sink <= nptmass) then
-    mass_lost = mass_of_spheres * (inner_sphere-outer_sphere+1)
-    xyzmh_ptmass(4,wind_emitting_sink) = xyzmh_ptmass(4,wind_emitting_sink) - mass_lost
-    if (pulsating_wind) then
-       inner_radius = wind_injection_radius + deltaR_osc*sin(omega_osc*time)
-       !v2 xyzmh_ptmass(5,wind_emitting_sink) = (inner_radius**3-dr3)**(1./3.) !accretion radius
-       xyzmh_ptmass(5,wind_emitting_sink) = inner_radius
-    endif
- endif
 
  !
  ! return timestep constraint to ensure that time between sphere
