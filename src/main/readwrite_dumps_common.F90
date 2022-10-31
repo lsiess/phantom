@@ -117,8 +117,8 @@ end subroutine get_options_from_fileid
 !+
 !---------------------------------------------------------------
 subroutine check_arrays(i1,i2,noffset,npartoftype,npartread,nptmass,nsinkproperties,massoftype,&
-                        alphafile,tfile,phantomdump,got_iphase,got_xyzh,got_vxyzu,got_alpha, &
-                        got_krome_mols,got_krome_gamma,got_krome_mu,got_krome_T,got_x,got_z,got_mu, &
+                        alphafile,tfile,phantomdump,got_iphase,got_xyzh,got_vxyzu,got_alpha,got_age,&
+                        got_krome_mols,got_krome_gamma,got_krome_mu,got_krome_T,got_ray_tracer,got_x,got_z,got_mu, &
                         got_abund,got_dustfrac,got_sink_data,got_sink_vels,got_Bxyz,got_psi,got_dustprop,got_pxyzu,got_VrelVf, &
                         got_dustgasprop,got_temp,got_raden,got_kappa,got_Tdust,got_nucleation,got_iorig,iphase,&
                         xyzh,vxyzu,pxyzu,alphaind,xyzmh_ptmass,Bevol,iorig,iprint,ierr)
@@ -137,6 +137,7 @@ subroutine check_arrays(i1,i2,noffset,npartoftype,npartread,nptmass,nsinkpropert
  logical,         intent(in)    :: got_VrelVf,got_dustgasprop(:),got_x,got_z,got_mu
  logical,         intent(in)    :: got_abund(:),got_dustfrac(:),got_sink_data(:),got_sink_vels(:),got_Bxyz(:)
  logical,         intent(in)    :: got_krome_mols(:),got_krome_gamma,got_krome_mu,got_krome_T
+ logical,         intent(in)    :: got_age,got_ray_tracer
  logical,         intent(in)    :: got_psi,got_temp,got_Tdust,got_nucleation(:),got_pxyzu(:),got_raden(:)
  logical,         intent(in)    :: got_kappa,got_iorig
  integer(kind=1), intent(inout) :: iphase(:)
@@ -247,6 +248,11 @@ subroutine check_arrays(i1,i2,noffset,npartoftype,npartread,nptmass,nsinkpropert
     return
  endif
 #endif
+ if (.not.got_age .and. npartread > 0) then
+    if (id==master) write(*,*) 'WARNING: missing particle age information from file'
+!     ierr = 31
+    return
+ endif
  if (eos_is_non_ideal(ieos) .and. .not.got_temp) then
     if (id==master .and. i1==1) write(*,"(/,a,/)") 'WARNING: missing temperature information from file'
  endif

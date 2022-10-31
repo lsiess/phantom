@@ -33,7 +33,7 @@ module part
                maxphase,maxgradh,maxan,maxdustan,maxmhdan,maxneigh,maxprad,maxp_nucleation,&
                maxTdust,store_dust_temperature,use_krome,maxp_krome, &
                do_radiation,gr,maxgr,maxgran,n_nden_phantom,do_nucleation,&
-               inucleation,itau_alloc
+               inucleation,itau_alloc,store_age
  use dtypekdtree, only:kdnode
 #ifdef KROME
  use krome_user, only: krome_nmols
@@ -512,9 +512,7 @@ subroutine allocate_part
 #else
  call allocate_array('abundance', abundance, nabundances, maxp_h2)
 #endif
-#ifdef WIND
- call allocate_array('age', age, maxp)
-#endif
+ if (store_age) call allocate_array('age', age, maxp)
  call allocate_array('gamma_chem', gamma_chem, maxp_krome)
  call allocate_array('mu_chem', mu_chem, maxp_krome)
  call allocate_array('T_gas_cool', T_gas_cool, maxp_krome)
@@ -660,9 +658,7 @@ subroutine init_part
  dt_in(:)      = 0.
  twas(:)       = 0.
 #endif
-#ifdef WIND
- age(:) = 0.
-#endif
+if (store_age) age(:) = 0.
 
  ideadhead = 0
 !
@@ -1190,6 +1186,7 @@ subroutine copy_particle(src,dst,new_part)
  if (maxp_h2==maxp .or. maxp_krome==maxp) abundance(:,dst) = abundance(:,src)
  eos_vars(:,dst) = eos_vars(:,src)
  if (store_dust_temperature) dust_temp(dst) = dust_temp(src)
+ if (store_age) age(dst) = age(src)
 
  if (new_part) then
     norig      = norig + 1
@@ -1287,6 +1284,7 @@ subroutine copy_particle_all(src,dst,new_part)
  if (maxp_h2==maxp .or. maxp_krome==maxp) abundance(:,dst) = abundance(:,src)
  eos_vars(:,dst) = eos_vars(:,src)
  if (store_dust_temperature) dust_temp(dst) = dust_temp(src)
+ if (store_age) age(dst) = age(src)
  if (do_nucleation) nucleation(:,dst) = nucleation(:,src)
  if (itau_alloc == 1) tau(dst) = tau(src)
 
@@ -1500,6 +1498,9 @@ subroutine fill_sendbuf(i,xtemp)
     if (store_dust_temperature) then
        call fill_buffer(xtemp, dust_temp(i),nbuf)
     endif
+    if (store_age) then
+       call fill_buffer(xtemp, age(i),nbuf)
+    endif
     if (maxgrav==maxp) then
        call fill_buffer(xtemp, poten(i),nbuf)
     endif
@@ -1578,6 +1579,9 @@ subroutine unfill_buffer(ipart,xbuf)
  eos_vars(:,ipart) = unfill_buf(xbuf,j,maxeosvars)
  if (store_dust_temperature) then
     dust_temp(ipart)    = unfill_buf(xbuf,j)
+ endif
+ if (store_age) then
+    age(ipart)          = unfill_buf(xbuf,j)
  endif
  if (maxgrav==maxp) then
     poten(ipart)        = real(unfill_buf(xbuf,j),kind=kind(poten))

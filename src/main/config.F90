@@ -291,6 +291,15 @@ module dim
  integer :: maxp_nucleation = 0
 
 !--------------------
+! wind
+!--------------------
+#ifdef WIND
+ logical, parameter :: store_age = .true.
+#else
+ logical, parameter :: store_age = .false.
+#endif
+
+!--------------------
 ! MCFOST library
 !--------------------
 #ifdef MCFOST
