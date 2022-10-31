@@ -106,7 +106,7 @@ ifdef SMOL
     SRCDUST+= growth_smol.f90
 endif
 
-ifeq ($(WIND)$(DUST),yesyes)
+ifeq ($(DUST),yes)
     SRCDUST+= set_dust.f90
 endif
 
