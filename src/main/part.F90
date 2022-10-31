@@ -228,6 +228,10 @@ module part
                        idkappa = 9, & !for logging
                        idalpha = 10   !for logging
 !
+!-- time the particle was ejected
+!
+ real, allocatable :: age(:)
+!
 !--KROME variables
 !
  real, allocatable :: gamma_chem(:)
@@ -508,6 +512,9 @@ subroutine allocate_part
 #else
  call allocate_array('abundance', abundance, nabundances, maxp_h2)
 #endif
+#ifdef WIND
+ call allocate_array('age', age, maxp)
+#endif
  call allocate_array('gamma_chem', gamma_chem, maxp_krome)
  call allocate_array('mu_chem', mu_chem, maxp_krome)
  call allocate_array('T_gas_cool', T_gas_cool, maxp_krome)
@@ -582,6 +589,7 @@ subroutine deallocate_part
  if (allocated(ibelong))      deallocate(ibelong)
  if (allocated(istsactive))   deallocate(istsactive)
  if (allocated(ibin_sts))     deallocate(ibin_sts)
+ if (allocated(age))          deallocate(age)
 
 end subroutine deallocate_part
 
@@ -651,6 +659,9 @@ subroutine init_part
  ibin_wake(:)  = 0
  dt_in(:)      = 0.
  twas(:)       = 0.
+#endif
+#ifdef WIND
+ age(:) = 0.
 #endif
 
  ideadhead = 0

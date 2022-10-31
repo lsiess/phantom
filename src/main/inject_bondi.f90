@@ -205,7 +205,7 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,npar
 
     itype = igas
 
-    call inject_geodesic_sphere(i,ipartbegin,iwindres,r,v,u,rho,geodesic_R,geodesic_V,npart,npartoftype,xyzh,vxyzu,itype,x0,v0)
+    call inject_geodesic_sphere(time, i,ipartbegin,iwindres,r,v,u,rho,geodesic_R,geodesic_V,npart,npartoftype,xyzh,vxyzu,itype,x0,v0)
  enddo
 
 !-- Return timestep constraint to ensure that time between sphere
