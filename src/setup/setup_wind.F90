@@ -145,7 +145,7 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
  use set_dust,         only:set_dustbinfrac,dust_method
  use options,          only:use_dustfrac
  use set_dust_options, only:set_dust_default_options,smincgs,smaxcgs,sindex,&
-      ndustsmallinp,ndusttypesinp,grainsizeinp
+      ndustsmallinp,ndusttypesinp,grainsizeinp,graindensinp
 #endif
 
  integer,           intent(in)    :: id
@@ -201,9 +201,9 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
        grainsize(1:ndusttypes) = grainsize(1:ndusttypes)/udist
        graindens(1:ndusttypes) = graindenscgs/umass*udist**3
     else
-       print *,'dust properties : grainsize=',grainsizecgs,', grain density=',graindenscgs
-       grainsize(1) = grainsizecgs/udist
-       graindens(1) = graindenscgs/umass*udist**3
+       print *,'dust properties : grainsize=',grainsizeinp(1),', grain density=',graindensinp(1)
+       grainsize(1) = grainsizeinp(1)/udist
+       graindens(1) = graindensinp(1)/umass*udist**3
     endif
  endif
 #endif
