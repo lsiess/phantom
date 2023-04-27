@@ -86,7 +86,11 @@ subroutine do_analysis(dumpfile,num,xyzh,vxyzu,particlemass,npart,time,iunit)
        enddo
     endif
     do i=1,npart
-       kappa(i)=calc_kappa_bowen(temp(i))
+       if (rho(i) < 1e15) then
+          kappa(i)=calc_kappa_bowen(temp(i))
+       else
+          kappa(i)=0.
+       endif
     enddo
  endif
 
@@ -646,7 +650,11 @@ subroutine do_analysis(dumpfile,num,xyzh,vxyzu,particlemass,npart,time,iunit)
     endif
     timeTau = (finish-start)/1000.
     print*,'Time = ',timeTau,' seconds.'
-    open(newunit=iu4, file='taus_'//dumpfile//'.txt', status='replace', action='write')
+    if (method == 1) then
+       open(newunit=iu4, file='taus_'//dumpfile//'.txt', status='replace', action='write')
+    else
+       open(newunit=iu4, file='tauL_'//dumpfile//'.txt', status='replace', action='write')
+    endif
     do i=1, size(tau)
        write(iu4, *) tau(i)
     enddo
@@ -697,4 +705,3 @@ subroutine do_analysis(dumpfile,num,xyzh,vxyzu,particlemass,npart,time,iunit)
 
 end subroutine do_analysis
 end module analysis
-raytracer_all
