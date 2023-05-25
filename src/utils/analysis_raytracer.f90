@@ -19,20 +19,20 @@ module analysis
 !
  use raytracer_all,    only:get_all_tau_inwards, get_all_tau_outwards, get_all_tau_adaptive
  use raytracer,        only:get_all_tau
- use part,             only:rhoh,isdead_or_accreted,nsinkproperties,iReff
+ use part,             only:rhoh,isdead_or_accreted,nsinkproperties,iReff,iTeff
  use dump_utils,       only:read_array_from_file
  use getneighbours,    only:generate_neighbour_lists, read_neighbours, write_neighbours, &
                                     neighcount,neighb,neighmax
  use dust_formation,   only:calc_kappa_bowen
  use physcon,          only:kboltz,mass_proton_cgs,au,solarm
  use linklist,         only:set_linklist,allocate_linklist,deallocate_linklist
- use part,             only:itauL_alloc
+ use part,             only:itauL_alloc,eos_vars,nptmass,tau_lucy
+ use ptmass_radiation, only:iget_tdust
+ use units,            only:umass,udist
 
  implicit none
 
  character(len=20), parameter, public :: analysistype = 'raytracer'
- real :: gamma = 1.2
- real :: mu = 2.381
  public :: do_analysis
 
  private
@@ -50,63 +50,23 @@ subroutine do_analysis(dumpfile,num,xyzh,vxyzu,particlemass,npart,time,iunit)
  logical :: existneigh
  character(100) :: neighbourfile
  character(100)   :: jstring, kstring
- real             :: primsec(4,2), rho(npart), kappa(npart), temp(npart), u(npart), &
+ real             :: primsec(4,2), rho(npart), kappa(npart), temp(npart), &
               xyzh2(4,npart), vxyzu2(4,npart), xyzmh_ptmass(nsinkproperties,2)
  real, dimension(:), allocatable :: tau
  integer :: i,j,k,ierr,iu1,iu2,iu3,iu4, npart2!,iu
  integer :: start, finish, method, analyses, minOrder, maxOrder, order, raypolation, refineScheme
- real :: totalTime, timeTau, Rstar, Rcomp, times(30)
+ real :: totalTime, timeTau, Rstar, Rcomp, Tstar, times(30), r, xa, ya, za, tauL(npart), dlnT
  logical :: SPH = .true., calcInwards = .false.
 
  real, parameter :: udist = au, umass = solarm
 
- Rstar = 2.37686663
+ Rstar = 1.23988992
  Rcomp = 0.1
+ Tstar = 2874.
  xyzmh_ptmass = 0.
  xyzmh_ptmass(iReff,1) = Rstar
  xyzmh_ptmass(iReff,2) = Rcomp
-
- print*,'("Reading kappa from file")'
- call read_array_from_file(123,dumpfile,'kappa',kappa(:),ierr, 1)
- if (ierr/=0) then
-    print*,''
-    print*,'("WARNING: could not read kappa from file. It will be set to zero")'
-    print*,''
-    kappa = 0.
- endif
-
- if (kappa(1) <= 0. .and. kappa(2) <= 0. .and. kappa(2) <= 0.) then
-    print*,'("Reading temperature from file")'
-    call read_array_from_file(123,dumpfile,'temperature',temp(:),ierr, 1)
-    if (temp(1) <= 0. .and. temp(2) <= 0. .and. temp(2) <= 0.) then
-       print*,'("Reading internal energy from file")'
-       call read_array_from_file(123,dumpfile,'u',u(:),ierr, 1)
-       do i=1,npart
-          temp(i)=(gamma-1.)*mu*u(i)*mass_proton_cgs*kboltz
-       enddo
-    endif
-    do i=1,npart
-       if (rho(i) < 1e15) then
-          kappa(i)=calc_kappa_bowen(temp(i))
-       else
-          kappa(i)=0.
-       endif
-    enddo
- endif
-
- j=1
- do i=1,npart
-    if (.not.isdead_or_accreted(xyzh(4,i))) then
-       xyzh2(:,j) = xyzh(:,i)
-       vxyzu2(:,j) = vxyzu(:,i)
-       kappa(j) = kappa(i)
-       j=j+1
-    endif
- enddo
- npart2 = j-1
- call set_linklist(npart2,npart2,xyzh2,vxyzu)
- print*,'npart = ',npart2
- allocate(tau(npart2))
+ xyzmh_ptmass(iTeff,1) = Tstar
 
  !get position of sink particles (stars)
  call read_array_from_file(123,dumpfile,'x',primsec(1,:),ierr, 2)
@@ -118,6 +78,70 @@ subroutine do_analysis(dumpfile,num,xyzh,vxyzu,particlemass,npart,time,iunit)
  endif
  xyzmh_ptmass(1:4,1) = primsec(:,1)
  xyzmh_ptmass(1:4,2) = primsec(:,2)
+
+ print*,'("Reading kappa from file")'
+ call read_array_from_file(123,dumpfile,'kappa',kappa(:),ierr, 1)
+ if (ierr/=0) then
+    print*,''
+    print*,'("WARNING: could not read kappa from file. It will be set to zero")'
+    print*,''
+    kappa = 0.
+ endif
+ if (kappa(1) <= 0. .and. kappa(2) <= 0. .and. kappa(2) <= 0.) then
+    call read_array_from_file(123,dumpfile,'tau_lucy',tauL,ierr,1)
+ endif
+
+ j=1
+ do i=1,npart
+    if (.not.isdead_or_accreted(xyzh(4,i))) then
+       xyzh2(:,j) = xyzh(:,i)
+       vxyzu2(:,j) = vxyzu(:,i)
+       kappa(j) = kappa(i)
+       tauL(j) = tauL(i)
+       j=j+1
+    endif
+ enddo
+ npart2 = j-1
+ call set_linklist(npart2,npart2,xyzh2,vxyzu)
+ print*,'npart = ',npart2
+ allocate(tau(npart2))
+
+ if (kappa(1) <= 0. .and. kappa(2) <= 0. .and. kappa(2) <= 0.) then
+   xa = primsec(1,1)
+   ya = primsec(2,1)
+   za = primsec(3,1)
+   open(newunit=iu4, file='tauL_'//dumpfile//'.txt', status='old', action='read')
+   do i=1, npart2
+         read(iu4,*) tauL(i)
+   enddo
+   close(iu4)
+   ! Lucy approximation for Tdust
+   !$omp parallel  do default(none) &
+   !$omp shared(npart,xa,ya,za,Rstar,Tstar,xyzh,temp,tauL,tau_lucy) &
+   !$omp private(i,r)
+   do i=1,npart2
+      if (.not.isdead_or_accreted(xyzh(4,i))) then
+         r = sqrt((xyzh(1,i)-xa)**2 + (xyzh(2,i)-ya)**2 + (xyzh(3,i)-za)**2)
+         if (r  <  Rstar) r = Rstar
+         temp(i) = Tstar * (.5*(1.-sqrt(1.-(Rstar/r)**2)+3./2.*tauL(i)))**(1./4.)
+        !  print*,temp(i), tauL(i), tau_lucy(i)
+      endif
+   enddo
+   !$omp end parallel do
+   do i=1,npart2
+      rho(i) = rhoh(xyzh2(4,i), particlemass)*umass/udist**3
+      if (rho(i) < 1e-13) then
+         dlnT = (temp(i)-1200)/50
+         if (dlnT > 50.) then
+            kappa(i) = 0.
+         else
+            kappa(i) = 6/(1.0 + exp(dlnT)) + 2e-4
+         endif
+      else
+         kappa(i)=0.
+      endif
+   enddo
+endif
 
 
  print *,'What do you want to do?'
@@ -657,6 +681,12 @@ subroutine do_analysis(dumpfile,num,xyzh,vxyzu,particlemass,npart,time,iunit)
     endif
     do i=1, size(tau)
        write(iu4, *) tau(i)
+    enddo
+    print*,maxval(tau)
+    close(iu4)
+    open(newunit=iu4, file='Tdust_'//dumpfile//'.txt', status='replace', action='write')
+    do i=1, npart2
+       write(iu4, *) temp(i)
     enddo
     close(iu4)
 
