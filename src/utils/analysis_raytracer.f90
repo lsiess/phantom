@@ -2,15 +2,15 @@
 ! The Phantom Smoothed Particle Hydrodynamics code, by Daniel Price et al. !
 ! Copyright (c) 2007-2023 The Authors (see AUTHORS)                        !
 ! See LICENCE file for usage and distribution conditions                   !
-! http://phantomsph.bitbucket.io/                                          !
+! http://phantomsph.github.io/                                             !
 !--------------------------------------------------------------------------!
 module analysis
 !
 ! Analysis routine which computes optical depths throughout the simulation
 !
-! :References: Esseldeurs M., Siess L. et al, 2023, A&A, in press
+! :References: Esseldeurs M., Siess L. et al, 2023, A&A, 674, A122 
 !
-! :Owner: Lionel Siess
+! :Owner: Mats Esseldeurs
 !
 ! :Runtime parameters: None
 !
@@ -22,7 +22,7 @@ module analysis
  use part,             only:rhoh,isdead_or_accreted,nsinkproperties,iReff,iTeff
  use dump_utils,       only:read_array_from_file
  use getneighbours,    only:generate_neighbour_lists, read_neighbours, write_neighbours, &
-                                    neighcount,neighb,neighmax
+                                 neighcount,neighb,neighmax
  use dust_formation,   only:calc_kappa_bowen
  use physcon,          only:kboltz,mass_proton_cgs,au,solarm
  use linklist,         only:set_linklist,allocate_linklist,deallocate_linklist
@@ -428,7 +428,7 @@ endif
           close(iu4)
           totalTime = totalTime + timeTau
           open(newunit=iu2, file='taus_'//dumpfile//'_'//trim(jstring)//'_int_'//trim(kstring)//'.txt', &
-                         status='replace', action='write')
+                     status='replace', action='write')
           do i=1, size(tau)
              write(iu2, *) tau(i)
           enddo
@@ -463,7 +463,7 @@ endif
              times(k+1) = timeTau
              totalTime = totalTime + timeTau
              open(newunit=iu2, file='taus_'//dumpfile//'_'//trim(jstring)//'_int_'//trim(kstring)//'.txt', &
-                            status='replace', action='write')
+                        status='replace', action='write')
              do i=1, size(tau)
                 write(iu2, *) tau(i)
              enddo
@@ -496,7 +496,7 @@ endif
              else
                 call system_clock(start)
                 call get_all_tau_adaptive(npart2, primsec(1:3,1), xyzh2, kappa, Rstar, j, k, refineScheme,&
-                                                                                              tau, primsec(1:3,2), Rcomp)
+                                                                                          tau, primsec(1:3,2), Rcomp)
                 call system_clock(finish)
              endif
              timeTau = (finish-start)/1000.
@@ -504,7 +504,7 @@ endif
              times(k-minOrder+1) = timeTau
              totalTime = totalTime + timeTau
              open(newunit=iu2, file='taus_'//dumpfile//'_adapt_'//trim(jstring)// &
-                            '_'//trim(kstring)//'.txt', status='replace', action='write')
+                        '_'//trim(kstring)//'.txt', status='replace', action='write')
              do i=1, size(tau)
                 write(iu2, *) tau(i)
              enddo
@@ -652,7 +652,7 @@ endif
        print*,'Time = ',timeTau,' seconds.'
        totalTime = totalTime + timeTau
        open(newunit=iu2, file='taus_'//dumpfile//'_adapt_'//trim(jstring)// &
-                     '_'//trim(kstring)//'.txt', status='replace', action='write')
+                  '_'//trim(kstring)//'.txt', status='replace', action='write')
        do i=1, size(tau)
           write(iu2, *) tau(i)
        enddo
