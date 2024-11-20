@@ -854,7 +854,7 @@ subroutine read_options_inject(name,valstring,imatch,igotall,ierr)
     if (wind_mass_rate_alt_Msun_yr < 0.) call fatal(label,'invalid setting for wind_mass_rate (<0)')
   case('dt_alt_rate')
     read(valstring,*,iostat=ierr) dt_alt_rate_yr
-    if (dt_alt_rate_yr <= 0.) dt_alt_rate_yr = huge(0.)
+    dt_alt_rate_yr = max(dt_alt_rate_yr,0.)
     ngot = ngot + 1
  case('tbeg_alt_rate')
     read(valstring,*,iostat=ierr) tbeg_alt_rate_yr
