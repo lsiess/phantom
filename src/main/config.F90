@@ -283,19 +283,22 @@ module dim
 !--------------------
 ! Dust formation
 !--------------------
- logical :: do_nucleation  = .false.
- logical :: update_muGamma = .false.
- integer :: itau_alloc     = 0
- integer :: itauL_alloc    = 0
- integer :: inucleation    = 0
- !number of elements considered in the nucleation chemical network
- integer, parameter :: nElements = 10
+ logical :: do_nucleation   = .false.
+ logical :: do_condensation = .false.
+ logical :: update_muGamma  = .false.
+ integer :: itau_alloc      = 0
+ integer :: itauL_alloc     = 0
+ integer :: inucleation     = 0
+ integer :: icondensation   = 0
 #ifdef DUST_NUCLEATION
  logical :: nucleation = .true.
+ logical :: condensation = .true.
 #else
  logical :: nucleation = .false.
+ logical :: condensation = .false.
 #endif
  integer :: maxp_nucleation = 0
+ integer :: maxp_condensation = 0
 
 !--------------------
 ! MCFOST library
@@ -388,6 +391,7 @@ subroutine update_max_sizes(n,ntot)
 
  if (store_dust_temperature) maxTdust = maxp
  if (do_nucleation) maxp_nucleation = maxp
+ if (do_condensation) maxp_condensation = maxp
 
 #ifdef NCELLSMAX
  ncellsmax       = NCELLSMAX

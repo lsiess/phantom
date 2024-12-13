@@ -539,7 +539,8 @@ SOURCES= physcon.f90 ${CONFIG} ${SRCKERNEL} io.F90 units.f90 \
          centreofmass.f90 ${SRCPOT} checkconserved.f90 \
          utils_filenames.f90 utils_summary.F90 ${SRCCHEM} ${SRCDUST} \
          mpi_memory.f90 mpi_derivs.F90 mpi_tree.F90 kdtree.F90 linklist_kdtree.F90 utils_healpix.f90 utils_raytracer.f90 \
-         partinject.F90 utils_inject.f90 dust_formation.f90 ptmass_radiation.f90 ptmass_heating.f90 \
+         partinject.F90 utils_inject.f90 chemistry_moments.f90 chemistry_condensation.f90 dust_formation.f90 \
+	 dust_moments.f90 dust_condensation.f90 ptmass_radiation.f90 ptmass_heating.f90 \
          utils_deriv.f90 utils_implicit.f90 radiation_implicit.f90 ${SRCTURB} \
          ${SRCINJECT_DEPS} wind_equations.f90 wind.F90  \
          ${SRCKROME} memory.f90 ${SRCREADWRITE_DUMPS} ${SRCINJECT} \
@@ -660,7 +661,7 @@ phantomsetup: setup
 
 SRCSETSTAR= prompting.f90 density_profiles.f90 readwrite_kepler.f90 readwrite_mesa.f90 \
             set_cubic_core.f90 set_fixedentropycore.f90 set_softened_core.f90 \
-            set_star_utils.f90 relax_star.f90 set_star.f90 
+            set_star_utils.f90 relax_star.f90 set_star.f90
 
 SRCSETUP= utils_omp.F90 setup_params.f90 \
           ${SRCSETSTAR} set_dust_options.f90 set_units.f90 \

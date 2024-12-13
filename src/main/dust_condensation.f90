@@ -1,40 +1,41 @@
-module dust_growth
+module dust_condensation
     implicit none
     !real, parameter :: wind_CO_ratio = 0.34
 
 
     !Coefficients can be found in the Appendix of the book by Gail & Sedlmayr
     real, parameter :: coefficients(5,6) = reshape([&
-    3.14987E+05, -3.92876E+06, 1.03657E+03, -1.31876E-02, 0.0d+00, &                     !Olivine
-    0.00000E+00, -1.86046E+06, 4.54398E+02, -2.75999E-03, 0.0d+00, &                     !Quartz
+    3.14987E+05, -3.92876E+06, 1.03657E+03, -1.31876E-02, 0.0d+00, &                    !Olivine
+    0.00000E+00, -1.86046E+06, 4.54398E+02, -2.75999E-03, 0.0d+00, &                    !Quartz
     3.66094E+04, -2.89963E+06, 7.44735E+02, -5.92064E-03, 0.0d+00, &                    !Pyroxene
     0.00000E+00, -4.08793E+05, 1.48885E+02, -4.70379E-03, 0.0d+00, &                    !Iron
     2.79991E+05, -1.24239E+06, 3.20111E+02, -3.42448E-03, 5.44933E-07, &                !Silicon Carbide
     8.71566E+05, -7.21210E+05, 1.62145E+02, -1.23392E-03, 1.77238E-07], shape(coefficients)) !Amorphous Carbon
 
-    character(len=*), parameter :: condensation(7) =&
-                 (/'fol              ', &
-                   'fqu              ', &
-                   'fpy              ', &
-                   'fir              ', &
-                   'fsc              ', &
-                   'fcarb            ', &
-                   'kappa_dust       '/)
+    ! character(len=*), parameter :: condensation(7) =&
+    !              (/'fol              ', &
+    !                'fqu              ', &
+    !                'fpy              ', &
+    !                'fir              ', &
+    !                'fsc              ', &
+    !                'fcarb            ', &
+    !                'kappa_dust       '/)
 
     contains
     subroutine O_rich_nucleation(T,rho_cgs,dt,wind_CO_ratio,fol,fqu,fpy, fir, fsc, fcarb, kappa_dust, &
                                  mu, gamma, pH_tot, abundance, pressure_cgs)
+       use physcon, only:patm,kboltz,atomic_mass_unit,pi
         !use physcon, only:kboltz,pi, atomic_mass_unit
-        !use dim,     only:nElements
         !use dust_formation, only:kappa_gas, mass_per_H, eps
-        use chemistry, only:newton_method, network, nElements, ncols, iSiO, iH2O, iH2, eps, &
-                            iH,iHe,iC,iOx,iN,iSi,iS,iFe,iTi,iMg, iSi2C,  patm , mass_per_H
+        use chemistry_condensation, only: network, iSiO, iH2O, iH2, eps, &
+             iH,iHe,iC,iOx,iN,iSi,iS,iFe,iTi,iMg, iSi2C, mass_per_H
+        use dust_formation, only: kappa_gas
         real,intent(in)          :: dt,wind_CO_ratio !rho_cgs
         real,intent(in),optional :: pressure_cgs
         real,intent(inout)       :: T, rho_cgs, fol, fqu, fpy, fir, fsc, fcarb
         real,intent(out)         :: kappa_dust !fol, fpy, fqu
         real, intent(out)    :: mu,gamma,pH_tot
-        real, intent(out)    :: abundance(ncols)
+        real, intent(out)    :: abundance(:)
         real :: alpha_ol, alpha_qu, alpha_py, m_SiO, m_Mg, m_H2O, Vth_SiO, Vth_Mg, Vth_H2O, &
         Jgr_SiO_ol, Jgr_Mg_ol, Jgr_H2O_ol, Jgr_SiO_qu, Jgr_Mg_qu, Jgr_H2O_qu, Jgr_SiO_py, Jgr_Mg_py, Jgr_H2O_py
         real :: alpha_ir, m_ir, Vth_ir, Jgr_ir, pv_ir, A_ir, rho_ir, Vo_ir, Jdec_ir, radius_ir, kappa_ir
@@ -44,10 +45,6 @@ module dust_growth
         real :: Jgr_py, Jgr_qu, Jdec_py, Jdec_qu
         integer :: growthflag_ol, growthflag_qu, growthflag_py, growthflag_ir
      !!   real :: mu,gamma,abundance(ncols),pH_tot
-        real :: kboltz = 1.3807e-16
-        real :: atomic_mass_unit = 1.66e-24
-        real :: pi = 3.14159265
-        real :: kappa_gas = 2.d-04
         real :: a_init_dust, P_H2, G_const(3), root(3) !fol, kappa_dust
         real :: fol_max, fpy_max, fqu_max, fol_dec, fpy_dec, fqu_dec, fir_dec
         real :: alpha_sc, m_Si2C, Vth_Si2C, Jgr_sc, P_Si, pv_Si2C, Jdec_sc, A_sc, rho_sc, Vo_sc
@@ -56,7 +53,7 @@ module dust_growth
         real :: Vo_carb, growthflag_carb, kappa_carb, radius_carb, pv_carb
         !real :: mass_per_H
 
-        !XXX Aqui debo poner los valores de fol, fpy, fqu para restar las abundancias de Mg, H2O, 
+        !XXX Aqui debo poner los valores de fol, fpy, fqu para restar las abundancias de Mg, H2O,
         if (present(pressure_cgs)) then
             call network(T,rho_cgs,mu,gamma,abundance,wind_CO_ratio,pH_tot, fol, fpy, fqu, fir, fsc, fcarb, pressure_cgs)
         else
@@ -87,7 +84,7 @@ module dust_growth
         !Vth_C2H2 = sqrt(kboltz * T / 2.0 / pi / m_C2H2)
         Vth_Si2C = sqrt(kboltz * T / 2.0 / pi / m_Si2C)
         Vth_carb = sqrt(kboltz * T / 2.0 / pi / m_carb)
-        
+
         Jgr_SiO_ol = alpha_ol * abundance(iSiO) * Vth_SiO !abundance comes from chemical equilibrium
         Jgr_Mg_ol  = alpha_ol * abundance(78)   * Vth_Mg !Mg = 78 in subroutine network
         Jgr_H2O_ol = alpha_ol * abundance(iH2O) * Vth_H2O
@@ -114,7 +111,7 @@ module dust_growth
         !pH_tot = pH_tot !!!!%%%%  *patm !now in cgs
         P_H2 = abundance(iH2)*kboltz*T/patm !H2 pressure from abundance
         P_Si = abundance(75)*kboltz*T/patm !Si = 75 in subroutine network
-        
+
         !%% Constant term in the law of mass action equation for Olivine
         G_const(1) = P_H2**3 / (calc_Kp(coefficients(:,1), T) * pH_tot**6)
 
@@ -130,7 +127,7 @@ module dust_growth
         else
             root = 0.0
         endif
-        
+
         fol_dec = root(1)
         fqu_dec = root(2)
         fpy_dec = root(3)
@@ -247,10 +244,10 @@ module dust_growth
         endif
 
         Jdec_ir = alpha_ir * Vth_ir * pv_ir *patm /  kboltz / T   !!patm to have cgs units
-        Jdec_sc = 2.0* alpha_sc * Vth_Si2C * pv_Si2C *patm / kboltz / T  !eqn. 21 of Ferrarotti & Gail 2002 
+        Jdec_sc = 2.0* alpha_sc * Vth_Si2C * pv_Si2C *patm / kboltz / T  !eqn. 21 of Ferrarotti & Gail 2002
         Jdec_carb = alpha_carb * Vth_carb * pv_carb *patm / kboltz / T
 
-        
+
         a_init_dust = 1.0d-7 !cgs units 1nm
 
         A_ol = 140.694 !cgs units From Gail & Sedlmayr Book table 12.1
@@ -280,35 +277,35 @@ module dust_growth
         growthflag_ol = 0 !To allow growth destruction in Olivine
         growthflag_qu = 0 !To allow growth destruction in Quartz
         growthflag_py = 0 !To allow growth destruction in Pyroxene
-        growthflag_ir = 0 
+        growthflag_ir = 0
         growthflag_sc = 0
         growthflag_carb = 0
 
         !%% Initialize the radius of dust seeds
-        if (growthflag_ol == 0) then 
+        if (growthflag_ol == 0) then
             radius_ol = 1.0d-7   !1nm in cgs units
         endif
-        if (growthflag_qu == 0) then 
-            radius_qu = 1.0d-7   
+        if (growthflag_qu == 0) then
+            radius_qu = 1.0d-7
         endif
-        if (growthflag_py == 0) then 
-            radius_py = 1.0d-7  
+        if (growthflag_py == 0) then
+            radius_py = 1.0d-7
         endif
-        if (growthflag_ir == 0) then 
-            radius_ir = 1.0d-7  
+        if (growthflag_ir == 0) then
+            radius_ir = 1.0d-7
         endif
-        if (growthflag_sc == 0) then 
-            radius_sc = 1.0d-7  
+        if (growthflag_sc == 0) then
+            radius_sc = 1.0d-7
         endif
-        if (growthflag_carb == 0) then 
-            radius_carb = 1.0d-7  
+        if (growthflag_carb == 0) then
+            radius_carb = 1.0d-7
         endif
 
 
         if ((Jgr_ol-Jdec_ol) .gt. 0.0 .and. growthflag_ol == 0) then
             !First time that dust growth is larger than destruction.
             growthflag_ol = 1
-            radius_ol = radius_ol + Vo_ol * (Jgr_ol-Jdec_ol) * dt 
+            radius_ol = radius_ol + Vo_ol * (Jgr_ol-Jdec_ol) * dt
         elseif (growthflag_ol == 1) then
             radius_ol = radius_ol + Vo_ol * (Jgr_ol-Jdec_ol) * dt !Initialize radius_ol = 1nm
         else
@@ -333,7 +330,7 @@ module dust_growth
         if ((Jgr_ir-Jdec_ir) .gt. 0.0 .and. growthflag_ir == 0) then
             !First time that dust growth is larger than destruction.
             growthflag_ir = 1
-            radius_ir = radius_ir + Vo_ir * (Jgr_ir-Jdec_ir) * dt 
+            radius_ir = radius_ir + Vo_ir * (Jgr_ir-Jdec_ir) * dt
         elseif (growthflag_ir == 1) then
             radius_ir = radius_ir + Vo_ir * (Jgr_ir-Jdec_ir) * dt !Initialize radius_ol = 1nm
         else
@@ -343,7 +340,7 @@ module dust_growth
         if ((Jgr_sc-Jdec_sc) .gt. 0.0 .and. growthflag_sc == 0) then
             !First time that dust growth is larger than destruction.
             growthflag_sc = 1
-            radius_sc = radius_sc + Vo_sc * (Jgr_sc-Jdec_sc) * dt 
+            radius_sc = radius_sc + Vo_sc * (Jgr_sc-Jdec_sc) * dt
         elseif (growthflag_sc == 1) then
             radius_sc = radius_sc + Vo_sc * (Jgr_sc-Jdec_sc) * dt !Initialize radius_ol = 1nm
         else
@@ -354,13 +351,13 @@ module dust_growth
         if ((Jgr_carb-Jdec_carb) .gt. 0.0 .and. growthflag_carb == 0) then
             !First time that dust growth is larger than destruction.
             growthflag_carb = 1
-            radius_carb = radius_carb + Vo_carb * (Jgr_carb-Jdec_carb) * dt 
+            radius_carb = radius_carb + Vo_carb * (Jgr_carb-Jdec_carb) * dt
         elseif (growthflag_carb == 1) then
             radius_carb = radius_carb + Vo_carb * (Jgr_carb-Jdec_carb) * dt !Initialize radius_ol = 1nm
         else
             !do nothing
         endif
-    
+
 
         if (radius_ol.lt.0.0) then
             radius_ol = 1.0E-7 !1 nanometer in cgs units
@@ -385,11 +382,11 @@ module dust_growth
         if (radius_carb.lt.0.0) then
             radius_carb = 1.0E-7 !1 nanometer in cgs units
         endif
-        
+
         fol = 4.0 * pi * (radius_ol**3-a_init_dust**3) &
             * 1.0d-13 / 3.0 / Vo_ol / eps(iSi) !fol
         fol_max = min(1.0, min(0.5*eps(iMg)/eps(iSi),(eps(iOx)-eps(iC)-eps(iSi))/3./eps(iSi)))
-        
+
         !%%fol_max is negative if C/O ratio is larger than 1
 
         if (fol.gt.fol_max) then
@@ -398,7 +395,7 @@ module dust_growth
         if (fol.lt.0.0) then
             fol = 0.0
         endif
-        !if (fol.lt.0.0) then 
+        !if (fol.lt.0.0) then
         !    fol = 0.0
         !elseif (fol.gt.fol_max) then
         !    fol = fol_max
@@ -407,14 +404,14 @@ module dust_growth
         fqu = 4.0 * pi * (radius_qu**3-a_init_dust**3) &
             * 1.0d-13 / 3.0 / Vo_qu / eps(iSi) !fol
         fqu_max = min(1.0, (eps(iOx)-eps(iC)-eps(iSi))/eps(iSi))
-        
+
         if (fqu.gt.fqu_max) then
             fqu = fqu_max
         endif
         if (fqu.lt.0.0) then
             fqu = 0.0
         endif
-        !if (fqu.lt.0.0) then 
+        !if (fqu.lt.0.0) then
         !  fqu = 0.0
         !elseif (fqu.gt.fqu_max) then
         !    fqu = fqu_max
@@ -423,14 +420,14 @@ module dust_growth
         fpy = 4.0 * pi * (radius_py**3-a_init_dust**3) &
         * 1.0d-13 / 3.0 / Vo_py / eps(iSi) !fol
         fpy_max = min(1.0, min(eps(iMg)/eps(iSi),(eps(iOx)-eps(iC)-eps(iSi))/2./eps(iSi)))
-        
+
         if (fpy.gt.fpy_max) then
             fpy = fpy_max
         endif
         if (fpy.lt.0.0) then
             fpy = 0.0
         endif
-        !if (fpy.lt.0.0) then 
+        !if (fpy.lt.0.0) then
         !  fpy = 0.0
         !elseif (fpy.gt.fpy_max) then
         !    fpy = fpy_max
@@ -439,7 +436,7 @@ module dust_growth
         fir = 4.0 * pi * (radius_ir**3-a_init_dust**3) &
         * 1.0d-13 / 3.0 / Vo_ir / eps(iFe) !fol
         !fpy_max = min(1.0, min(eps(iMg)/eps(iSi),(eps(iOx)-eps(iC)-eps(iSi))/2./eps(iSi)))
-        if (fir.lt.0.0) then 
+        if (fir.lt.0.0) then
           fir = 0.0
         endif
         if (fir.gt.1.0) then
@@ -450,7 +447,7 @@ module dust_growth
         fsc = 4.0 * pi * (radius_sc**3-a_init_dust**3) &
         * 1.0d-13 / 3.0 / Vo_sc / eps(iSi) !fol
         !fpy_max = min(1.0, min(eps(iMg)/eps(iSi),(eps(iOx)-eps(iC)-eps(iSi))/2./eps(iSi)))
-        if (fsc.lt.0.0) then 
+        if (fsc.lt.0.0) then
           fsc = 0.0
         endif
         if (fsc.gt.1.0) then
@@ -460,7 +457,7 @@ module dust_growth
         fcarb = 4.0 * pi * (radius_carb**3-a_init_dust**3) &
         * 1.0d-13 / 3.0 / Vo_carb / eps(iC) !fol
         !fpy_max = min(1.0, min(eps(iMg)/eps(iSi),(eps(iOx)-eps(iC)-eps(iSi))/2./eps(iSi)))
-        if (fcarb.lt.0.0) then 
+        if (fcarb.lt.0.0) then
           fcarb = 0.0
         endif
         if (fcarb.gt.1.0) then
@@ -473,7 +470,7 @@ module dust_growth
                  + sqrt((3.505d-4 * T**0.755)**4 + (1.043d-9 * T**2.523)**4 )))**(-0.5)
 
         kappa_qu = ( ( 1./(3.898d-6 * T**2.054)**4 + 1./(3.1d5 * T**(-2.622))**4 )**(-0.5) &
-                    + ( (2.023d-5 * T**1.074)**4 + (9.394d-11 * T**2.701)**4 )**0.5 )**0.5 
+                    + ( (2.023d-5 * T**1.074)**4 + (9.394d-11 * T**2.701)**4 )**0.5 )**0.5
 
 
         kappa_py = ( (3.773d-5 * T**2.017)**(-2) &
@@ -493,9 +490,9 @@ module dust_growth
                    !* 2.0*(sqrt(2.5d-5)-sqrt(5.0d-7)) / rho_carb / (mass_per_H/atomic_mass_unit)
 
         !%% mu = mass_per_H / atomic_mass_unit
-                  
+
         kappa_dust = kappa_gas + fol * kappa_ol + fqu * kappa_qu &
-                   + fpy * kappa_py + fir * kappa_ir + fsc * kappa_sc + fcarb * kappa_carb 
+                   + fpy * kappa_py + fir * kappa_ir + fsc * kappa_sc + fcarb * kappa_carb
     end subroutine O_rich_nucleation
 
 subroutine find_root(m, s, o, c, g, root) !, tol, max_iter)
@@ -530,7 +527,7 @@ subroutine find_root(m, s, o, c, g, root) !, tol, max_iter)
         A(1) = m - 2. * x(1) * s
         B(1) = 1.0d0 - x(1)
         D(1) = o - c - (1.0d0 + 3.0d0 * x(1)) * s
-        
+
         !%% Calculate A, B, and D for Quartz
         A(2) = 1.0d0
         B(2) = 1.0d0 - x(2)
@@ -544,7 +541,7 @@ subroutine find_root(m, s, o, c, g, root) !, tol, max_iter)
         !%% Calculate f(x) and f'(x) for Olivine
         fx(1) = -g(1) + A(1)**2 * B(1) * s * D(1)**3
         dfx(1) = -s * A(1) * D(1)**2 * (4.0d0 * B(1) * D(1) * s + 9.0d0 * s * B(1) * A(1) + A(1) * D(1))
-        
+
         !%% Calculate f(x) and f'(x) for Quartz
         fx(2) = -g(2) + A(2) * B(2) * s * D(2)
         dfx(2) = -s**2 * B(2) -s * D(2)
@@ -585,4 +582,4 @@ calc_Kp = exp(d)
 end function calc_kp
 
 
-end module dust_growth
+end module dust_condensation

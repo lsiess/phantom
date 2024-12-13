@@ -1096,7 +1096,8 @@ subroutine cooling_abundances_update(i,pmassi,xyzh,vxyzu,eos_vars,abundance,nucl
  use cooling_ism,     only:nabn,dphotflag
  use options,         only:icooling
  use chem,            only:update_abundances,get_dphot
- use dust_formation,  only:evolve_dust,calc_muGamma
+ use dust_moments,    only:evolve_dust
+ use dust_formation,  only:calc_muGamma
  use cooling,         only:energ_cooling,cooling_in_step
  use part,            only:rhoh
 #ifdef KROME

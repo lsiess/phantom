@@ -399,7 +399,7 @@ end subroutine fill_header
 subroutine unfill_rheader(hdr,phantomdump,ntypesinfile,nptmass,&
                           tfile,hfactfile,alphafile,iprint,ierr)
  use io,             only:id,master
- use dim,            only:maxvxyzu,nElements,use_dust,use_dustgrowth,use_krome,do_nucleation,idumpfile
+ use dim,            only:maxvxyzu,use_dust,use_dustgrowth,use_krome,do_nucleation,idumpfile
  use eos,            only:extract_eos_from_hdr, read_headeropts_eos
  use options,        only:ieos,iexternalforce
  use part,           only:massoftype,Bextx,Bexty,Bextz,mhd,periodic,&

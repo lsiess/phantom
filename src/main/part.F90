@@ -31,9 +31,10 @@ module part
                use_dust,use_dustgrowth,lightcurve,maxlum,nalpha,maxmhdni, &
                maxp_growth,maxdusttypes,maxdustsmall,maxdustlarge, &
                maxphase,maxgradh,maxan,maxdustan,maxmhdan,maxneigh,maxprad,maxp_nucleation,&
-               maxTdust,store_dust_temperature,use_krome,maxp_krome, &
-               do_radiation,gr,maxgr,maxgran,n_nden_phantom,do_nucleation,&
-               inucleation,itau_alloc,itauL_alloc,use_apr,apr_maxlevel,maxp_apr
+               maxTdust,store_dust_temperature,use_krome,maxp_krome,maxp_condensation,&
+               do_radiation,gr,maxgr,maxgran,n_nden_phantom,&
+               do_nucleation,do_condensation,inucleation,icondensation,&
+               itau_alloc,itauL_alloc,use_apr,apr_maxlevel,maxp_apr
  use dtypekdtree, only:kdnode
 #ifdef KROME
  use krome_user, only: krome_nmols
@@ -262,6 +263,28 @@ module part
                        idsat   = 8, & !for logging
                        idkappa = 9, & !for logging
                        idalpha = 10   !for logging
+!
+!--Dust formation - condensation model
+!
+ integer, parameter :: n_condensation = 14
+ real, allocatable :: condensation(:,:)
+ character(len=*), parameter :: condensation_label(n_condensation) = &
+      (/'rol  ', 'rqu  ', 'rpy  ', 'rir  ', 'rsc  ', 'rcarb', &
+        'fol  ', 'fqu  ', 'fpy  ', 'fir  ', 'fsc  ', 'fcarb', 'gamm ', 'kappa' /)
+ integer, parameter :: irol    = 1,  & !radius of olivine grain
+                       irqu    = 2,  & !radius of quartz grain
+                       irpy    = 3,  & !radius of pyroxene grain
+                       irir    = 4,  & !radius of iron grain
+                       irsc    = 5,  & !radius of silicon carbide grain
+                       ircarb  = 6,  & !radius of amorphous carbon grain
+                       ifol    = 7,  & !same but for condensation fractions
+                       ifqu    = 8,  &
+                       ifpy    = 9,  &
+                       ifir    = 10, &
+                       ifsc    = 11, &
+                       ifcarb  = 12, &
+                       icgamma = 13, &
+                       ickappa = 14
 !
 !--KROME variables
 !
@@ -1254,6 +1277,7 @@ subroutine copy_particle(src,dst,new_part)
  eos_vars(:,dst) = eos_vars(:,src)
  if (store_dust_temperature) dust_temp(dst) = dust_temp(src)
  if (do_nucleation) nucleation(:,dst) = nucleation(:,src)
+ if (do_condensation) condensation(:,dst) = condensation(:,src)
  if (itau_alloc == 1) tau(dst) = tau(src)
  if (itauL_alloc == 1) tau_lucy(dst) = tau_lucy(src)
 
@@ -1356,6 +1380,7 @@ subroutine copy_particle_all(src,dst,new_part)
  eos_vars(:,dst) = eos_vars(:,src)
  if (store_dust_temperature) dust_temp(dst) = dust_temp(src)
  if (do_nucleation) nucleation(:,dst) = nucleation(:,src)
+ if (do_condensation) condensation(:,dst) = condensation(:,src)
  if (itau_alloc == 1) tau(dst) = tau(src)
  if (itauL_alloc == 1) tau_lucy(dst) = tau_lucy(src)
 
@@ -1575,6 +1600,9 @@ subroutine fill_sendbuf(i,xtemp,nbuf)
     if (do_nucleation) then
        call fill_buffer(xtemp, nucleation(:,i),nbuf)
     endif
+    if (do_condensation) then
+       call fill_buffer(xtemp, condensation(:,i),nbuf)
+    endif
     if (itau_alloc == 1)  call fill_buffer(xtemp, tau(i),nbuf)
     if (itauL_alloc == 1) call fill_buffer(xtemp, tau_lucy(i),nbuf)
 
@@ -1661,6 +1689,9 @@ subroutine unfill_buffer(ipart,xbuf)
  endif
  if (do_nucleation) then
     nucleation(:,ipart) = unfill_buf(xbuf,j,n_nucleation)
+ endif
+ if (do_condensation) then
+    condensation(:,ipart) = unfill_buf(xbuf,j,n_condensation)
  endif
  if (itau_alloc == 1)  tau(ipart) = unfill_buf(xbuf,j)
  if (itauL_alloc == 1) tau_lucy(ipart) = unfill_buf(xbuf,j)

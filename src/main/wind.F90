@@ -202,8 +202,9 @@ subroutine wind_step(state)
  use wind_equations,   only:evolve_hydro
  use ptmass_radiation, only:alpha_rad,iget_tdust,tdust_exp,isink_radiation
  use physcon,          only:pi,Rg
- use dust_formation,   only:evolve_chem,calc_kappa_dust,calc_kappa_bowen,&
+ use dust_formation,   only:calc_kappa_dust,calc_kappa_bowen,&
       calc_Eddington_factor,idust_opacity,calc_muGamma
+ use dust_moments,     only:evolve_chem
  use part,             only:idK3,idmu,idgamma,idsat,idkappa
  use cooling_solver,   only:calc_cooling_rate
  use options,          only:icooling
@@ -344,8 +345,9 @@ subroutine wind_step(state)
  use wind_equations,   only:evolve_hydro
  use ptmass_radiation, only:alpha_rad,iget_tdust,tdust_exp, isink_radiation
  use physcon,          only:pi,Rg
- use dust_formation,   only:evolve_chem,calc_kappa_dust,calc_kappa_bowen,&
+ use dust_formation,   only:calc_kappa_dust,calc_kappa_bowen,&
       calc_Eddington_factor,idust_opacity, calc_muGamma
+ use dust_moments,     only:evolve_chem
  use part,             only:idK3,idmu,idgamma,idsat,idkappa
  use cooling_solver,   only:calc_cooling_rate
  use options,          only:icooling
