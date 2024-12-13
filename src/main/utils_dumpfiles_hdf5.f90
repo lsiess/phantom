@@ -17,7 +17,7 @@ module utils_dumpfiles_hdf5
 ! :Dependencies: dim, eos, part, utils_hdf5
 !
  use dim,        only:maxtypes,maxdustsmall,maxdustlarge,nabundances,nsinkproperties
- use part,       only:eos_vars_label,igasP,itemp,iX,iZ,imu,maxirad,n_nucleation
+ use part,       only:eos_vars_label,igasP,itemp,iX,iZ,imu,maxirad,n_nucleation,n_condensation
  use eos,        only:ieos,eos_is_non_ideal,eos_outputs_gasP
  use utils_hdf5, only:write_to_hdf5,    &
                       read_from_hdf5,   &
@@ -158,6 +158,7 @@ module utils_dumpfiles_hdf5
                got_z,                                &
                got_mu,                               &
                got_nucleation(n_nucleation),         &
+               got_condensation(n_condensation),     &
                got_orig
  end type got_arrays_hdf5
 
@@ -178,6 +179,7 @@ module utils_dumpfiles_hdf5
                radiation,              &
                krome,                  &
                nucleation,             &
+               condensation,           &
                gr
     integer :: ieos,              &
                ndivcurlB,         &
@@ -340,6 +342,7 @@ subroutine write_hdf5_arrays( &
    dens,                      &
    T_gas_cool,                &
    nucleation,                &
+   condensation,              &
    dust_temp,                 &
    rad,                       &
    radprop,                   &
@@ -370,6 +373,7 @@ subroutine write_hdf5_arrays( &
                                 dens(:),           &
                                 T_gas_cool(:),     &
                                 nucleation(:,:),   &
+                                condensation(:,:), &
                                 dust_temp(:),      &
                                 rad(:,:),          &
                                 radprop(:,:)
@@ -496,6 +500,27 @@ subroutine write_hdf5_arrays( &
     call write_to_hdf5(nucleation(7,1:npart), 'nucleation_gamma', group_id, error)
     call write_to_hdf5(nucleation(8,1:npart), 'nucleation_S'    , group_id, error)
     call write_to_hdf5(nucleation(9,1:npart), 'nucleation_kappa', group_id, error)
+    call write_to_hdf5(nucleation(10,1:npart),'nucleation_alpha', group_id, error)
+ endif
+
+ ! Condensation
+ if (array_options%condensation) then
+    call write_to_hdf5(condensation(1,1:npart), 'condensation_rol', group_id, error)
+    call write_to_hdf5(condensation(2,1:npart), 'condensation_rqu', group_id, error)
+    call write_to_hdf5(condensation(3,1:npart), 'condensation_rpy', group_id, error)
+    call write_to_hdf5(condensation(4,1:npart), 'condensation_rir', group_id, error)
+    call write_to_hdf5(condensation(5,1:npart), 'condensation_rsc', group_id, error)
+    call write_to_hdf5(condensation(6,1:npart), 'condensation_rcarb', group_id, error)
+    call write_to_hdf5(condensation(7,1:npart), 'condensation_fol', group_id, error)
+    call write_to_hdf5(condensation(8,1:npart), 'condensation_fqu', group_id, error)
+    call write_to_hdf5(condensation(9,1:npart), 'condensation_fpy', group_id, error)
+    call write_to_hdf5(condensation(10,1:npart),'condensation_fir', group_id, error)
+    call write_to_hdf5(condensation(11,1:npart),'condensation_fsc', group_id, error)
+    call write_to_hdf5(condensation(12,1:npart),'condensation_fcarb', group_id, error)
+    call write_to_hdf5(condensation(13,1:npart),'condensation_mu'   , group_id, error)
+    call write_to_hdf5(condensation(14,1:npart),'condensation_gamma', group_id, error)
+    call write_to_hdf5(condensation(15,:npart), 'condensation_kappa', group_id, error)
+    call write_to_hdf5(condensation(16,1:npart),'condensation_alpha', group_id, error)
  endif
 
  ! Radiation
@@ -790,6 +815,7 @@ subroutine read_hdf5_arrays( &
    pxyzu,                    &
    T_gas_cool,               &
    nucleation,               &
+   condensation,             &
    dust_temp,                &
    rad,                      &
    radprop,                  &
@@ -818,6 +844,7 @@ subroutine read_hdf5_arrays( &
                                  pxyzu(:,:),        &
                                  T_gas_cool(:),     &
                                  nucleation(:,:),   &
+                                 condensation(:,:), &
                                  dust_temp(:),      &
                                  rad(:,:),          &
                                  radprop(:,:)
@@ -864,6 +891,7 @@ subroutine read_hdf5_arrays( &
  got_arrays%got_z           = .false.
  got_arrays%got_mu          = .false.
  got_arrays%got_nucleation  = .false.
+ got_arrays%got_condensation = .false.
 
  ! Open particles group
  call open_hdf5group(file_id, 'particles', group_id, error)
@@ -963,8 +991,30 @@ subroutine read_hdf5_arrays( &
     call read_from_hdf5(nucleation(7,1:npart), 'nucleation_gamma', group_id, got, error)
     call read_from_hdf5(nucleation(8,1:npart), 'nucleation_S', group_id, got, error)
     call read_from_hdf5(nucleation(9,1:npart), 'nucleation_kappa', group_id, got, error)
+    call read_from_hdf5(nucleation(10,1:npart),'nucleation_alpha', group_id, got, error)
     if (got) got_arrays%got_nucleation = .true.
  endif
+
+ ! Condensation
+ if (array_options%condensation) then
+    call read_to_hdf5(condensation(1,1:npart), 'condensation_rol', group_id, got, error)
+    call read_to_hdf5(condensation(2,1:npart), 'condensation_rqu', group_id, got, error)
+    call read_to_hdf5(condensation(3,1:npart), 'condensation_rpy', group_id, got, error)
+    call read_to_hdf5(condensation(4,1:npart), 'condensation_rir', group_id, got, error)
+    call read_to_hdf5(condensation(5,1:npart), 'condensation_rsc', group_id, got, error)
+    call read_to_hdf5(condensation(6,1:npart), 'condensation_rcarb', group_id, got, error)
+    call read_to_hdf5(condensation(7,1:npart), 'condensation_fol', group_id, got, error)
+    call read_to_hdf5(condensation(8,1:npart), 'condensation_fqu', group_id, got, error)
+    call read_to_hdf5(condensation(9,1:npart), 'condensation_fpy', group_id, got, error)
+    call read_to_hdf5(condensation(10,1:npart),'condensation_fir', group_id, got, error)
+    call read_to_hdf5(condensation(11,1:npart),'condensation_fsc', group_id, got, error)
+    call read_to_hdf5(condensation(12,1:npart),'condensation_fcarb', group_id, got, error)
+    call read_to_hdf5(condensation(13,1:npart),'condensation_mu'   , group_id, got, error)
+    call read_to_hdf5(condensation(14,1:npart),'condensation_gamma', group_id, got, error)
+    call read_to_hdf5(condensation(15,:npart), 'condensation_kappa', group_id, got, error)
+    call read_to_hdf5(condensation(16,1:npart),'condensation_alpha', group_id, got, error)
+ endif
+
 
  ! Radiation
  if (array_options%store_dust_temperature) then

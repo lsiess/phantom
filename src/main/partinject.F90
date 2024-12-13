@@ -40,20 +40,21 @@ contains
 !  Inject or update a particle into the simulation.
 !+
 !-----------------------------------------------------------------------
-subroutine add_or_update_particle(itype,position,velocity,h,u,particle_number,npart,npartoftype,xyzh,vxyzu,JKmuS)
- use part, only:maxp,iamtype,iphase,maxvxyzu,iboundary,nucleation,eos_vars,abundance
+ subroutine add_or_update_particle(itype,position,velocity,h,u,particle_number,&
+        npart,npartoftype,xyzh,vxyzu,dust_prop)
+ use part, only:maxp,iamtype,iphase,maxvxyzu,iboundary,nucleation,condensation,eos_vars,abundance
  use part, only:maxalpha,alphaind,maxgradh,gradh,fxyzu,fext,set_particle_type
  use part, only:mhd,Bevol,dBevol,Bxyz,divBsymm,gr,pxyzu,apr_level
  use part, only:divcurlv,divcurlB,ndivcurlv,ndivcurlB,ntot,ibin,imu,igamma
  use part, only:iorig,norig
  use io,   only:fatal
  use eos,  only:gamma,gmw
- use dim,  only:ind_timesteps,update_muGamma,h2chemistry,use_apr
+ use dim,  only:do_nucleation,do_condensation,ind_timesteps,update_muGamma,h2chemistry,use_apr
  use timestep_ind, only:nbinmax
  use cooling_ism,  only:abund_default
  integer, intent(in)    :: itype
  real,    intent(in)    :: position(3), velocity(3), h, u
- real,    intent(in), optional :: JKmuS(:)
+ real,    intent(in), optional :: dust_prop(:)
  integer, intent(in)    :: particle_number
  integer, intent(inout) :: npart, npartoftype(:)
  real,    intent(inout) :: xyzh(:,:), vxyzu(:,:)
@@ -114,7 +115,13 @@ subroutine add_or_update_particle(itype,position,velocity,h,u,particle_number,np
  !if (store_dust_temperature) dust_temp(:,particle_number) = 0.
 
  if (ind_timesteps) ibin(particle_number) = nbinmax
- if (present(jKmuS)) nucleation(:,particle_number) = JKmuS(:)
+ if (present(dust_prop)) then
+    if (do_nucleation) then
+       nucleation(:,particle_number) = dust_prop(:)
+    elseif (do_condensation) then
+       condensation(:,particle_number) = dust_prop(:)
+    endif
+ endif
  if (update_muGamma) then
     eos_vars(imu,particle_number) = gmw
     eos_vars(igamma,particle_number) = gamma

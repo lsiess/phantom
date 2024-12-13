@@ -856,7 +856,7 @@ subroutine get_force(nptmass,npart,nsubsteps,ntypes,timei,dtextforce,xyzh,vxyzu,
  use part,            only:maxphase,abundance,nabundances,epot_sinksink,eos_vars,&
                            isdead_or_accreted,iamboundary,igas,iphase,iamtype,massoftype,divcurlv, &
                            fxyz_ptmass_sinksink,dsdt_ptmass_sinksink,dust_temp,tau,&
-                           nucleation,idK2,idmu,idkappa,idgamma,imu,igamma,apr_level,aprmassoftype
+                           condensation,nucleation,apr_level,aprmassoftype
  use cooling_ism,     only:dphot0,dphotflag,abundsi,abundo,abunde,abundc,nabn
  use timestep,        only:bignumber,C_force
  use mpiutils,        only:bcast_mpi,reduce_in_place_mpi,reduceall_mpi
@@ -957,7 +957,7 @@ subroutine get_force(nptmass,npart,nsubsteps,ntypes,timei,dtextforce,xyzh,vxyzu,
  !$omp shared(npart,nptmass,xyzh,vxyzu,xyzmh_ptmass,fext) &
  !$omp shared(eos_vars,dust_temp,idamp,damp_fac,abundance,iphase,ntypes,massoftype) &
  !$omp shared(dkdt,dt,timei,iexternalforce,extf_vdep_flag,last,aprmassoftype,apr_level) &
- !$omp shared(divcurlv,dphotflag,dphot0,nucleation,extrap) &
+ !$omp shared(divcurlv,dphotflag,dphot0,nucleation,condensation,extrap) &
  !$omp shared(abundc,abundo,abundsi,abunde,extrapfac,fsink_old) &
  !$omp shared(isink_radiation,itau_alloc,tau,isionised) &
  !$omp private(fextx,fexty,fextz,xi,yi,zi) &
@@ -1047,7 +1047,7 @@ subroutine get_force(nptmass,npart,nsubsteps,ntypes,timei,dtextforce,xyzh,vxyzu,
        ! temperature and abundances update (only done during the last force calculation of the substep)
        !
        if (maxvxyzu >= 4 .and. itype==igas .and. last) then
-          call cooling_abundances_update(i,pmassi,xyzh,vxyzu,eos_vars,abundance,nucleation,dust_temp, &
+          call cooling_abundances_update(i,pmassi,xyzh,vxyzu,eos_vars,abundance,nucleation,condensation,dust_temp, &
                                          divcurlv,abundc,abunde,abundo,abundsi,dt,dphot0,isionised(i))
        endif
     endif
@@ -1089,14 +1089,15 @@ end subroutine get_force
 !       calculated in force and requires a cooling timestep.
 !+
 !------------------------------------------------------------------------------------
-subroutine cooling_abundances_update(i,pmassi,xyzh,vxyzu,eos_vars,abundance,nucleation,dust_temp, &
+subroutine cooling_abundances_update(i,pmassi,xyzh,vxyzu,eos_vars,abundance,nucleation,condensation,dust_temp, &
                                      divcurlv,abundc,abunde,abundo,abundsi,dt,dphot0,isionisedi)
- use dim,             only:h2chemistry,do_nucleation,use_krome,update_muGamma,store_dust_temperature
- use part,            only:idK2,idmu,idkappa,idgamma,imu,igamma,nabundances
+ use dim,             only:h2chemistry,do_nucleation,do_condensation,use_krome,update_muGamma,store_dust_temperature
+ use part,            only:idK2,idmu,idkappa,idgamma,imu,igamma,nabundances,icmu,ickappa,icgamma
  use cooling_ism,     only:nabn,dphotflag
  use options,         only:icooling
  use chem,            only:update_abundances,get_dphot
- use dust_moments,    only:evolve_dust
+ use dust_condensation, only:evolve_condensation
+ use dust_moments,    only:evolve_moments
  use dust_formation,  only:calc_muGamma
  use cooling,         only:energ_cooling,cooling_in_step
  use part,            only:rhoh
@@ -1107,7 +1108,7 @@ subroutine cooling_abundances_update(i,pmassi,xyzh,vxyzu,eos_vars,abundance,nucl
 #endif
  real,         intent(inout) :: vxyzu(:,:),xyzh(:,:)
  real,         intent(inout) :: eos_vars(:,:),abundance(:,:)
- real,         intent(inout) :: nucleation(:,:),dust_temp(:)
+ real,         intent(inout) :: nucleation(:,:),condensation(:,:),dust_temp(:)
  real(kind=4), intent(in)    :: divcurlv(:,:)
  real,         intent(inout) :: abundc,abunde,abundo,abundsi
  real(kind=8), intent(in)    :: dphot0
@@ -1140,9 +1141,13 @@ subroutine cooling_abundances_update(i,pmassi,xyzh,vxyzu,eos_vars,abundance,nucl
 #else
  !evolve dust chemistry and compute dust cooling
  if (do_nucleation) then
-    call evolve_dust(dt, xyzh(:,i), vxyzu(4,i), nucleation(:,i), dust_temp(i), rhoi)
+    call evolve_moments(dt, xyzh(:,i), vxyzu(4,i), nucleation(:,i), dust_temp(i), rhoi)
     eos_vars(imu,i)    = nucleation(idmu,i)
     eos_vars(igamma,i) = nucleation(idgamma,i)
+ elseif (do_condensation) then
+    call evolve_condensation(dt, xyzh(:,i), vxyzu(4,i), condensation(:,i), rhoi)
+    eos_vars(imu,i)    = condensation(icmu,i)
+    eos_vars(igamma,i) = condensation(icgamma,i)
  elseif (update_muGamma) then
     call calc_muGamma(rhoi, dust_temp(i),eos_vars(imu,i),eos_vars(igamma,i), pH, pH_tot)
  endif
@@ -1161,7 +1166,10 @@ subroutine cooling_abundances_update(i,pmassi,xyzh,vxyzu,eos_vars,abundance,nucl
        ! cooling with stored dust temperature
        if (do_nucleation) then
           call energ_cooling(xyzh(1,i),xyzh(2,i),xyzh(3,i),vxyzu(4,i),rhoi,dt,divcurlv(1,i),dudtcool,&
-                    dust_temp(i),nucleation(idmu,i),nucleation(idgamma,i),nucleation(idK2,i),nucleation(idkappa,i))
+                    dust_temp(i),nucleation(idmu,i),nucleation(idgamma,i),nucleation(idkappa,i),nucleation(idK2,i))
+       elseif (do_condensation) then
+          call energ_cooling(xyzh(1,i),xyzh(2,i),xyzh(3,i),vxyzu(4,i),rhoi,dt,divcurlv(1,i),dudtcool,&
+                    dust_temp(i),condensation(icmu,i),condensation(icgamma,i),condensation(ickappa,i))
        elseif (update_muGamma) then
           call energ_cooling(xyzh(1,i),xyzh(2,i),xyzh(3,i),vxyzu(4,i),rhoi,dt,divcurlv(1,i),dudtcool,&
                     dust_temp(i),eos_vars(imu,i), eos_vars(igamma,i))

@@ -27,7 +27,8 @@ module chemistry_moments
  implicit none
 
  public :: chemical_equilibrium_light,psat_C,set_abundances_moments,&
-      init_muGamma_moments,calc_muGamma_moments
+      init_muGamma_moments,calc_muGamma_moments,&
+      write_headeropts_dust_moments,read_headeropts_dust_moments
 
  !number of elements considered in the nucleation chemical network
  integer, public, parameter :: nElements = 10
@@ -92,6 +93,52 @@ subroutine set_abundances_moments(wind_CO_ratio)
  !XHe = atomic_mass_unit*eps(iHe)/mass_per_H ! He mass fraction
 end subroutine set_abundances_moments
 
+
+!-----------------------------------------------------------------------
+!+
+!  write relevant options to the header of the dump file
+!+
+!-----------------------------------------------------------------------
+subroutine write_headeropts_dust_moments(wind_CO_ratio,hdr,ierr)
+ use dump_utils,        only:dump_h,add_to_rheader
+ type(dump_h), intent(inout) :: hdr
+ integer,      intent(out)   :: ierr
+ real, intent(in) :: wind_CO_ratio
+
+! initial gas composition for dust formation
+ call set_abundances_moments(wind_CO_ratio)
+ call add_to_rheader(eps,'epsilon',hdr,ierr) ! array
+ call add_to_rheader(Aw,'Amean',hdr,ierr)    ! array
+ call add_to_rheader(mass_per_H,'mass_per_H',hdr,ierr) ! real
+
+end subroutine write_headeropts_dust_moments
+
+!-----------------------------------------------------------------------
+!+
+!  read relevant options from the header of the dump file
+!+
+!-----------------------------------------------------------------------
+subroutine read_headeropts_dust_moments(wind_CO_ratio,hdr,ierr)
+ use dump_utils, only:dump_h,extract
+ type(dump_h), intent(in)  :: hdr
+ integer,      intent(out) :: ierr
+ real :: dum(nElements)
+ real, intent(in) :: wind_CO_ratio
+
+ ierr = 0
+ call extract('mass_per_H',mass_per_H,hdr,ierr) ! real
+ ! it is likely that your dump was generated with an old version of phantom
+ ! and the chemical properties not stored. restore and save the default values
+ if (mass_per_H < tiny(0.)) then
+    print *,'reset dust chemical network properties'
+    call set_abundances_moments(wind_CO_ratio)
+    call extract('epsilon',dum(1:nElements),hdr,ierr) ! array
+    call extract('Amean',dum(1:nElements),hdr,ierr) ! array
+ else
+    call extract('epsilon',eps(1:nElements),hdr,ierr) ! array
+    call extract('Amean',Aw(1:nElements),hdr,ierr) ! array
+ endif
+end subroutine read_headeropts_dust_moments
 
 !---------------------------------------------------------------
 !

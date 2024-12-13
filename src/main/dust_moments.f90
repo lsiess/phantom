@@ -28,7 +28,7 @@ module dust_moments
 
  implicit none
 
- public :: evolve_dust,evolve_chem,calc_nucleation
+ public :: evolve_moments,evolve_chem,calc_nucleation
 
  real, public, parameter :: Scrit = 2. ! Critical saturation ratio
 
@@ -43,7 +43,7 @@ contains
 !  set particle dust properties (particle's call)
 !
 !-----------------------------------------------------------------------
-subroutine evolve_dust(dtsph, xyzh, u, JKmuS, Tdust, rho)
+subroutine evolve_moments(dtsph, xyzh, u, JKmuS, Tdust, rho)
  use units,  only:utime,unit_density
  use eos,    only:ieos,get_temperature
  use part,   only:idK3,idmu,idgamma,idkappa
@@ -52,7 +52,6 @@ subroutine evolve_dust(dtsph, xyzh, u, JKmuS, Tdust, rho)
  real,    intent(in) :: dtsph,Tdust,rho,u,xyzh(4)
  real,    intent(inout) :: JKmuS(:)
 
- integer, parameter :: wind_emitting_sink = 1
  real :: dt_cgs, T, rho_cgs, vxyzui(4)
 
  dt_cgs    = dtsph* utime
@@ -62,7 +61,7 @@ subroutine evolve_dust(dtsph, xyzh, u, JKmuS, Tdust, rho)
  call evolve_chem(dt_cgs, T, rho_cgs, JKmuS)
  JKmuS(idkappa)     = calc_kappa_dust(JKmuS(idK3), Tdust, rho_cgs)
 
-end subroutine evolve_dust
+end subroutine evolve_moments
 
 !-----------------------------------------------------------------------
 !

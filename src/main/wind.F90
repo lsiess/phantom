@@ -21,7 +21,9 @@ module wind
 
 !#define CALC_HYDRO_THEN_CHEM
 
- use part, only:n_nucleation,idJstar,idK0,idK1,idK2,idK3,idmu,idgamma,idsat,idkappa,idalpha
+ use part, only:n_nucleation,idJstar,idK0,idK1,idK2,idK3,idmu,idgamma,idsat,idkappa,idalpha, &
+      n_condensation,icmu,icgamma,ickappa,icalpha,ifol,ifqu,ifpy,ifir,ifsc,ifcarb,&
+      irol,irqu,irpy,irir,irsc,ircarb
  use dim,  only:isothermal
  implicit none
  public :: setup_wind
@@ -37,14 +39,14 @@ module wind
  ! input parameters
  real :: Mstar_cgs, Lstar_cgs, wind_gamma, Mdot_cgs, Tstar, Rstar
  real :: u_to_temperature_ratio
- real, dimension (:,:), allocatable, public :: trvurho_1D, JKmuS_1D
+ real, dimension (:,:), allocatable, public :: trvurho_1D, dust_array_1D
 
  ! wind properties
  type wind_state
     real :: dt, time, r, r0, Rstar, v, a, time_end, Tg, Tdust
     real :: alpha, rho, p, u, c, dalpha_dr, r_old, Q, dQ_dr
-    real :: kappa, mu, gamma, tau_lucy, alpha_Edd, tau
-    real :: JKmuS(n_nucleation),K2
+    real :: kappa, mu, gamma, tau_lucy, alpha_Edd, tau, K2
+    real, allocatable :: dust_array(:)
     integer :: spcode, nsteps
     logical :: dt_force, error, find_sonic_solution
  end type wind_state
@@ -71,7 +73,7 @@ subroutine setup_wind(Mstar_cg, Mdot_code, u_to_T, r0, T0, v0, rsonic, tsonic, s
  Mdot_cgs   = real(Mdot_code * umass/utime)
  u_to_temperature_ratio = u_to_T
 
- if (idust_opacity == 2) then
+ if (idust_opacity == 2 .or. idust_opacity == 3) then
     call set_abundances
     rho_cgs    = Mdot_cgs/(4.*pi * r0**2 * v0)
     wind_gamma = gamma
@@ -110,7 +112,7 @@ subroutine init_wind(r0, v0, T0, time_end, state, tau_lucy_init)
  use eos,              only:gmw
  use ptmass_radiation, only:alpha_rad,iget_tdust
  use part,             only:xyzmh_ptmass,iTeff,iReff,ilum
- use dust_formation,   only:kappa_gas,init_muGamma,idust_opacity
+ use dust_formation,   only:kappa_gas,init_muGamma,idust_opacity,a_init_dust
  use units,            only:umass,unit_energ,utime,udist
 
  real, intent(in) :: r0, v0, T0, time_end
@@ -166,16 +168,26 @@ subroutine init_wind(r0, v0, T0, time_end, state, tau_lucy_init)
  state%nsteps = 1
  state%tau    = 0
 
- state%alpha_Edd = 0.
- state%K2        = 0.
- state%mu        = gmw
- state%gamma     = wind_gamma
- state%JKmuS     = 0.
- if (idust_opacity == 2) call init_muGamma(state%rho, state%Tg, state%mu, state%gamma)
- state%alpha          = state%alpha_Edd + alpha_rad
- state%JKmuS(idalpha) = state%alpha
- state%JKmuS(idmu)    = state%mu
- state%JKmuS(idgamma) = state%gamma
+ state%alpha_Edd  = 0.
+ state%K2         = 0.
+ state%mu         = gmw
+ state%gamma      = wind_gamma
+ state%dust_array = 0.
+ if (idust_opacity == 2 .or. idust_opacity == 3) call init_muGamma(state%rho, state%Tg, state%mu, state%gamma)
+ state%alpha = state%alpha_Edd + alpha_rad
+ if (idust_opacity == 2) then
+    allocate(state%dust_array(n_nucleation))
+    state%dust_array(idalpha) = state%alpha
+    state%dust_array(idmu)    = state%mu
+    state%dust_array(idgamma) = state%gamma
+ elseif (idust_opacity == 3) then
+    allocate(state%dust_array(n_condensation))
+    state%dust_array(1:6) = a_init_dust
+    state%dust_array(7:12) = 0.
+    state%dust_array(icalpha) = state%alpha
+    state%dust_array(icmu)    = state%mu
+    state%dust_array(icgamma) = state%gamma
+ endif
  state%dalpha_dr = 0.
  state%p = state%rho*Rg*state%Tg/state%mu
  if (isothermal) then
@@ -199,17 +211,18 @@ end subroutine init_wind
 subroutine wind_step(state)
 ! all quantities in cgs
 
- use wind_equations,   only:evolve_hydro
- use ptmass_radiation, only:alpha_rad,iget_tdust,tdust_exp,isink_radiation
- use physcon,          only:pi,Rg
- use dust_formation,   only:calc_kappa_dust,calc_kappa_bowen,&
-      calc_Eddington_factor,idust_opacity,calc_muGamma
- use dust_moments,     only:evolve_chem
- use part,             only:idK3,idmu,idgamma,idsat,idkappa
- use cooling_solver,   only:calc_cooling_rate
- use options,          only:icooling
- use units,            only:unit_ergg,unit_density,utime
- use dim,              only:itau_alloc,update_muGamma
+ use wind_equations,    only:evolve_hydro
+ use ptmass_radiation,  only:alpha_rad,iget_tdust,tdust_exp,isink_radiation
+ use physcon,           only:pi,Rg
+ use dust_formation,    only:calc_kappa_dust,calc_kappa_bowen,&
+      calc_Eddington_factor,idust_opacity,calc_muGamma,wind_CO_ratio
+ use dust_moments,      only:evolve_chem
+ use dust_condensation, only:dust_growth_condensation
+ use part,              only:idK3,idmu,idgamma,idsat,idkappa
+ use cooling_solver,    only:calc_cooling_rate
+ use options,           only:icooling
+ use units,             only:unit_ergg,unit_density,utime
+ use dim,               only:itau_alloc,update_muGamma
 
  type(wind_state), intent(inout) :: state
  real :: rvT(3), dt_next, v_old, dlnQ_dlnT, Q_code, pH, pH_tot
@@ -236,12 +249,22 @@ subroutine wind_step(state)
  mu_old    = state%mu
  if (idust_opacity == 2) then
     !state%Tg   = state%u*(state%gamma-1.)/Rg*state%mu
-    call evolve_chem(state%dt,state%Tg,state%rho,state%JKmuS)
-    state%K2             = state%JKmuS(idK2)
-    state%mu             = state%JKmuS(idmu)
-    state%gamma          = state%JKmuS(idgamma)
-    state%kappa          = calc_kappa_dust(state%JKmuS(idK3), state%Tdust, state%rho)
-    state%JKmuS(idalpha) = state%alpha_Edd+alpha_rad
+    call evolve_chem(state%dt,state%Tg,state%rho,state%dust_array)
+    state%K2    = state%dust_array(idK2)
+    state%mu    = state%dust_array(idmu)
+    state%gamma = state%dust_array(idgamma)
+    state%kappa = calc_kappa_dust(state%dust_array(idK3), state%Tdust, state%rho)
+    state%dust_array(idalpha) = state%alpha_Edd+alpha_rad
+ elseif (idust_opacity == 3) then
+    !state%Tg   = state%u*(state%gamma-1.)/Rg*state%mu
+    call  dust_growth_condensation(state%Tg, state%rho, state%dt,wind_CO_ratio,&
+           dust_array(ifol),dust_array(ifqu),dust_array(ifpy),dust_array(ifir),dust_array(ifsc),dust_array(ifcarb),&
+           dust_array(irol),dust_array(irqu),dust_array(irpy),dust_array(irir),dust_array(irsc),dust_array(ircarb),&
+           dust_array(ickappa),dust_array(icmu),dust_array(icgamma))
+    state%mu    = state%dust_array(icmu)
+    state%gamma = state%dust_array(icgamma)
+    state%kappa = calc_kappa_dust(state%dust_array(idK3), state%Tdust, state%rho)
+    state%dust_array(icalpha) = state%alpha_Edd+alpha_rad
  else
     if (idust_opacity == 1) state%kappa = calc_kappa_bowen(state%Tdust)
     if (update_muGamma) call calc_muGamma(state%rho, state%Tg,state%mu, state%gamma, pH, pH_tot)
@@ -291,7 +314,7 @@ subroutine wind_step(state)
 
  !calculate opacity
  if (idust_opacity == 2) then
-    state%kappa = calc_kappa_dust(state%JKmuS(idK3), state%Tdust, state%rho)
+    state%kappa = calc_kappa_dust(state%dust_array(idK3), state%Tdust, state%rho)
  elseif (idust_opacity == 1) then
     state%kappa = calc_kappa_bowen(state%Tdust)
  endif
@@ -342,17 +365,18 @@ end subroutine wind_step
 subroutine wind_step(state)
 ! all quantities in cgs
 
- use wind_equations,   only:evolve_hydro
- use ptmass_radiation, only:alpha_rad,iget_tdust,tdust_exp, isink_radiation
- use physcon,          only:pi,Rg
- use dust_formation,   only:calc_kappa_dust,calc_kappa_bowen,&
-      calc_Eddington_factor,idust_opacity, calc_muGamma
- use dust_moments,     only:evolve_chem
- use part,             only:idK3,idmu,idgamma,idsat,idkappa
- use cooling_solver,   only:calc_cooling_rate
- use options,          only:icooling
- use units,            only:unit_ergg,unit_density,utime
- use dim,              only:itau_alloc,update_muGamma
+ use wind_equations,    only:evolve_hydro
+ use ptmass_radiation,  only:alpha_rad,iget_tdust,tdust_exp, isink_radiation
+ use physcon,           only:pi,Rg
+ use dust_formation,    only:calc_kappa_dust,calc_kappa_bowen,&
+      calc_Eddington_factor,idust_opacity, calc_muGamma,wind_CO_ratio
+ use dust_moments,      only:evolve_chem
+ use dust_condensation, only:dust_growth_condensation
+ use part,              only:idK3,idmu,idgamma,idsat,idkappa
+ use cooling_solver,    only:calc_cooling_rate
+ use options,           only:icooling
+ use units,             only:unit_ergg,unit_density,utime
+ use dim,               only:itau_alloc,update_muGamma
 
  type(wind_state), intent(inout) :: state
  real :: rvT(3), dt_next, v_old, dlnQ_dlnT, Q_code, pH,pH_tot
@@ -361,11 +385,21 @@ subroutine wind_step(state)
  kappa_old  = state%kappa
  alpha_old  = state%alpha
  if (idust_opacity == 2) then
-    call evolve_chem(state%dt,state%Tg,state%rho,state%JKmuS)
-    state%K2        = state%JKmuS(idK2)
-    state%mu        = state%JKmuS(idmu)
-    state%gamma     = state%JKmuS(idgamma)
-    state%kappa     = calc_kappa_dust(state%JKmuS(idK3), state%Tdust, state%rho)
+    call evolve_chem(state%dt,state%Tg,state%rho,state%dust_array)
+    state%K2        = state%dust_array(idK2)
+    state%mu        = state%dust_array(idmu)
+    state%gamma     = state%dust_array(idgamma)
+    state%kappa     = calc_kappa_dust(state%dust_array(idK3), state%Tdust, state%rho)
+ elseif (idust_opacity == 3) then
+    call  dust_growth_condensation(state%Tg, state%rho, state%dt,wind_CO_ratio,&
+         state%dust_array(ifol),state%dust_array(ifqu),state%dust_array(ifpy),state%dust_array(ifir),&
+         state%dust_array(ifsc),state%dust_array(ifcarb),state%dust_array(irol),state%dust_array(irqu),&
+         state%dust_array(irpy),state%dust_array(irir),state%dust_array(irsc),state%dust_array(ircarb),&
+         state%dust_array(ickappa),state%dust_array(icmu),state%dust_array(icgamma))
+    state%mu    = state%dust_array(icmu)
+    state%gamma = state%dust_array(icgamma)
+    state%kappa = calc_kappa_dust(state%dust_array(idK3), state%Tdust, state%rho)
+    state%dust_array(icalpha) = state%alpha_Edd+alpha_rad
  else
     if (idust_opacity == 1) state%kappa     = calc_kappa_bowen(state%Tdust)
     if (update_muGamma) call calc_muGamma(state%rho, state%Tg,state%mu, state%gamma, pH, pH_tot)
@@ -386,7 +420,7 @@ subroutine wind_step(state)
  case default
     state%alpha = 0.
  end select
- if (idust_opacity == 2) state%JKmuS(idalpha) = state%alpha
+ if (idust_opacity == 2) state%dust_array(idalpha) = state%alpha
  if (state%time > 0.)    state%dalpha_dr      = (state%alpha-alpha_old)/(1.e-10+state%r-state%r_old)
 
  rvT(1) = state%r
@@ -425,7 +459,9 @@ subroutine wind_step(state)
 
  !calculate opacity
  if (idust_opacity == 2) then
-    state%kappa = calc_kappa_dust(state%JKmuS(idK3), state%Tdust, state%rho)
+    state%kappa = calc_kappa_dust(state%dust_array(idK3), state%Tdust, state%rho)
+ elseif (idust_opacity == 3) then
+    state%kappa = state%dust_array(ickappa)
  elseif (idust_opacity == 1) then
     state%kappa = calc_kappa_bowen(state%Tdust)
  endif
@@ -873,7 +909,7 @@ end subroutine get_initial_tau_lucy
 !  Interpolate 1D wind profile
 !
 !-----------------------------------------------------------------------
-subroutine interp_wind_profile(time, local_time, r, v, u, rho, e, GM, fdone, JKmuS)
+subroutine interp_wind_profile(time, local_time, r, v, u, rho, e, GM, fdone, dust_array)
  !in/out variables in code units (except Jstar,K)
  use units,          only:udist,utime,unit_velocity,unit_density,unit_ergg
  use dust_formation, only:idust_opacity
@@ -884,7 +920,7 @@ subroutine interp_wind_profile(time, local_time, r, v, u, rho, e, GM, fdone, JKm
  real, intent(in)  :: time, local_time, GM
  !real, intent(inout) :: r, v
  real, intent(out) :: u, rho, e, r, v, fdone
- real, intent(out), optional :: JKmuS(:)
+ real, intent(out), optional :: dust_array(:)
 
  real    :: ltime,gammai
  integer :: indx,j
@@ -903,9 +939,15 @@ subroutine interp_wind_profile(time, local_time, r, v, u, rho, e, GM, fdone, JKm
 
  if (idust_opacity == 2) then
     do j=1,n_nucleation
-       JKmuS(j) = interp_1d(ltime,trvurho_1D(1,indx),trvurho_1D(1,indx+1),JKmuS_1D(j,indx),JKmuS_1D(j,indx+1))
+       dust_array(j) = interp_1d(ltime,trvurho_1D(1,indx),trvurho_1D(1,indx+1),dust_array_1D(j,indx),dust_array_1D(j,indx+1))
     enddo
-    gammai = JKmuS(idgamma)
+    gammai = dust_array(idgamma)
+    gamma  = gammai
+ elseif (idust_opacity == 2) then
+    do j=1,n_condensation
+       dust_array(j) = interp_1d(ltime,trvurho_1D(1,indx),trvurho_1D(1,indx+1),dust_array_1D(j,indx),dust_array_1D(j,indx+1))
+    enddo
+    gammai = dust_array(idgamma)
     gamma  = gammai
  else
     gammai = gamma
@@ -936,13 +978,14 @@ subroutine save_windprofile(r0, v0, T0, rout, tend, tcross, filename)
  integer, parameter :: nlmax = 8192   ! maxium number of steps store in the 1D profile
  real :: time_end, tau_lucy_init
  real :: r_incr,v_incr,T_incr,mu_incr,gamma_incr,r_base,v_base,T_base,mu_base,gamma_base,eps
- real, allocatable :: trvurho_temp(:,:)
- real, allocatable :: JKmuS_temp(:,:)
+ real, allocatable :: trvurho_tmp(:,:)
+ real, allocatable :: dust_tmp(:,:)
  type(wind_state) :: state
  integer ::iter,itermax,nwrite,writeline
 
- if (.not. allocated(trvurho_temp)) allocate (trvurho_temp(5,nlmax))
- if (idust_opacity == 2 .and. .not. allocated(JKmuS_temp)) allocate (JKmuS_temp(n_nucleation,nlmax))
+ if (.not. allocated(trvurho_tmp)) allocate (trvurho_tmp(5,nlmax))
+ if (idust_opacity == 2 .and. .not. allocated(dust_tmp)) allocate (dust_tmp(n_nucleation,nlmax))
+ if (idust_opacity == 3 .and. .not. allocated(dust_tmp)) allocate (dust_tmp(n_condensation,nlmax))
 
  write (*,'("Saving 1D model to ",A)') trim(filename)
  !time_end = tmax*utime
@@ -994,8 +1037,9 @@ subroutine save_windprofile(r0, v0, T0, rout, tend, tcross, filename)
        T_base     = state%Tg
        mu_base    = state%mu
        gamma_base = state%gamma
-       trvurho_temp(:,writeline) = (/state%time,state%r,state%v,state%u,state%rho/)
-       if (idust_opacity == 2) JKmuS_temp(:,writeline) = (/state%JKmuS(1:n_nucleation)/)
+       trvurho_tmp(:,writeline) = (/state%time,state%r,state%v,state%u,state%rho/)
+       if (idust_opacity == 2) dust_tmp(:,writeline) = (/state%dust_array(1:n_nucleation)/)
+       if (idust_opacity == 3) dust_tmp(:,writeline) = (/state%dust_array(1:n_condensation)/)
 
     endif
     if (state%r > rout) tcross = min(state%time,tcross)
@@ -1012,26 +1056,46 @@ subroutine save_windprofile(r0, v0, T0, rout, tend, tcross, filename)
 
  if (allocated(trvurho_1D)) deallocate(trvurho_1D)
  allocate (trvurho_1D(5, writeline))
- trvurho_1D(:,:) = trvurho_temp(:,1:writeline)
- deallocate(trvurho_temp)
+ trvurho_1D(:,:) = trvurho_tmp(:,1:writeline)
+ deallocate(trvurho_tmp)
  if (idust_opacity == 2) then
-    if (allocated(JKmuS_1D)) deallocate(JKmuS_1D)
-    allocate (JKmuS_1D(n_nucleation, writeline))
-    JKmuS_1D(:,:) = JKmuS_temp(:,1:writeline)
-    deallocate(JKmuS_temp)
+    if (allocated(dust_array_1D)) deallocate(dust_array_1D)
+    allocate (dust_array_1D(n_nucleation, writeline))
+    dust_array_1D(:,:) = dust_tmp(:,1:writeline)
+    deallocate(dust_tmp)
+ elseif (idust_opacity == 3) then
+    if (allocated(dust_array_1D)) deallocate(dust_array_1D)
+    allocate (dust_array_1D(n_condensation, writeline))
+    dust_array_1D(:,:) = dust_tmp(:,1:writeline)
+    deallocate(dust_tmp)
  endif
+ deallocate(state%dust_array)
 
 end subroutine save_windprofile
 
 subroutine filewrite_header(iunit,nwrite)
+ use dust_formation,   only:idust_opacity
  integer, intent(in) :: iunit
  integer, intent(out) :: nwrite
  character (len=20):: fmt
 
- nwrite = 23
- write(fmt,*) nwrite
- write(iunit,'('// adjustl(fmt) //'(a12))') 't','r','v','T','c','p','u','rho','alpha','a',&
-       'mu','S','Jstar','K0','K1','K2','K3','tau_lucy','kappa','tau','Tdust','gamma','Q'
+ if (idust_opacity == 2) then
+    nwrite = 23
+    write(fmt,*) nwrite
+    write(iunit,'('// adjustl(fmt) //'(a12))') 't','r','v','T','c','p','u','rho','alpha','a',&
+         'mu','S','Jstar','K0','K1','K2','K3','tau_lucy','kappa','tau','Tdust','gamma','Q'
+ elseif (idust_opacity == 3) then
+    nwrite = 28
+    write(fmt,*) nwrite
+    write(iunit,'('// adjustl(fmt) //'(a12))') 't','r','v','T','c','p','u','rho','alpha','a',&
+         'mu','gamma','r_ol','r_qu','r_py','r_ir','r_rs','r_carb','f_ol','f_qu','f_py','f_ir','f_rs','f_carb',&
+         'tau_lucy','kappa','tau','Tdust'
+ elseif (idust_opacity == 3) then
+    nwrite = 12
+    write(fmt,*) nwrite
+    write(iunit,'('// adjustl(fmt) //'(a12))') 't','r','v','T','c','p','u','rho','alpha','a',&
+         'mu','gamma'
+ endif
 end subroutine filewrite_header
 
 subroutine state_to_array(state, array)
@@ -1050,26 +1114,42 @@ subroutine state_to_array(state, array)
  array(9)  = state%alpha
  array(10) = state%a
  if (idust_opacity == 2) then
-    array(11) = state%JKmuS(idmu)
+    array(11) = state%dust_array(idmu)
+    array(12) = state%dust_array(idgamma)
+    array(13) = state%dust_array(idsat)
+    array(14) = state%dust_array(idJstar)
+    array(15) = state%dust_array(idK0)
+    array(16) = state%dust_array(idK1)
+    array(17) = state%dust_array(idK2)
+    array(18) = state%dust_array(idK3)
+    array(19) = state%tau_lucy
+    array(20) = state%kappa
+    array(21) = state%tau
+    array(22) = state%Tdust
+    array(23) = state%Q
+ elseif (idust_opacity == 3) then
+    array(11) = state%dust_array(idmu)
+    array(12) = state%dust_array(idgamma)
+    array(13) = state%dust_array(irol)
+    array(14) = state%dust_array(irqu)
+    array(15) = state%dust_array(irpy)
+    array(16) = state%dust_array(irir)
+    array(17) = state%dust_array(irsc)
+    array(18) = state%dust_array(ircarb)
+    array(19) = state%dust_array(ifol)
+    array(20) = state%dust_array(ifqu)
+    array(21) = state%dust_array(ifpy)
+    array(22) = state%dust_array(ifir)
+    array(23) = state%dust_array(ifsc)
+    array(24) = state%dust_array(ifcarb)
+    array(25) = state%tau_lucy
+    array(26) = state%kappa
+    array(27) = state%tau
+    array(28) = state%Tdust
  else
     array(11) = state%mu
+    array(12) = state%gamma
  endif
- array(12) = state%JKmuS(idsat)
- array(13) = state%JKmuS(idJstar)
- array(14) = state%JKmuS(idK0)
- array(15) = state%JKmuS(idK1)
- array(16) = state%JKmuS(idK2)
- array(17) = state%JKmuS(idK3)
- array(18) = state%tau_lucy
- array(19) = state%kappa
- array(20) = state%tau
- array(21) = state%Tdust
- if (idust_opacity == 2) then
-    array(22) = state%JKmuS(idgamma)
- else
-    array(22) = state%gamma
- endif
- array(23) = state%Q
 end subroutine state_to_array
 
 subroutine filewrite_state(iunit,nwrite, state)

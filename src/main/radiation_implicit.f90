@@ -412,7 +412,7 @@ end subroutine get_compacted_neighbour_list
 !+
 !---------------------------------------------------------
 subroutine fill_arrays(ncompact,ncompactlocal,npart,icompactmax,dt,xyzh,vxyzu,ivar,ijvar,rad,vari,varij,varij2,EU0)
- use dim,             only:periodic,ind_timesteps
+ use dim,             only:periodic,ind_timesteps,do_condensation
  use boundary,        only:dxbound,dybound,dzbound
  use part,            only:dust_temp,nucleation,gradh
  use units,           only:get_c_code
@@ -428,6 +428,7 @@ subroutine fill_arrays(ncompact,ncompactlocal,npart,icompactmax,dt,xyzh,vxyzu,iv
          xi,yi,zi,gradhi,pmjdWrijrhoi,pmjdWrunix,pmjdWruniy,pmjdWruniz,&
          dust_kappai,dust_cooling,heatingISRi,dust_gas
 
+ if (do_condensation .and. dustRT) stop 'dust condensation not implemented'
  c_code = get_c_code()
  !$omp do &
  !$omp private(n,i,j,k,rhoi,icompact,pmi,dti) &
@@ -546,6 +547,7 @@ subroutine compute_flux(ivar,ijvar,ncompact,npart,icompactmax,varij2,vari,EU0,va
  use part,            only:dust_temp,nucleation
  use radiation_utils, only:get_rad_R
  use options,         only:limit_radiation_flux
+ use dim,             only:do_condensation
  integer, intent(in) :: ivar(:,:),ijvar(:),ncompact,npart,icompactmax
  real, intent(in)    :: varij2(4,icompactmax),vari(2,npart)
  logical, intent(in) :: mask(npart)
@@ -554,6 +556,8 @@ subroutine compute_flux(ivar,ijvar,ncompact,npart,icompactmax,varij2,vari,EU0,va
  integer             :: i,j,k,n,icompact
  real                :: rhoi,rhoj,pmjdWrunix,pmjdWruniy,pmjdWruniz,dedx(3),dradenij,rhoiEU0
  real                :: opacity,radRi,EU01i
+
+ if (do_condensation .and. dustRT) stop 'dust condensation not implemented'
 
  !$omp do schedule(runtime)&
  !$omp private(i,j,k,n,dedx,rhoi,rhoj,icompact)&

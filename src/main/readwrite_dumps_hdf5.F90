@@ -95,7 +95,7 @@ subroutine write_dump_hdf5(t,dumpfile,fulldump,ntotal,dtind)
                           phantom_version_minor,phantom_version_micro,          &
                           phantom_version_string,use_krome,   &
                           store_dust_temperature,do_radiation,gr,do_nucleation, &
-                          mpi,idumpfile
+                          mpi,idumpfile,do_condensation
  use eos,            only:ieos,polyk,gamma,polyk2,qfacdisc,isink
  use io,             only:fatal,id,master,iprint
  use options,        only:tolh,alpha,alphau,alphaB,iexternalforce,use_dustfrac
@@ -110,7 +110,7 @@ subroutine write_dump_hdf5(t,dumpfile,fulldump,ntotal,dtind)
                           ndivcurlv,pxyzu,dens,T_gas_cool,                     &
                           dust_temp,rad,radprop,itemp,igasP,eos_vars,iorig,    &
                           npartoftypetot,update_npartoftypetot
- use part,           only:nucleation
+ use part,           only:nucleation,condensation
 #ifdef IND_TIMESTEPS
  use part,           only:ibin
 #endif
@@ -330,6 +330,7 @@ subroutine write_dump_hdf5(t,dumpfile,fulldump,ntotal,dtind)
  array_options%krome = use_krome
  array_options%gr = gr
  array_options%nucleation = do_nucleation
+ array_options%condensation = do_condensation
 
  ! write the arrays to file
  if (fulldump) then
@@ -366,6 +367,7 @@ subroutine write_dump_hdf5(t,dumpfile,fulldump,ntotal,dtind)
                            dens,         & !
                            T_gas_cool,   & !
                            nucleation,   & !
+                           condensation, & !
                            dust_temp,    & !
                            rad,          & !
                            radprop,      & !---------
@@ -469,7 +471,7 @@ subroutine read_any_dump_hdf5(                                                  
  use dim,            only:maxp,gravity,maxalpha,mhd,use_dust,use_dustgrowth, &
                           h2chemistry,nsinkproperties,     &
                           maxp_hard,use_krome,store_dust_temperature,        &
-                          do_radiation,do_nucleation,gr,idumpfile
+                          do_radiation,do_nucleation,do_condensation,gr,idumpfile
  use eos,            only:ieos,polyk,gamma,polyk2,qfacdisc,isink
  use checkconserved, only:get_conserv,etot_in,angtot_in,totmom_in,mdust_in
  use io,             only:fatal,error
@@ -481,7 +483,7 @@ subroutine read_any_dump_hdf5(                                                  
                           alphaind,poten,Bxyz,Bevol,dustfrac,deltav,dustprop,  &
                           dustgasprop,VrelVf,eos_vars,abundance,               &
                           periodic,ndusttypes,pxyzu,T_gas_cool,dust_temp,      &
-                          nucleation,rad,radprop,igasP,itemp,iorig
+                          nucleation,condensation,rad,radprop,igasP,itemp,iorig
 #ifdef IND_TIMESTEPS
  use part,           only:dt_in
 #endif
@@ -647,6 +649,7 @@ subroutine read_any_dump_hdf5(                                                  
  array_options%krome = use_krome
  array_options%gr = gr
  array_options%nucleation = do_nucleation
+ array_options%condensation = do_condensation
 
  allocate(dtind(npart))
  call read_hdf5_arrays(hdf5_file_id,  &
@@ -675,6 +678,7 @@ subroutine read_any_dump_hdf5(                                                  
                        pxyzu,         &
                        T_gas_cool,    &
                        nucleation,    &
+                       condensation,  &
                        dust_temp,     &
                        rad,           &
                        radprop,       &
@@ -686,53 +690,54 @@ subroutine read_any_dump_hdf5(                                                  
  endif
 
  if (.not.smalldump) then
-    call check_arrays(1,                          &
-                      npart,                      &
-                      0,                          &
-                      npartoftype,                &
-                      npart,                      &
-                      nptmass,                    &
-                      nsinkproperties,            &
-                      massoftype,                 &
-                      alphafile,                  &
-                      tfile,                      &
-                      .true.,                     &
-                      got_arrays%got_iphase,      &
-                      got_arrays%got_xyzh,        &
-                      got_arrays%got_vxyzu,       &
-                      got_arrays%got_alpha,       &
-                      got_arrays%got_krome_mols,  &
-                      got_arrays%got_krome_gamma, &
-                      got_arrays%got_krome_mu,    &
-                      got_arrays%got_krome_T,     &
-                      got_arrays%got_x,           &
-                      got_arrays%got_z,           &
-                      got_arrays%got_mu,          &
-                      got_arrays%got_abund,       &
-                      got_arrays%got_dustfrac,    &
-                      got_arrays%got_sink_data,   &
-                      got_arrays%got_sink_vels,   &
-                      got_arrays%got_Bxyz,        &
-                      got_arrays%got_psi,         &
-                      got_arrays%got_dustprop,    &
-                      got_arrays%got_pxyzu,       &
-                      got_arrays%got_VrelVf,      &
-                      got_arrays%got_dustgasprop, &
-                      got_arrays%got_temp,        &
-                      got_arrays%got_raden,       &
-                      got_arrays%got_kappa,       &
-                      got_arrays%got_Tdust,       &
-                      got_arrays%got_nucleation,  &
-                      got_arrays%got_iorig,       &
-                      iphase,                     &
-                      xyzh,                       &
-                      vxyzu,                      &
-                      pxyzu,                      &
-                      alphaind,                   &
-                      xyzmh_ptmass,               &
-                      Bevol,                      &
-                      iorig,                      &
-                      iprint,                     &
+    call check_arrays(1,                           &
+                      npart,                       &
+                      0,                           &
+                      npartoftype,                 &
+                      npart,                       &
+                      nptmass,                     &
+                      nsinkproperties,             &
+                      massoftype,                  &
+                      alphafile,                   &
+                      tfile,                       &
+                      .true.,                      &
+                      got_arrays%got_iphase,       &
+                      got_arrays%got_xyzh,         &
+                      got_arrays%got_vxyzu,        &
+                      got_arrays%got_alpha,        &
+                      got_arrays%got_krome_mols,   &
+                      got_arrays%got_krome_gamma,  &
+                      got_arrays%got_krome_mu,     &
+                      got_arrays%got_krome_T,      &
+                      got_arrays%got_x,            &
+                      got_arrays%got_z,            &
+                      got_arrays%got_mu,           &
+                      got_arrays%got_abund,        &
+                      got_arrays%got_dustfrac,     &
+                      got_arrays%got_sink_data,    &
+                      got_arrays%got_sink_vels,    &
+                      got_arrays%got_Bxyz,         &
+                      got_arrays%got_psi,          &
+                      got_arrays%got_dustprop,     &
+                      got_arrays%got_pxyzu,        &
+                      got_arrays%got_VrelVf,       &
+                      got_arrays%got_dustgasprop,  &
+                      got_arrays%got_temp,         &
+                      got_arrays%got_raden,        &
+                      got_arrays%got_kappa,        &
+                      got_arrays%got_Tdust,        &
+                      got_arrays%got_nucleation,   &
+                      got_arrays%got_condensation, &
+                      got_arrays%got_iorig,        &
+                      iphase,                      &
+                      xyzh,                        &
+                      vxyzu,                       &
+                      pxyzu,                       &
+                      alphaind,                    &
+                      xyzmh_ptmass,                &
+                      Bevol,                       &
+                      iorig,                       &
+                      iprint,                      &
                       ierr)
  endif
  if (ierr /= 0) then

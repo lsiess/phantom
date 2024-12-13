@@ -266,11 +266,12 @@ module part
 !
 !--Dust formation - condensation model
 !
- integer, parameter :: n_condensation = 14
+ integer, parameter :: n_condensation = 16
  real, allocatable :: condensation(:,:)
  character(len=*), parameter :: condensation_label(n_condensation) = &
       (/'rol  ', 'rqu  ', 'rpy  ', 'rir  ', 'rsc  ', 'rcarb', &
-        'fol  ', 'fqu  ', 'fpy  ', 'fir  ', 'fsc  ', 'fcarb', 'gamm ', 'kappa' /)
+      'fol  ', 'fqu  ', 'fpy  ', 'fir  ', 'fsc  ', 'fcarb', &
+      'mu   ', 'gamm ', 'kappa', 'alphw' /)
  integer, parameter :: irol    = 1,  & !radius of olivine grain
                        irqu    = 2,  & !radius of quartz grain
                        irpy    = 3,  & !radius of pyroxene grain
@@ -283,8 +284,10 @@ module part
                        ifir    = 10, &
                        ifsc    = 11, &
                        ifcarb  = 12, &
-                       icgamma = 13, &
-                       ickappa = 14
+                       icmu    = 13, &
+                       icgamma = 14, &
+                       ickappa = 15, &
+                       icalpha = 16
 !
 !--KROME variables
 !

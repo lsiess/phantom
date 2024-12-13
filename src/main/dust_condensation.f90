@@ -1,85 +1,151 @@
+!--------------------------------------------------------------------------!
+! The Phantom Smoothed Particle Hydrodynamics code, by Daniel Price et al. !
+! Copyright (c) 2007-2024 The Authors (see AUTHORS)                        !
+! See LICENCE file for usage and distribution conditions                   !
+! http://phantomsph.github.io/                                             !
+!--------------------------------------------------------------------------!
 module dust_condensation
-    implicit none
-    !real, parameter :: wind_CO_ratio = 0.34
+!
+! Dust formation routine : condensation method
+!
+! :References: Gail & Sedlmayr textbook Physics and chemistry of Circumstellar dust shells
+!              + p[apaers by Ferrarotti & Gail (2000+)
+!
+
+use physcon, only:atomic_mass_unit
+
+implicit none
+ !real, parameter :: wind_CO_ratio = 0.34
+public :: evolve_condensation,dust_growth_condensation
+
+private
+ !Coefficients for the calculation of the free entalpy (deltaG), from table A4.1, Gail & Sedlmayr, p651
+ real, parameter :: coefficients(5,6) = reshape([&
+ 3.14987E+05, -3.92876E+06, 1.03657E+03, -1.31876E-02, 0.0d+00, &      !Olivine
+ 0.00000E+00, -1.86046E+06, 4.54398E+02, -2.75999E-03, 0.0d+00, &      !Quartz
+ 3.66094E+04, -2.89963E+06, 7.44735E+02, -5.92064E-03, 0.0d+00, &      !Pyroxene
+ 0.00000E+00, -4.08793E+05, 1.48885E+02, -4.70379E-03, 0.0d+00, &      !Iron
+ 2.79991E+05, -1.24239E+06, 3.20111E+02, -3.42448E-03, 5.44933E-07, &  !Silicon Carbide
+ 8.71566E+05, -7.21210E+05, 1.62145E+02, -1.23392E-03, 1.77238E-07],&  !Amorphous Carbon
+ shape(coefficients))
+
+!sticking coefficients : Gail & Sedlmayr Book table 12.1, p337
+ real, parameter ::   &
+     alpha_ol = 0.1,  &
+     alpha_qu = 0.05, &
+     alpha_py = 0.2,  &
+     alpha_ir = 1.0,  &!0.9
+     alpha_sc = 0.8,  &
+     alpha_carb = 0.3
+ !atomic masses, in cgs, from Gail & Sedlmayr Book table 12.1, p337
+ real, parameter ::     &
+     A_ol = 140.694, &
+     A_qu = 60.085,  &
+     A_py = 100.389, &
+     A_ir = 55.845,  &
+     A_sc = 40.10,   &
+     A_carb = 12.01
+ !density of dust species, in cgs, from Gail & Sedlmayr Book table 12.1, p337
+ real, parameter ::     &
+     rho_ol = 3.21,  &
+     rho_qu = 2.65,  &
+     rho_py = 3.19,  &
+     rho_ir = 7.87,  &
+     rho_sc = 3.21,  &
+     rho_carb = 2.20
+ !volume of monomers, in cgs, from Gail & Sedlmayr Book table 12.1, p337
+ real, parameter :: &
+     Vo_ol = A_ol * atomic_mass_unit / rho_ol, &
+     Vo_qu = A_qu * atomic_mass_unit / rho_qu, &
+     Vo_py = A_py * atomic_mass_unit / rho_py, &
+     Vo_ir = A_ir * atomic_mass_unit / rho_ir, &
+     Vo_sc = A_sc * atomic_mass_unit / rho_sc, &
+     Vo_carb = A_carb * atomic_mass_unit / rho_carb
+
+ real, parameter :: &
+     m_SiO  = 44.09*atomic_mass_unit,   &!Si = 28.09  amu, Ox = 16.00 amu
+     m_Mg   = 24.31*atomic_mass_unit,   &!Mg = 24.305 amu
+     m_H2O  = 18.02*atomic_mass_unit,   &!Ox = 16.00  amu
+     m_ir   = 55.845*atomic_mass_unit,  &
+     m_Si   = 28.086*atomic_mass_unit,  &
+     m_C2H2 = 26.038*atomic_mass_unit, &
+     m_Si2C = 68.182*atomic_mass_unit, &
+     m_carb = 12.01*atomic_mass_unit
 
 
-    !Coefficients can be found in the Appendix of the book by Gail & Sedlmayr
-    real, parameter :: coefficients(5,6) = reshape([&
-    3.14987E+05, -3.92876E+06, 1.03657E+03, -1.31876E-02, 0.0d+00, &                    !Olivine
-    0.00000E+00, -1.86046E+06, 4.54398E+02, -2.75999E-03, 0.0d+00, &                    !Quartz
-    3.66094E+04, -2.89963E+06, 7.44735E+02, -5.92064E-03, 0.0d+00, &                    !Pyroxene
-    0.00000E+00, -4.08793E+05, 1.48885E+02, -4.70379E-03, 0.0d+00, &                    !Iron
-    2.79991E+05, -1.24239E+06, 3.20111E+02, -3.42448E-03, 5.44933E-07, &                !Silicon Carbide
-    8.71566E+05, -7.21210E+05, 1.62145E+02, -1.23392E-03, 1.77238E-07], shape(coefficients)) !Amorphous Carbon
+contains
 
-    ! character(len=*), parameter :: condensation(7) =&
-    !              (/'fol              ', &
-    !                'fqu              ', &
-    !                'fpy              ', &
-    !                'fir              ', &
-    !                'fsc              ', &
-    !                'fcarb            ', &
-    !                'kappa_dust       '/)
+!-----------------------------------------------------------------------
+!+
+!  set particle dust properties (particle's call)
+!+
+!-----------------------------------------------------------------------
+   subroutine evolve_condensation(dtsph, xyzh, u, dust_prop, rho)
+      use dust_formation, only : wind_CO_ratio
+      use units,  only:utime,unit_density
+      use eos,    only:ieos,get_temperature
+      use part,   only:icmu,icgamma,ickappa,ifol,ifqu,ifpy,ifir,ifsc,ifcarb,irol,irqu,irpy,irir,irsc,ircarb
 
-    contains
-    subroutine O_rich_nucleation(T,rho_cgs,dt,wind_CO_ratio,fol,fqu,fpy, fir, fsc, fcarb, kappa_dust, &
-                                 mu, gamma, pH_tot, abundance, pressure_cgs)
-       use physcon, only:patm,kboltz,atomic_mass_unit,pi
-        !use physcon, only:kboltz,pi, atomic_mass_unit
+      real,    intent(in) :: dtsph,rho,u,xyzh(4)
+      real,    intent(inout) :: dust_prop(:)
+
+      real :: dt_cgs, T, rho_cgs, vxyzui(4)
+
+      dt_cgs    = dtsph* utime
+      rho_cgs   = rho*unit_density
+      vxyzui(4) = u
+      T         = get_temperature(ieos,xyzh,rho,vxyzui,gammai=dust_prop(icgamma),mui=dust_prop(icmu))
+      call dust_growth_condensation(T, rho_cgs, dt_cgs,wind_CO_ratio,&
+           dust_prop(ifol),dust_prop(ifqu),dust_prop(ifpy),dust_prop(ifir),dust_prop(ifsc),dust_prop(ifcarb),&
+           dust_prop(irol),dust_prop(irqu),dust_prop(irpy),dust_prop(irir),dust_prop(irsc),dust_prop(ircarb),&
+           dust_prop(ickappa),dust_prop(icmu),dust_prop(icgamma))
+
+   end subroutine evolve_condensation
+
+!-----------------------------------------------------------------------
+!+
+!  set particle dust properties (particle's call)
+!+
+!-----------------------------------------------------------------------
+   subroutine dust_growth_condensation(T,rho_cgs,dt,wind_CO_ratio,fol,fqu,fpy,fir,fsc,fcarb,&
+        r_ol,r_qu,r_py,r_ir,r_sc,r_carb,kappa_dust,mu,gamma,abundance,pH_tot,pressure_cgs)
+        use physcon, only:patm,kboltz,pi
         !use dust_formation, only:kappa_gas, mass_per_H, eps
         use chemistry_condensation, only: network, iSiO, iH2O, iH2, eps, &
              iH,iHe,iC,iOx,iN,iSi,iS,iFe,iTi,iMg, iSi2C, mass_per_H
-        use dust_formation, only: kappa_gas
-        real,intent(in)          :: dt,wind_CO_ratio !rho_cgs
-        real,intent(in),optional :: pressure_cgs
-        real,intent(inout)       :: T, rho_cgs, fol, fqu, fpy, fir, fsc, fcarb
-        real,intent(out)         :: kappa_dust !fol, fpy, fqu
-        real, intent(out)    :: mu,gamma,pH_tot
-        real, intent(out)    :: abundance(:)
-        real :: alpha_ol, alpha_qu, alpha_py, m_SiO, m_Mg, m_H2O, Vth_SiO, Vth_Mg, Vth_H2O, &
-        Jgr_SiO_ol, Jgr_Mg_ol, Jgr_H2O_ol, Jgr_SiO_qu, Jgr_Mg_qu, Jgr_H2O_qu, Jgr_SiO_py, Jgr_Mg_py, Jgr_H2O_py
-        real :: alpha_ir, m_ir, Vth_ir, Jgr_ir, pv_ir, A_ir, rho_ir, Vo_ir, Jdec_ir, radius_ir, kappa_ir
-        real :: pv_SiO, pv_Mg, pv_H2O, A_ol, rho_ol, kappa_ol, Vo_ol, Jdec_ol, Jgr_ol, radius_ol
-        real :: A_qu, rho_qu, kappa_qu, Vo_qu, radius_qu
-        real :: A_py, rho_py, kappa_py, Vo_py, radius_py
-        real :: Jgr_py, Jgr_qu, Jdec_py, Jdec_qu
-        integer :: growthflag_ol, growthflag_qu, growthflag_py, growthflag_ir
-     !!   real :: mu,gamma,abundance(ncols),pH_tot
-        real :: a_init_dust, P_H2, G_const(3), root(3) !fol, kappa_dust
-        real :: fol_max, fpy_max, fqu_max, fol_dec, fpy_dec, fqu_dec, fir_dec
-        real :: alpha_sc, m_Si2C, Vth_Si2C, Jgr_sc, P_Si, pv_Si2C, Jdec_sc, A_sc, rho_sc, Vo_sc
-        real :: growthflag_sc, radius_sc, kappa_sc, fsc_dec
-        real :: alpha_carb, m_carb, Vth_carb, fcarb_dec, Jdec_carb, Jgr_carb, A_carb, rho_carb
-        real :: Vo_carb, growthflag_carb, kappa_carb, radius_carb, pv_carb
-        !real :: mass_per_H
+        use dust_formation, only: kappa_gas,a_init_dust
+        real, intent(in)          :: dt,wind_CO_ratio
+        real, intent(in),optional :: pressure_cgs
+        real, intent(inout)       :: T,rho_cgs,fol,fqu,fpy,fir,fsc,fcarb,r_ol,r_qu,r_py,r_ir,r_sc,r_carb
+        real, intent(out)         :: kappa_dust
+        real, intent(out)         :: mu,gamma
+        real, intent(out),optional:: pH_tot,abundance(:)
+        real :: Vth_SiO, Vth_Mg, Vth_H2O, Vth_ir, Vth_Si2C, Vth_carb
+        real :: pv_ir, pv_SiO, pv_Mg, pv_H2O, pv_carb, pv_Si2C
+        real :: Jgr_SiO_ol, Jgr_Mg_ol, Jgr_H2O_ol, Jgr_SiO_qu, Jgr_Mg_qu, Jgr_H2O_qu, Jgr_SiO_py, Jgr_Mg_py, Jgr_H2O_py
+        real :: Jgr_ol,  Jgr_qu,  Jgr_py,  Jgr_ir,  Jgr_sc,  Jgr_carb
+        real :: Jdec_ol, Jdec_qu, Jdec_py, Jdec_ir, Jdec_sc, Jdec_carb
+        real :: kappa_ol,kappa_qu,kappa_py,kappa_ir,kappa_sc,kappa_carb
+        real :: alpha_ol,alpha_qu,alpha_py,alpha_ir,alpha_sc,alpha_carb
+        real :: fol_dec, fqu_dec ,fpy_dec, fir_dec ,fsc_dec, fcarb_dec
+        real :: P_H2, P_Si, G_const(3), root(3) !fol, kappa_dust
+        real :: fol_max, fpy_max, fqu_max
 
         !XXX Aqui debo poner los valores de fol, fpy, fqu para restar las abundancias de Mg, H2O,
-        if (present(pressure_cgs)) then
-            call network(T,rho_cgs,mu,gamma,abundance,wind_CO_ratio,pH_tot, fol, fpy, fqu, fir, fsc, fcarb, pressure_cgs)
+        if (present(abundance)) then
+           if (present(pressure_cgs)) then
+              call network(T,rho_cgs,mu,gamma,wind_CO_ratio,pH_tot, fol, fpy, fqu, fir, fsc, fcarb,abundance, pressure_cgs)
+           else
+              call network(T,rho_cgs,mu,gamma,wind_CO_ratio,pH_tot, fol, fpy, fqu, fir, fsc, fcarb,abundance)
+           endif
         else
-            call network(T,rho_cgs,mu,gamma,abundance,wind_CO_ratio,pH_tot, fol, fpy, fqu, fir, fsc, fcarb)
+            call network(T,rho_cgs,mu,gamma,wind_CO_ratio,pH_tot, fol, fpy, fqu, fir, fsc, fcarb)
         endif
 
-        alpha_ol = 0.1 !taken from Gail & Sedlmayr Book table 12.1
-        alpha_qu = 0.05
-        alpha_py = 0.2
-        alpha_ir = 1.0 !0.9
-        alpha_sc = 0.8
-        alpha_carb = 0.3
-
-        m_SiO = 44.09*atomic_mass_unit !Si = 28.09 amu, Ox = 16.00 amu
-        m_Mg = 24.31*atomic_mass_unit !Mg = 24.305 amu
-        m_H2O = 18.02*atomic_mass_unit !Ox = 16.00 amu
-        m_ir = 55.845*atomic_mass_unit
-        !m_Si = 28.086*atomic_mass_unit
-        !m_C2H2 = 26.038*atomic_mass_unit
-        m_Si2C = 68.182*atomic_mass_unit
-        m_carb = 12.01*atomic_mass_unit
-
         Vth_SiO = sqrt(kboltz * T / 2.0 / pi / m_SiO) !already in cgs units
-        Vth_Mg = sqrt(kboltz * T / 2.0 / pi / m_Mg)
+        Vth_Mg  = sqrt(kboltz * T / 2.0 / pi / m_Mg)
         Vth_H2O = sqrt(kboltz * T / 2.0 / pi / m_H2O)
-        Vth_ir = sqrt(kboltz * T / 2.0 / pi / m_ir)
+        Vth_ir  = sqrt(kboltz * T / 2.0 / pi / m_ir)
         !Vth_Si = sqrt(kboltz * T / 2.0 / pi / m_Si)
         !Vth_C2H2 = sqrt(kboltz * T / 2.0 / pi / m_C2H2)
         Vth_Si2C = sqrt(kboltz * T / 2.0 / pi / m_Si2C)
@@ -112,60 +178,26 @@ module dust_condensation
         P_H2 = abundance(iH2)*kboltz*T/patm !H2 pressure from abundance
         P_Si = abundance(75)*kboltz*T/patm !Si = 75 in subroutine network
 
-        !%% Constant term in the law of mass action equation for Olivine
-        G_const(1) = P_H2**3 / (calc_Kp(coefficients(:,1), T) * pH_tot**6)
-
-        !%% Constant term in the law of mass action equation for Quartz
-        G_const(2) = P_H2 / (calc_Kp(coefficients(:,2),T) * pH_tot**2)
-
-        !%% Constant term in the law of mass action equation for Pyroxene
-        G_const(3) = P_H2**2 / (calc_Kp(coefficients(:,3),T) * pH_tot**4)
+        !%% Constant term in the law of mass action equation
+        G_const(1) = P_H2**3 / (calc_Kp(coefficients(:,1), T) * pH_tot**6) !for olivine
+        G_const(2) = P_H2 / (calc_Kp(coefficients(:,2),T) * pH_tot**2)     !for Quartz
+        G_const(3) = P_H2**2 / (calc_Kp(coefficients(:,3),T) * pH_tot**4)  !for Pyroxene
 
         !%% to determine degree of condensation fol, fqu, fpy
+!LS : this test should be removed, check must be made in init since wind_CO_ratio is constant
         if (wind_CO_ratio .lt. 1.0) then
             call find_root(eps(iMg), eps(iSi), eps(iOx), eps(iC), G_const, root)
         else
             root = 0.0
         endif
 
-        fol_dec = root(1)
-        fqu_dec = root(2)
-        fpy_dec = root(3)
+        fol_dec   = max(0., root(1))
+        fqu_dec   = max(0., root(2))
+        fpy_dec   = max(0., root(3))
+        fir_dec   = max(0., 1.- 1./(calc_Kp(coefficients(:,4),T) * eps(iFe) * pH_tot))     !For Iron
+        fsc_dec   = max(0., 1.- P_Si / (calc_Kp(coefficients(:,5),T) * eps(iSi) * pH_tot)) !For SiC
+        fcarb_dec = max(0., 1.-1./wind_CO_ratio - 2.*P_H2/(calc_Kp(coefficients(:,6),T) * eps(iC) * pH_tot))
 
-        fir_dec = 1.0d0 - 1.0d0 / (calc_Kp(coefficients(:,4),T) * eps(iFe) * pH_tot) !For Iron
-        fsc_dec = 1.0d0 - 1.0d0 * P_Si / (calc_Kp(coefficients(:,5),T) * eps(iSi) * pH_tot) !For SiC
-
-       ! if (wind_CO_ratio .gt. 1.0) then
-        fcarb_dec = 1.0d0 - 1.0/wind_CO_ratio - 2.0 * P_H2 / (calc_Kp(coefficients(:,6),T) * eps(iC) * pH_tot)
-       ! else
-        !    fcarb_dec = 0.0
-       ! endif
-
-
-        if (fol_dec .lt. 0.0) then
-            fol_dec = 0.0
-        endif
-
-        if (fpy_dec .lt. 0.0) then
-            fpy_dec = 0.0
-        endif
-
-        if (fqu_dec .lt. 0.0) then
-            fqu_dec = 0.0
-        endif
-
-
-        if (fir_dec .lt. 0.0) then
-            fir_dec = 0.0
-        endif
-
-        if (fsc_dec .lt. 0.0) then
-            fsc_dec = 0.0
-        endif
-
-        if (fcarb_dec .lt. 0.0) then
-            fcarb_dec = 0.0
-        endif
         !%% to calculate Quartz degree of condensation fqu
         !fqu_dec = newton_method(0.,0.,eps(iSi)**2, &
         !      - eps(iSi)*eps(iOx) + eps(iC)*eps(iSi), &
@@ -175,294 +207,84 @@ module dust_condensation
 
         if (Jgr_ol == Jgr_SiO_ol) then ! JgrSiO < JgrMg and JgrSiO < JgrH2O
             pv_SiO = (1-fol_dec) * eps(iSi) * pH_tot !Check units
-            if (pv_SiO .lt. 0.0) then
-                pv_SiO = 0.0
-            endif
+            if (pv_SiO .lt. 0.0) pv_SiO = 0.0
             Jdec_ol = alpha_ol * Vth_SiO * pv_SiO *patm / kboltz / T !patm to have cgs units
         elseif (Jgr_ol == 0.5*Jgr_Mg_ol) then
             pv_Mg = (eps(iMg) - 2.0*fol_dec*eps(iSi))*pH_tot
-            if (pv_Mg .lt. 0.0) then
-                pv_Mg = 0.0
-            endif
+            if (pv_Mg .lt. 0.0) pv_Mg = 0.0
             Jdec_ol = alpha_ol * Vth_Mg * pv_Mg *patm / kboltz / T !patm to have cgs units
         elseif (Jgr_ol == 0.333*Jgr_H2O_ol) then
             pv_H2O = (eps(iOx)-eps(iC)-(1.0+3.0*fol_dec)*eps(iSi))*pH_tot
-            if (pv_H2O .lt. 0.0) then
-                pv_H2O = 0.0
-            endif
+            if (pv_H2O .lt. 0.0) pv_H2O = 0.0
             Jdec_ol = alpha_ol * Vth_H2O * pv_H2O * patm / kboltz / T  !patm to have cgs units
         endif
 
         if (Jgr_qu == Jgr_SiO_qu) then
             pv_SiO = (1-fqu_dec)*eps(iSi)* pH_tot
-            if (pv_SiO .lt. 0.0) then
-                pv_SiO = 0.0
-            endif
+            if (pv_SiO .lt. 0.0) pv_SiO = 0.0
             Jdec_qu = alpha_qu * Vth_SiO * pv_SiO *patm / kboltz / T !!patm to have cgs units
         elseif (Jgr_qu == Jgr_H2O_qu) then
             pv_H2O = (eps(iOx)-eps(iC)-(1.0+fqu_dec)*eps(iSi))*pH_tot
-            if (pv_H2O .lt. 0.0) then
-                pv_H2O = 0.0
-            endif
+            if (pv_H2O .lt. 0.0) pv_H2O = 0.0
             Jdec_qu = alpha_qu * Vth_H2O * pv_H2O *patm / kboltz / T  !patm to have cgs units
         endif
 
         if (Jgr_py == Jgr_SiO_py) then
             pv_SiO = (1-fpy_dec)*eps(iSi)* pH_tot
-            if (pv_SiO .lt. 0.0) then
-                pv_SiO = 0.0
-            endif
+            if (pv_SiO .lt. 0.0) pv_SiO = 0.0
             Jdec_py = alpha_py * Vth_SiO * pv_SiO *patm / kboltz / T  !!patm to have cgs units
         elseif (Jgr_py == Jgr_Mg_py) then
             pv_Mg = (eps(iMg) - fpy_dec*eps(iSi))*pH_tot
-            if (pv_Mg .lt. 0.0) then
-                pv_Mg = 0.0
-            endif
+            if (pv_Mg .lt. 0.0) pv_Mg = 0.0
             Jdec_py = alpha_py * Vth_Mg * pv_Mg *patm / kboltz / T   !patm to have cgs units
         elseif (Jgr_py == 0.5*Jgr_H2O_py) then
             pv_H2O = (eps(iOx)-eps(iC)-(1.0+2.0*fpy_dec)*eps(iSi))*pH_tot
-            if (pv_H2O .lt. 0.0) then
-                pv_H2O = 0.0
-            endif
+            if (pv_H2O .lt. 0.0) pv_H2O = 0.0
             Jdec_py = alpha_py * Vth_H2O * pv_H2O *patm / kboltz / T  !patm to have cgs units
         endif
 
-        pv_ir = (1.0d0 - fir_dec) * eps(iFe) * pH_tot
-        pv_Si2C = (1.0d0 - fsc_dec) * eps(iSi) * pH_tot  !0.5 *
-        pv_carb = ((1.0 - fcarb_dec) * eps(iC) - eps(iOx)) * pH_tot
-
-        if (pv_ir .lt. 0.0) then
-            pv_ir = 0.0
-        endif
-
-        if (pv_Si2C .lt. 0.0) then
-            pv_Si2C = 0.0
-        endif
-
-        if (pv_carb .lt. 0.0) then
-            pv_carb = 0.0
-        endif
+        pv_ir   = max(0.,  (1.-fir_dec)  * eps(iFe) * pH_tot)
+        pv_Si2C = max(0.,  (1.-fsc_dec)  * eps(iSi) * pH_tot)  !0.5 *
+        pv_carb = max(0., ((1.-fcarb_dec)* eps(iC)-eps(iOx)) * pH_tot)
 
         Jdec_ir = alpha_ir * Vth_ir * pv_ir *patm /  kboltz / T   !!patm to have cgs units
         Jdec_sc = 2.0* alpha_sc * Vth_Si2C * pv_Si2C *patm / kboltz / T  !eqn. 21 of Ferrarotti & Gail 2002
         Jdec_carb = alpha_carb * Vth_carb * pv_carb *patm / kboltz / T
 
 
-        a_init_dust = 1.0d-7 !cgs units 1nm
-
-        A_ol = 140.694 !cgs units From Gail & Sedlmayr Book table 12.1
-        rho_ol = 3.21 !cgs units From Gail & Sedlmayr Book table 12.1
-        Vo_ol = A_ol * atomic_mass_unit / rho_ol !Constants for Olivine
-
-        A_qu = 60.085 !cgs units
-        rho_qu = 2.65 !cgs units
-        Vo_qu = A_qu * atomic_mass_unit / rho_qu
-
-        A_py = 100.389 !cgs units
-        rho_py = 3.19 !cgs units
-        Vo_py = A_py * atomic_mass_unit / rho_py
-
-        A_ir = 55.845 !cgs units
-        rho_ir = 7.87 ! cgs units
-        Vo_ir = A_ir * atomic_mass_unit / rho_ir
-
-        A_sc = 40.10 !cgs units
-        rho_sc = 3.21 !cgs units
-        Vo_sc = A_sc * atomic_mass_unit / rho_sc
-
-        A_carb = 12.01
-        rho_carb = 2.20
-        Vo_carb = A_carb * atomic_mass_unit / rho_carb
-
-        growthflag_ol = 0 !To allow growth destruction in Olivine
-        growthflag_qu = 0 !To allow growth destruction in Quartz
-        growthflag_py = 0 !To allow growth destruction in Pyroxene
-        growthflag_ir = 0
-        growthflag_sc = 0
-        growthflag_carb = 0
-
-        !%% Initialize the radius of dust seeds
-        if (growthflag_ol == 0) then
-            radius_ol = 1.0d-7   !1nm in cgs units
-        endif
-        if (growthflag_qu == 0) then
-            radius_qu = 1.0d-7
-        endif
-        if (growthflag_py == 0) then
-            radius_py = 1.0d-7
-        endif
-        if (growthflag_ir == 0) then
-            radius_ir = 1.0d-7
-        endif
-        if (growthflag_sc == 0) then
-            radius_sc = 1.0d-7
-        endif
-        if (growthflag_carb == 0) then
-            radius_carb = 1.0d-7
-        endif
+        r_ol = max(r_ol + Vo_ol * (Jgr_ol-Jdec_ol) * dt , a_init_dust)
+        r_qu = max(r_qu + Vo_qu * (Jgr_qu-Jdec_qu) * dt , a_init_dust)
+        r_py = max(r_py + Vo_py * (Jgr_py-Jdec_py) * dt , a_init_dust)
+        r_ir = max(r_ir + Vo_ir * (Jgr_ir-Jdec_ir) * dt , a_init_dust)
+        r_sc = max(r_sc + Vo_sc * (Jgr_sc-Jdec_sc) * dt , a_init_dust)
+        r_carb = max(r_carb + Vo_carb * (Jgr_carb-Jdec_carb) * dt , a_init_dust)
 
 
-        if ((Jgr_ol-Jdec_ol) .gt. 0.0 .and. growthflag_ol == 0) then
-            !First time that dust growth is larger than destruction.
-            growthflag_ol = 1
-            radius_ol = radius_ol + Vo_ol * (Jgr_ol-Jdec_ol) * dt
-        elseif (growthflag_ol == 1) then
-            radius_ol = radius_ol + Vo_ol * (Jgr_ol-Jdec_ol) * dt !Initialize radius_ol = 1nm
-        else
-            !do nothing
-        endif
-
-        if ((Jgr_qu-Jdec_qu).gt.0.0 .or. growthflag_qu == 1) then
-            growthflag_qu = 1
-            radius_qu = radius_qu + Vo_qu * (Jgr_qu-Jdec_qu) * dt !Initialize radius_ol = 1nm
-            !print *,'radius_qu = ', radius_qu
-        else
-            !do nothing
-        endif
-
-        if ((Jgr_py-Jdec_py).gt.0.0 .or. growthflag_py == 1) then
-            growthflag_py = 1
-            radius_py = radius_py + Vo_py * (Jgr_py-Jdec_py) * dt !Initialize radius_ol = 1nm
-        else
-            !do nothing
-        endif
-
-        if ((Jgr_ir-Jdec_ir) .gt. 0.0 .and. growthflag_ir == 0) then
-            !First time that dust growth is larger than destruction.
-            growthflag_ir = 1
-            radius_ir = radius_ir + Vo_ir * (Jgr_ir-Jdec_ir) * dt
-        elseif (growthflag_ir == 1) then
-            radius_ir = radius_ir + Vo_ir * (Jgr_ir-Jdec_ir) * dt !Initialize radius_ol = 1nm
-        else
-            !do nothing
-        endif
-
-        if ((Jgr_sc-Jdec_sc) .gt. 0.0 .and. growthflag_sc == 0) then
-            !First time that dust growth is larger than destruction.
-            growthflag_sc = 1
-            radius_sc = radius_sc + Vo_sc * (Jgr_sc-Jdec_sc) * dt
-        elseif (growthflag_sc == 1) then
-            radius_sc = radius_sc + Vo_sc * (Jgr_sc-Jdec_sc) * dt !Initialize radius_ol = 1nm
-        else
-            !do nothing
-        endif
-
-
-        if ((Jgr_carb-Jdec_carb) .gt. 0.0 .and. growthflag_carb == 0) then
-            !First time that dust growth is larger than destruction.
-            growthflag_carb = 1
-            radius_carb = radius_carb + Vo_carb * (Jgr_carb-Jdec_carb) * dt
-        elseif (growthflag_carb == 1) then
-            radius_carb = radius_carb + Vo_carb * (Jgr_carb-Jdec_carb) * dt !Initialize radius_ol = 1nm
-        else
-            !do nothing
-        endif
-
-
-        if (radius_ol.lt.0.0) then
-            radius_ol = 1.0E-7 !1 nanometer in cgs units
-        endif
-
-        if (radius_qu.lt.0.0) then
-            radius_qu = 1.0E-7 !1 nanometer in cgs units
-        endif
-
-        if (radius_py.lt.0.0) then
-            radius_py = 1.0E-7 !1 nanometer in cgs units
-        endif
-
-        if (radius_ir.lt.0.0) then
-            radius_ir = 1.0E-7 !1 nanometer in cgs units
-        endif
-
-        if (radius_sc.lt.0.0) then
-            radius_sc = 1.0E-7 !1 nanometer in cgs units
-        endif
-
-        if (radius_carb.lt.0.0) then
-            radius_carb = 1.0E-7 !1 nanometer in cgs units
-        endif
-
-        fol = 4.0 * pi * (radius_ol**3-a_init_dust**3) &
-            * 1.0d-13 / 3.0 / Vo_ol / eps(iSi) !fol
+        fol = max(0., 4.*pi*(r_ol**3-a_init_dust**3)*1.d-13/3./Vo_ol/eps(iSi)) !fol
         fol_max = min(1.0, min(0.5*eps(iMg)/eps(iSi),(eps(iOx)-eps(iC)-eps(iSi))/3./eps(iSi)))
-
         !%%fol_max is negative if C/O ratio is larger than 1
+        if (fol.gt.fol_max) fol = fol_max
+!%%PUEDE SER QUE fol sea negativo porque fol_max es negativo
 
-        if (fol.gt.fol_max) then
-            fol = fol_max
-        endif
-        if (fol.lt.0.0) then
-            fol = 0.0
-        endif
-        !if (fol.lt.0.0) then
-        !    fol = 0.0
-        !elseif (fol.gt.fol_max) then
-        !    fol = fol_max
-        !endif  !%%PUEDE SER QUE fol sea negativo porque fol_max es negativo
-
-        fqu = 4.0 * pi * (radius_qu**3-a_init_dust**3) &
-            * 1.0d-13 / 3.0 / Vo_qu / eps(iSi) !fol
+        fqu = max(0., 4.*pi*(r_qu**3-a_init_dust**3)*1.d-13/3./Vo_qu/eps(iSi)) !fqu
         fqu_max = min(1.0, (eps(iOx)-eps(iC)-eps(iSi))/eps(iSi))
+        if (fqu.gt.fqu_max) fqu = fqu_max
 
-        if (fqu.gt.fqu_max) then
-            fqu = fqu_max
-        endif
-        if (fqu.lt.0.0) then
-            fqu = 0.0
-        endif
-        !if (fqu.lt.0.0) then
-        !  fqu = 0.0
-        !elseif (fqu.gt.fqu_max) then
-        !    fqu = fqu_max
-        !endif
-
-        fpy = 4.0 * pi * (radius_py**3-a_init_dust**3) &
-        * 1.0d-13 / 3.0 / Vo_py / eps(iSi) !fol
+        fpy = max(0., 4.*pi*(r_py**3-a_init_dust**3)*1.d-13/3./Vo_py/eps(iSi)) !fpy
         fpy_max = min(1.0, min(eps(iMg)/eps(iSi),(eps(iOx)-eps(iC)-eps(iSi))/2./eps(iSi)))
+        if (fpy.gt.fpy_max) fpy = fpy_max
 
-        if (fpy.gt.fpy_max) then
-            fpy = fpy_max
-        endif
-        if (fpy.lt.0.0) then
-            fpy = 0.0
-        endif
-        !if (fpy.lt.0.0) then
-        !  fpy = 0.0
-        !elseif (fpy.gt.fpy_max) then
-        !    fpy = fpy_max
-        !endif
-
-        fir = 4.0 * pi * (radius_ir**3-a_init_dust**3) &
-        * 1.0d-13 / 3.0 / Vo_ir / eps(iFe) !fol
+        fir = max(0., 4.*pi*(r_ir**3-a_init_dust**3)*1.d-13/3./Vo_ir/eps(iFe)) !fir
         !fpy_max = min(1.0, min(eps(iMg)/eps(iSi),(eps(iOx)-eps(iC)-eps(iSi))/2./eps(iSi)))
-        if (fir.lt.0.0) then
-          fir = 0.0
-        endif
-        if (fir.gt.1.0) then
-            fir = 1.0d0
-        endif
+        if (fir.gt.1.0) fir = 1.0d0
 
-
-        fsc = 4.0 * pi * (radius_sc**3-a_init_dust**3) &
-        * 1.0d-13 / 3.0 / Vo_sc / eps(iSi) !fol
+        fsc = max(0., 4.*pi*(r_sc**3-a_init_dust**3)*1.d-13/3./Vo_sc/ eps(iSi)) !fsc
         !fpy_max = min(1.0, min(eps(iMg)/eps(iSi),(eps(iOx)-eps(iC)-eps(iSi))/2./eps(iSi)))
-        if (fsc.lt.0.0) then
-          fsc = 0.0
-        endif
-        if (fsc.gt.1.0) then
-            fsc = 1.0d0
-        endif
+        if (fsc.gt.1.0) fsc = 1.0d0
 
-        fcarb = 4.0 * pi * (radius_carb**3-a_init_dust**3) &
-        * 1.0d-13 / 3.0 / Vo_carb / eps(iC) !fol
+        fcarb = max(0., 4.*pi*(r_carb**3-a_init_dust**3)*1.d-13/3./Vo_carb/eps(iC)) !fcarb
         !fpy_max = min(1.0, min(eps(iMg)/eps(iSi),(eps(iOx)-eps(iC)-eps(iSi))/2./eps(iSi)))
-        if (fcarb.lt.0.0) then
-          fcarb = 0.0
-        endif
-        if (fcarb.gt.1.0) then
-            fcarb = 1.0d0
-        endif
+        if (fcarb.gt.1.0) fcarb = 1.0d0
 
 
         kappa_ol = ((6.147d-07 * T**2.444)**(-2) &
@@ -493,23 +315,24 @@ module dust_condensation
 
         kappa_dust = kappa_gas + fol * kappa_ol + fqu * kappa_qu &
                    + fpy * kappa_py + fir * kappa_ir + fsc * kappa_sc + fcarb * kappa_carb
-    end subroutine O_rich_nucleation
+
+     end subroutine dust_growth_condensation
 
 subroutine find_root(m, s, o, c, g, root) !, tol, max_iter)
     implicit none
     ! Input parameters
-    real(8), intent(in) :: m, s, o, g(3), c !m = eps(iMg), s = eps(iSi),o = eps(iOx), c = eps(iC)
-    real(8), intent(out) :: root(3)
-    real(8) :: tol = 1.0d-6!, intent(in) :: tol
+    real, intent(in) :: m, s, o, g(3), c !m = eps(iMg), s = eps(iSi),o = eps(iOx), c = eps(iC)
+    real, intent(out) :: root(3)
+    real :: tol = 1.0d-6!, intent(in) :: tol
     integer :: max_iter = 1000 !, intent(in) :: max_iter
 
     ! Local variables
-    real(8) :: x(3), fx(3), dfx(3), A(3), B(3), D(3)
+    real :: x(3), fx(3), dfx(3), A(3), B(3), D(3)
     !real(8) :: min_val
     integer :: i
 
     ! Calculate the interval boundaries
-    real(8) :: x_max(3)
+    real :: x_max(3)
 
     !%only valid when C/O is less than 1, otherwise there is no Silicate dust formation, all Oxygen is locked in CO
 

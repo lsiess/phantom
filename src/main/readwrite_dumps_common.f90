@@ -32,7 +32,8 @@ contains
 character(len=lenid) function fileident(firstchar,codestring)
  use part,    only:mhd,npartoftype,idust,gravity,lightcurve
  use options, only:use_dustfrac
- use dim,     only:use_dustgrowth,phantom_version_string,use_krome,store_dust_temperature,do_nucleation,h2chemistry
+ use dim,     only:use_dustgrowth,phantom_version_string,use_krome,store_dust_temperature,&
+                   do_nucleation,do_condensation,h2chemistry
  use gitinfo, only:gitsha
  character(len=2), intent(in) :: firstchar
  character(len=*), intent(in), optional :: codestring
@@ -55,6 +56,7 @@ character(len=lenid) function fileident(firstchar,codestring)
  if (use_krome) string = trim(string)//'+krome'
  if (store_dust_temperature) string = trim(string)//'+Tdust'
  if (do_nucleation) string = trim(string)//'+nucleation'
+ if (do_condensation) string = trim(string)//'+condensation'
  if (present(codestring)) then
     fileident = firstchar//':'//trim(codestring)//':'//trim(phantom_version_string)//':'//gitsha
  else
@@ -271,7 +273,7 @@ subroutine fill_header(sphNGdump,t,nparttot,npartoftypetot,nblocks,nptmass,hdr,i
  use boundary,       only:xmin,xmax,ymin,ymax,zmin,zmax
  use boundary_dyn,   only:dynamic_bdy,dxyz,rho_bkg_ini,irho_bkg_ini
  use dump_utils,     only:reset_header,add_to_rheader,add_to_header,add_to_iheader,num_in_header,dump_h,maxphead
- use dim,            only:use_dust,maxtypes,use_dustgrowth,do_nucleation,use_apr,&
+ use dim,            only:use_dust,maxtypes,use_dustgrowth,do_nucleation,do_condensation,use_apr,&
                           phantom_version_major,phantom_version_minor,phantom_version_micro,periodic,idumpfile
  use units,          only:udist,umass,utime,unit_Bfield
  use dust_formation, only:write_headeropts_dust_formation
@@ -343,7 +345,7 @@ subroutine fill_header(sphNGdump,t,nparttot,npartoftypetot,nblocks,nptmass,hdr,i
     call add_to_rheader(alphau,'alphau',hdr,ierr)
     call add_to_rheader(alphaB,'alphaB',hdr,ierr)
     call add_to_rheader(massoftype,'massoftype',hdr,ierr) ! array
-    if (do_nucleation) call write_headeropts_dust_formation(hdr,ierr)
+    if (do_nucleation .or. do_condensation) call write_headeropts_dust_formation(hdr,ierr)
     call add_to_rheader(Bextx,'Bextx',hdr,ierr)
     call add_to_rheader(Bexty,'Bexty',hdr,ierr)
     call add_to_rheader(Bextz,'Bextz',hdr,ierr)
@@ -399,7 +401,8 @@ end subroutine fill_header
 subroutine unfill_rheader(hdr,phantomdump,ntypesinfile,nptmass,&
                           tfile,hfactfile,alphafile,iprint,ierr)
  use io,             only:id,master
- use dim,            only:maxvxyzu,use_dust,use_dustgrowth,use_krome,do_nucleation,idumpfile
+ use dim,            only:maxvxyzu,use_dust,use_dustgrowth,use_krome,&
+                          do_nucleation,do_condensation,idumpfile
  use eos,            only:extract_eos_from_hdr, read_headeropts_eos
  use options,        only:ieos,iexternalforce
  use part,           only:massoftype,Bextx,Bexty,Bextz,mhd,periodic,&
@@ -456,7 +459,7 @@ subroutine unfill_rheader(hdr,phantomdump,ntypesinfile,nptmass,&
        write(*,*) '*** ERROR reading massoftype from dump header ***'
        ierr = 4
     endif
-    if (do_nucleation) then
+    if (do_nucleation .or. do_condensation) then
        call read_headeropts_dust_formation(hdr,ierr)
        if (ierr /= 0) ierr = 6
     endif
@@ -572,10 +575,10 @@ subroutine check_arrays(i1,i2,noffset,npartoftype,npartread,nptmass,nsinkpropert
                         got_krome_mols,got_krome_gamma,got_krome_mu,got_krome_T, &
                         got_abund,got_dustfrac,got_sink_data,got_sink_vels,got_sink_llist,got_Bxyz,got_psi, &
                         got_dustprop,got_pxyzu,got_VrelVf,got_dustgasprop,got_rad,got_radprop,got_Tdust, &
-                        got_eosvars,got_nucleation,got_iorig,got_apr_level,&
+                        got_eosvars,got_nucleation,got_condensation,got_iorig,got_apr_level,&
                         iphase,xyzh,vxyzu,pxyzu,alphaind,xyzmh_ptmass,Bevol,iorig,iprint,ierr)
- use dim,  only:maxp,maxvxyzu,maxalpha,maxBevol,mhd,h2chemistry,use_dustgrowth,gr,&
-                do_radiation,store_dust_temperature,do_nucleation,use_krome,use_apr,store_ll_ptmass
+ use dim,  only:maxp,maxvxyzu,maxalpha,maxBevol,mhd,h2chemistry,use_dustgrowth,gr,do_radiation,&
+                store_dust_temperature,do_nucleation,do_condensation,use_krome,use_apr,store_ll_ptmass
  use eos,  only:ieos,polyk,gamma,eos_is_non_ideal
  use part, only:maxphase,isetphase,set_particle_type,igas,ihacc,ihsoft,imacc,ilum,ikappa,&
                 xyzmh_ptmass_label,vxyz_ptmass_label,get_pmass,rhoh,dustfrac,ndusttypes,norig,&
@@ -583,14 +586,14 @@ subroutine check_arrays(i1,i2,noffset,npartoftype,npartread,nptmass,nsinkpropert
  use io,   only:warning,id,master
  use options,        only:alpha,use_dustfrac,use_var_comp
  use sphNGutils,     only:itype_from_sphNG_iphase,isphNG_accreted
- use dust_formation, only:init_nucleation
+ use dust_formation, only:init_dust_formation
  integer,         intent(in)    :: i1,i2,noffset,npartoftype(:),npartread,nptmass,nsinkproperties
  real,            intent(in)    :: massoftype(:),alphafile,tfile
  logical,         intent(in)    :: phantomdump,got_iphase,got_xyzh(:),got_vxyzu(:),got_alpha(:),got_dustprop(:)
  logical,         intent(in)    :: got_VrelVf,got_dustgasprop(:)
  logical,         intent(in)    :: got_abund(:),got_dustfrac(:),got_sink_data(:),got_sink_vels(:),got_sink_llist,got_Bxyz(:)
  logical,         intent(in)    :: got_krome_mols(:),got_krome_gamma,got_krome_mu,got_krome_T
- logical,         intent(in)    :: got_psi,got_Tdust,got_eosvars(:),got_nucleation(:),got_pxyzu(:),got_rad(:)
+ logical,         intent(in)    :: got_psi,got_Tdust,got_eosvars(:),got_nucleation(:),got_condensation(:),got_pxyzu(:),got_rad(:)
  logical,         intent(in)    :: got_radprop(:),got_iorig,got_apr_level
  integer(kind=1), intent(inout) :: iphase(:)
  integer(kind=8), intent(inout) :: iorig(:)
@@ -827,7 +830,16 @@ subroutine check_arrays(i1,i2,noffset,npartoftype,npartread,nptmass,nsinkpropert
  if (do_nucleation) then
     if (.not.all(got_nucleation)) then
        write(*,"(/,1x,a,/)") 'WARNING: DUST_NUCLEATION=yes but nucleation arrays not found in Phantom dump file'
-       call init_nucleation()
+       call init_dust_formation()
+    endif
+ endif
+ !
+ ! Dust condensation arrays
+ !
+ if (do_condensation) then
+    if (.not.all(got_condensation)) then
+       write(*,"(/,1x,a,/)") 'WARNING: DUST_NUCLEATION=yes but condensation arrays not found in Phantom dump file'
+       call init_dust_formation()
     endif
  endif
 

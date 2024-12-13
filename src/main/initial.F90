@@ -124,7 +124,7 @@ subroutine startrun(infile,logfile,evfile,dumpfile,noread)
  use mpiutils,         only:reduceall_mpi,barrier_mpi,reduce_in_place_mpi
  use dim,              only:maxp,maxalpha,maxvxyzu,maxptmass,maxdusttypes,itau_alloc,itauL_alloc,&
                             nalpha,mhd,mhd_nonideal,do_radiation,gravity,use_dust,mpi,do_nucleation,&
-                            use_dustgrowth,ind_timesteps,idumpfile,update_muGamma,use_apr
+                            do_condensation,use_dustgrowth,ind_timesteps,idumpfile,update_muGamma,use_apr
  use deriv,            only:derivs
  use evwrite,          only:init_evfile,write_evfile,write_evlog
  use energies,         only:compute_energies
@@ -194,7 +194,7 @@ subroutine startrun(infile,logfile,evfile,dumpfile,noread)
  use mf_write,         only:binpos_write,binpos_init
  use io,               only:ibinpos,igpos
 #endif
- use dust_formation,   only:init_nucleation,set_abundances
+ use dust_formation,   only:init_dust_formation,set_abundances
 #ifdef INJECT_PARTICLES
  use inject,           only:init_inject,inject_particles
  use partinject,       only:update_injected_particles
@@ -585,8 +585,8 @@ subroutine startrun(infile,logfile,evfile,dumpfile,noread)
     fxyz_ptmass_sinksink = 0.
  endif
  if (abs(time) <= tiny(0.)) then
-    !initialize nucleation array at the start of the run only
-    if (do_nucleation) call init_nucleation
+    !initialize array fr dust formation at the start of the run only
+    if (do_nucleation .or. do_condensation) call init_dust_formation
     !initialize optical depth array tau
     if (itau_alloc == 1) tau = 0.
     !initialize Lucy optical depth array tau_lucy

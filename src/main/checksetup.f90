@@ -38,7 +38,7 @@ contains
 !------------------------------------------------------------------
 subroutine check_setup(nerror,nwarn,restart)
  use dim,  only:maxp,maxvxyzu,periodic,use_dust,ndim,mhd,use_dustgrowth,h2chemistry, &
-                do_radiation,n_nden_phantom,mhd_nonideal,do_nucleation,use_krome
+                do_radiation,n_nden_phantom,mhd_nonideal,do_nucleation,do_condensation,use_krome
  use part, only:xyzh,massoftype,hfact,vxyzu,npart,npartoftype,nptmass,gravity, &
                 iphase,maxphase,isetphase,labeltype,igas,maxtypes,&
                 idust,xyzmh_ptmass,vxyz_ptmass,iboundary,isdeadh,ll,ideadhead,&
@@ -422,6 +422,10 @@ subroutine check_setup(nerror,nwarn,restart)
 !
  if (do_nucleation) call check_setup_nucleation(npart,nerror)
 !
+!--check condensation nucleation arrays
+!
+ if (do_condensation) call check_setup_condensation(npart,nerror)
+!
 !--check point mass setup
 !
  call check_setup_ptmass(nerror,nwarn,hmin)
@@ -699,6 +703,33 @@ subroutine check_setup_growth(npart,nerror)
  call check_NaN(npart,dustprop,'dust properties (dustprop array)',nerror)
 
 end subroutine check_setup_growth
+
+!------------------------------------------------------------------
+!+
+! check dust nucleation arrays are sensible
+!+
+!------------------------------------------------------------------
+subroutine check_setup_condensation(npart,nerror)
+ use part, only:condensation,condensation_label,n_condensation,icmu,icgamma
+ integer, intent(in)    :: npart
+ integer, intent(inout) :: nerror
+ integer :: i,j,nbad(n_condensation)
+
+ nbad = 0
+ !-- Check that all the parameters are > 0 when needed
+ do i=1,npart
+    if (condensation(icmu,i) < 0.1) nbad(icmu) = nbad(icmu) + 1
+    if (condensation(icgamma,i) < 1.) nbad(icgamma) = nbad(icgamma) + 1
+ enddo
+ do j=1,n_condensation
+    if (nbad(j) > 0) then
+       print*,'ERROR: ',nbad(j),' of ',npart,' particles with '//trim(condensation_label(j))//' <= 0'
+       nerror = nerror + 1
+    endif
+ enddo
+ call check_NaN(npart,condensation,'condensation array',nerror)
+
+end subroutine check_setup_condensation
 
 !------------------------------------------------------------------
 !+

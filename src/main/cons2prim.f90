@@ -204,11 +204,12 @@ subroutine cons2prim_everything(npart,xyzh,vxyzu,dvdx,rad,eos_vars,radprop,&
                                 Bevol,Bxyz,dustevol,dustfrac,alphaind)
  use part,              only:isdead_or_accreted,massoftype,igas,rhoh,igasP,iradP,iradxi,ics,imu,iX,iZ,&
                              iohm,ihall,nden_nimhd,eta_nimhd,iambi,get_partinfo,iphase,this_is_a_test,&
-                             ndustsmall,itemp,ikappa,idmu,idgamma,icv,aprmassoftype,apr_level,isionised
- use part,              only:nucleation,igamma
+                             ndustsmall,itemp,ikappa,idmu,idgamma,icmu,icgamma,icv,aprmassoftype,&
+                             apr_level,isionised
+ use part,              only:nucleation,igamma,condensation
  use eos,               only:equationofstate,ieos,eos_outputs_mu,done_init_eos,init_eos,gmw,X_in,Z_in,gamma
  use radiation_utils,   only:radiation_equation_of_state,get_opacity
- use dim,               only:mhd,maxvxyzu,maxphase,maxp,use_dustgrowth,&
+ use dim,               only:mhd,maxvxyzu,maxphase,maxp,use_dustgrowth,do_condensation,&
                              do_radiation,nalpha,mhd_nonideal,do_nucleation,use_krome,update_muGamma,use_apr
  use nicil,             only:nicil_update_nimhd,nicil_translate_error,n_warn
  use io,                only:fatal,real4,warning
@@ -243,10 +244,10 @@ subroutine cons2prim_everything(npart,xyzh,vxyzu,dvdx,rad,eos_vars,radprop,&
 
 !$omp parallel do default (none) &
 !$omp shared(xyzh,vxyzu,npart,rad,eos_vars,radprop,Bevol,Bxyz,apr_level) &
-!$omp shared(ieos,nucleation,nden_nimhd,eta_nimhd) &
+!$omp shared(ieos,nucleation,condensation,nden_nimhd,eta_nimhd) &
 !$omp shared(alpha,alphamax,iphase,maxphase,maxp,massoftype,aprmassoftype,isionised) &
 !$omp shared(use_dustfrac,dustfrac,dustevol,this_is_a_test,ndustsmall,alphaind,dvdx) &
-!$omp shared(iopacity_type,use_var_comp,do_nucleation,update_muGamma,implicit_radiation) &
+!$omp shared(iopacity_type,use_var_comp,do_nucleation,do_condensation,update_muGamma,implicit_radiation) &
 !$omp private(i,spsound,rhoi,p_on_rhogas,rhogas,gasfrac,uui) &
 !$omp private(Bxi,Byi,Bzi,psii,xi_limiteri,Bi,temperaturei,ierr,pmassi) &
 !$omp private(xi,yi,zi,hi) &
@@ -297,6 +298,10 @@ subroutine cons2prim_everything(npart,xyzh,vxyzu,dvdx,rad,eos_vars,radprop,&
        if (do_nucleation) then
           mui    = nucleation(idmu,i)
           gammai = nucleation(idgamma,i)
+       endif
+       if (do_condensation) then
+          mui    = condensation(icmu,i)
+          gammai = condensation(icgamma,i)
        endif
        if (update_muGamma) then
           mui    = eos_vars(imu,i)

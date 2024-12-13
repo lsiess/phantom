@@ -29,24 +29,28 @@ module dust_formation
 
  public :: set_abundances,calc_kappa_dust,calc_kappa_bowen,&
       read_options_dust_formation,write_options_dust_formation,&
-      calc_Eddington_factor,calc_muGamma,init_muGamma,init_nucleation,&
+      calc_Eddington_factor,calc_muGamma,init_muGamma,init_dust_formation,&
       write_headeropts_dust_formation,read_headeropts_dust_formation
 !
 !--runtime settings for this module
 !
  real, public :: kappa_gas   = 2.d-4
+ real, public :: wind_CO_ratio = 2.
+ real, parameter, public :: a_init_dust = 1.0d-7 !cgs units 1nm
 
  private
 
  character(len=*), parameter :: label = 'dust_formation'
- real :: wind_CO_ratio = 2.
  real :: bowen_kmax  = 2.7991
  real :: bowen_Tcond = 1500.
  real :: bowen_delta = 60.
 
 contains
 
+!----------------------------------------------------------------
 subroutine set_abundances
+!----------------------------------------------------------------
+! initialize abundances
   use dim, only: do_nucleation,do_condensation
   use chemistry_moments, only:set_abundances_moments
   use chemistry_condensation, only:set_abundances_condensation
@@ -58,7 +62,9 @@ subroutine set_abundances
   endif
 end subroutine set_abundances
 
+!----------------------------------------------------------------
 subroutine init_muGamma(rho_cgs, T, mu, gamma, pH_tot, pH, pH2)
+!----------------------------------------------------------------
 ! all quantities are in cgs
  use dim, only: do_nucleation,do_condensation
  use chemistry_moments, only:init_muGamma_moments
@@ -74,7 +80,9 @@ subroutine init_muGamma(rho_cgs, T, mu, gamma, pH_tot, pH, pH2)
  endif
 end subroutine init_muGamma
 
+!----------------------------------------------------------------
 subroutine calc_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot, pH2, pressure)
+!----------------------------------------------------------------
 ! all quantities are in cgs
  use dim, only: do_nucleation,do_condensation
  use chemistry_moments, only:calc_muGamma_moments
@@ -91,25 +99,39 @@ subroutine calc_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot, pH2, pressure)
  endif
 end subroutine calc_muGamma
 
-subroutine init_nucleation
- use part,  only:npart,nucleation,n_nucleation,idmu,idgamma
- use chemistry_moments, only :set_abundances_moments
+!----------------------------------------------------------------
+subroutine init_dust_formation
+!----------------------------------------------------------------
+!initialize dust formation arrays
+ use dim, only: do_nucleation,do_condensation
+ use part,  only:npart,nucleation,n_nucleation,idmu,idgamma,condensation,n_condensation,icgamma
  use eos,   only:gamma,gmw
  integer :: i
- real :: JKmuS(n_nucleation)
+ real :: tmp_nucleation(n_nucleation),tmp_condensation(n_condensation)
 
- call set_abundances_moments(wind_CO_ratio)
+ call set_abundances
 
- !initialize nucleation array
  gamma = 5./3.
- JKmuS = 0.
- JKmuS(idmu)    = gmw
- JKmuS(idgamma) = gamma
- do i=1,npart
-    nucleation(:,i) = JKmuS(:)
- enddo
+ !initialize nucleation array
+ if (do_nucleation) then
+    tmp_nucleation = 0.
+    tmp_nucleation(idmu)    = gmw
+    tmp_nucleation(idgamma) = gamma
+    do i=1,npart
+       nucleation(:,i) = tmp_nucleation(:)
+    enddo
+ elseif (do_condensation) then
+    tmp_condensation = 0.
+    tmp_condensation(1:6) = a_init_dust !initial dust radius (1nm)
+    tmp_condensation(icgamma) = gamma
+    do i=1,npart
+       condensation(:,i) = tmp_condensation(:)
+    enddo
+ else
+   stop '[S-init_dust_formation] something went wrong ??'
+ endif
 
-end subroutine init_nucleation
+end subroutine init_dust_formation
 
 !------------------------------------
 !
@@ -181,48 +203,45 @@ end function calc_Eddington_factor
 !+
 !-----------------------------------------------------------------------
 subroutine write_headeropts_dust_formation(hdr,ierr)
- use dump_utils,        only:dump_h,add_to_rheader
- use chemistry_moments, only:Aw,mass_per_H,eps
+ use chemistry_moments, only:write_headeropts_dust_moments
+ use chemistry_condensation, only:write_headeropts_dust_condensation
+ use dump_utils, only:dump_h
+  use dim, only: do_nucleation,do_condensation
+
  type(dump_h), intent(inout) :: hdr
  integer,      intent(out)   :: ierr
 
-! initial gas composition for dust formation
- call set_abundances
- call add_to_rheader(eps,'epsilon',hdr,ierr) ! array
- call add_to_rheader(Aw,'Amean',hdr,ierr)    ! array
- call add_to_rheader(mass_per_H,'mass_per_H',hdr,ierr) ! real
+ if (do_condensation) then
+    call write_headeropts_dust_condensation(wind_CO_ratio,hdr,ierr)
+ elseif (do_nucleation) then
+    call write_headeropts_dust_moments(wind_CO_ratio,hdr,ierr)
+ endif
 
 end subroutine write_headeropts_dust_formation
 
+
 !-----------------------------------------------------------------------
 !+
-!  read relevant options from the header of the dump file
+!  write relevant options to the header of the dump file
 !+
 !-----------------------------------------------------------------------
 subroutine read_headeropts_dust_formation(hdr,ierr)
- use dump_utils, only:dump_h,extract
- use chemistry_moments, only:Aw,mass_per_H,eps,nelements
- type(dump_h), intent(in)  :: hdr
- integer,      intent(out) :: ierr
- real :: dum(nElements)
+ use chemistry_moments, only:read_headeropts_dust_moments
+ use chemistry_condensation, only:read_headeropts_dust_condensation
+ use dump_utils, only:dump_h
+  use dim, only: do_nucleation,do_condensation
 
+ type(dump_h), intent(inout) :: hdr
+ integer,      intent(out)   :: ierr
 
- ierr = 0
- call extract('mass_per_H',mass_per_H,hdr,ierr) ! real
- ! it is likely that your dump was generated with an old version of phantom
- ! and the chemical properties not stored. restore and save the default values
- if (mass_per_H < tiny(0.)) then
-    print *,'reset dust chemical network properties'
-    call set_abundances
-    call extract('epsilon',dum(1:nElements),hdr,ierr) ! array
-    call extract('Amean',dum(1:nElements),hdr,ierr) ! array
- else
-    call extract('epsilon',eps(1:nElements),hdr,ierr) ! array
-    call extract('Amean',Aw(1:nElements),hdr,ierr) ! array
+ if (do_condensation) then
+    call read_headeropts_dust_condensation(wind_CO_ratio,hdr,ierr)
+ elseif (do_nucleation) then
+    call read_headeropts_dust_moments(wind_CO_ratio,hdr,ierr)
  endif
 
-
 end subroutine read_headeropts_dust_formation
+
 
 !-----------------------------------------------------------------------
 !+

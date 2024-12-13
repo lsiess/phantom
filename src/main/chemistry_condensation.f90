@@ -7,7 +7,8 @@
 module chemistry_condensation
 
  implicit none
- public :: set_abundances_condensation,init_muGamma_condensation,calc_muGamma_condensation,network
+ public :: set_abundances_condensation,init_muGamma_condensation,calc_muGamma_condensation,&
+      network,write_headeropts_dust_condensation,read_headeropts_dust_condensation
 
  !      real :: wind_CO_ratio = 0.34 !Based on Ferrarotti and Gail 2002
 
@@ -206,91 +207,125 @@ subroutine set_abundances_condensation(wind_CO_ratio)
  !XHe = atomic_mass_unit*eps(iHe)/mass_per_H ! He mass fraction
 end subroutine set_abundances_condensation
 
+!-----------------------------------------------------------------------
+!+
+!  write relevant options to the header of the dump file
+!+
+!-----------------------------------------------------------------------
+subroutine write_headeropts_dust_condensation(wind_CO_ratio,hdr,ierr)
+ use dump_utils,        only:dump_h,add_to_rheader
+ type(dump_h), intent(inout) :: hdr
+ integer,      intent(out)   :: ierr
+ real, intent(in) :: wind_CO_ratio
 
-subroutine network(T,rho_cgs,mu,gamma,abundance,wind_CO_ratio,pH_tot,fol,fpy,fqu,fir, fsc, fcarb,pressure_cgs)
+! initial gas composition for dust formation
+ call set_abundances_condensation(wind_CO_ratio)
+ call add_to_rheader(eps,'epsilon',hdr,ierr) ! array
+ call add_to_rheader(Aw,'Amean',hdr,ierr)    ! array
+ call add_to_rheader(mass_per_H,'mass_per_H',hdr,ierr) ! real
+
+end subroutine write_headeropts_dust_condensation
+
+!-----------------------------------------------------------------------
+!+
+!  read relevant options from the header of the dump file
+!+
+!-----------------------------------------------------------------------
+subroutine read_headeropts_dust_condensation(wind_CO_ratio,hdr,ierr)
+ use dump_utils, only:dump_h,extract
+ type(dump_h), intent(in)  :: hdr
+ integer,      intent(out) :: ierr
+ real :: dum(nElements)
+ real, intent(in) :: wind_CO_ratio
+
+ ierr = 0
+ call extract('mass_per_H',mass_per_H,hdr,ierr) ! real
+ ! it is likely that your dump was generated with an old version of phantom
+ ! and the chemical properties not stored. restore and save the default values
+ if (mass_per_H < tiny(0.)) then
+    print *,'reset dust chemical network properties'
+    call set_abundances_condensation(wind_CO_ratio)
+    call extract('epsilon',dum(1:nElements),hdr,ierr) ! array
+    call extract('Amean',dum(1:nElements),hdr,ierr) ! array
+ else
+    call extract('epsilon',eps(1:nElements),hdr,ierr) ! array
+    call extract('Amean',Aw(1:nElements),hdr,ierr) ! array
+ endif
+end subroutine read_headeropts_dust_condensation
+
+!-----------------------------------------------------------------------
+!+
+!  driver to solve the chemical network
+!+
+!-----------------------------------------------------------------------
+subroutine network(T,rho_cgs,mu,gamma,wind_CO_ratio,pH_tot,fol,fpy,fqu,fir, fsc, fcarb,abundance,pressure_cgs)
  use physcon, only:patm,kboltz
  real, intent(in)     :: wind_CO_ratio, fol, fpy, fqu, fir, fsc, fcarb !rho_cgs
  real, intent(out)    :: mu,gamma,pH_tot
- real, intent(out)    :: abundance(ncols)
+ real, intent(out),optional :: abundance(ncols)
  real, intent(inout)  :: T, rho_cgs
  real, intent(in), optional :: pressure_cgs
 !       real :: epsC, nH_tot
 !       real :: v1
  real :: rho_cgs_tmp !, !pH_tot
  real :: KH2 !LUIS, pH2
- integer :: num, j
+ integer :: j
  real, dimension(nMolecules)    :: pmol  !, nmol=0.
  real                           :: pelm(nElements)
 
        pelm = 0.
        pmol = 0.
-       num =0
 
-       call set_abundances_condensation(wind_CO_ratio)
-       print *,'SHOULD  BE DONE ONLY ONCE '
+      !  call set_abundances_condensation(wind_CO_ratio)
+      !  print *,'SHOULD  BE DONE ONLY ONCE '
 
-      !if (present(pressure_cgs)) then
-      !   call init_muGamma_condensation(rho_cgs,T,mu,gamma,pH_tot,pelm(iH),pmol(iH2),pressure_cgs)
-      !else
-         call init_muGamma_condensation(rho_cgs,T,mu,gamma,pH_tot,pelm(iH),pmol(iH2))
-      !endif
+      ! !if (present(pressure_cgs)) then
+      ! !   call init_muGamma_condensation(rho_cgs,T,mu,gamma,pH_tot,pelm(iH),pmol(iH2),pressure_cgs)
+      ! !else
+      !    call init_muGamma_condensation(rho_cgs,T,mu,gamma,pH_tot,pelm(iH),pmol(iH2))
+      ! !endif
 
       pelm(iHe) = eps(iHe)*pH_tot
-      call chemical_equilibrium_light(rho_cgs, T, pmol, pelm, mu, gamma, &
-      wind_CO_ratio, pH_tot, fol, fpy, fqu, fir, fsc, fcarb) !, nMolecules)
+      call chemical_equilibrium(rho_cgs, T, pmol, pelm, mu, gamma, &
+           wind_CO_ratio, pH_tot, fol, fpy, fqu, fir, fsc, fcarb) !, nMolecules)
 
+      if (present(abundance)) then
       !convert the pressure of the molecules in number density
-       do j=1,ncols-9
-       !if (j.le.69) then
-          abundance(j) = pmol(j)*patm/(kboltz*T)  !*patm
-          if (abundance(j).lt.1.0E-99) then
-             abundance(j) = 0.0E+00
-          endif
-       enddo
+         do j=1,ncols-9
+         !if (j.le.69) then
+            abundance(j) = max(1.d-50,pmol(j)*patm/(kboltz*T))  !*patm
+         enddo
 
-       !convert the pressure of the elements in number density
-       abundance(70) = pelm(iH)*patm/(kboltz*T) !*patm
-       abundance(71) = pelm(iHe)*patm/(kboltz*T) !*patm
-       abundance(72) = pelm(iC)*patm/(kboltz*T) !*patm
-       abundance(73) = pelm(iOx)*patm/(kboltz*T) !*patm
-       abundance(74) = pelm(iN)*patm/(kboltz*T) !*patm
-       abundance(75) = pelm(iSi)*patm/(kboltz*T) !*patm
-       abundance(76) = pelm(iS)*patm/(kboltz*T) !*patm
-       abundance(77) = pelm(iFe)*patm/(kboltz*T) !*patm
-       abundance(78) = pelm(iMg)*patm/(kboltz*T) !*patm
+         !convert the pressure of the elements in number density
+         abundance(70) = max(1.d-50,pelm(iH)*patm/(kboltz*T)) !*patm
+         abundance(71) = max(1.d-50,pelm(iHe)*patm/(kboltz*T)) !*patm
+         abundance(72) = max(1.d-50,pelm(iC)*patm/(kboltz*T)) !*patm
+         abundance(73) = max(1.d-50,pelm(iOx)*patm/(kboltz*T)) !*patm
+         abundance(74) = max(1.d-50,pelm(iN)*patm/(kboltz*T)) !*patm
+         abundance(75) = max(1.d-50,pelm(iSi)*patm/(kboltz*T)) !*patm
+         abundance(76) = max(1.d-50,pelm(iS)*patm/(kboltz*T)) !*patm
+         abundance(77) = max(1.d-50,pelm(iFe)*patm/(kboltz*T)) !*patm
+         abundance(78) = max(1.d-50,pelm(iMg)*patm/(kboltz*T)) !*patm
 
-       do j=70,78
-         if (abundance(j).lt.1.0E-99) then
-            abundance(j) = 0.0E+00
-         endif
-       enddo
+         !abundance(iH2O) = abundance(iH2O) - (3.*fol + 2.*fpy + fqu) * eps(iSi)*patm *pH_tot/(kboltz*T)
+         !abundance(iSiO) = abundance(iSiO) - (fol + fpy + fqu) * eps(iSi)*patm * pH_tot/(kboltz*T)
+         !abundance(78) = abundance(78) - (2.*fol + fpy) * eps(iSi)*patm * pH_tot/(kboltz*T)
+         !if (abundance(iH2O) .lt. 0.0) abundance(iH2O) = 0.0
+         !if (abundance(iSiO) .lt. 0.0) abundance(iSiO) = 0.0
+         !if (abundance(78) .lt. 0.0)   abundance(78) = 0.0
 
-       !abundance(iH2O) = abundance(iH2O) - (3.*fol + 2.*fpy + fqu) * eps(iSi)*patm *pH_tot/(kboltz*T)
-       !abundance(iSiO) = abundance(iSiO) - (fol + fpy + fqu) * eps(iSi)*patm * pH_tot/(kboltz*T)
-       !abundance(78) = abundance(78) - (2.*fol + fpy) * eps(iSi)*patm * pH_tot/(kboltz*T)
+         !!Update the abundance of Si and Oxygen.
 
-       !!Update the abundance of Si and Oxygen.
-
-       !if (abundance(iH2O) .lt. 0.0) then
-       !  abundance(iH2O) = 0.0
-       !endif
-
-       !if (abundance(iSiO) .lt. 0.0) then
-       !  abundance(iSiO) = 0.0
-       !endif
-
-       !if (abundance(78) .lt. 0.0) then
-       !  abundance(78) = 0.0
-       !endif
+       endif
 
 end subroutine network
 
 !---------------------------------------------------------------
 !
-!  Compute carbon chemical equilibrum abundance in the gas phase
+!  Compute partial pressures assuming chemical equilibrum
 !
 !---------------------------------------------------------------
-subroutine chemical_equilibrium_light(rho_cgs,T,pmol,pelm,mu,gamma,&
+subroutine chemical_equilibrium(rho_cgs,T,pmol,pelm,mu,gamma,&
      wind_CO_ratio, pH_tot, fol, fpy, fqu, fir, fsc, fcarb) !,nMolecules)
 ! all quantities are in cgs
  !real, intent(in)    :: rho_cgs !,epsC
@@ -526,7 +561,7 @@ endif !wind_CO
     if (nit == 200) exit
 
  enddo
-end subroutine chemical_equilibrium_light
+end subroutine chemical_equilibrium
 
 
 !pure real function solve_q(a, b, c)
