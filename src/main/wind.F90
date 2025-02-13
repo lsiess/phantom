@@ -29,7 +29,7 @@ module wind
 
  private
  ! Shared variables
- real, parameter :: Tdust_stop = 0.01  ! Temperature at outer boundary of wind simulation
+ real, parameter :: Tdust_stop = 0.001  ! Temperature at outer boundary of wind simulation
  real, parameter :: dtmin = 1.d-3      ! Minimum allowed timsestep (for 1D integration)
  integer, parameter :: wind_emitting_sink = 1
  character(len=*), parameter :: label = 'wind'
@@ -935,7 +935,6 @@ subroutine save_windprofile(r0, v0, T0, rout, tend, tcross, filename)
  real, intent(in) :: r0, v0, T0, tend, rout
  real, intent(out) :: tcross          !time to cross the entire integration domain
  character(*), intent(in) :: filename
- real, parameter :: Tdust_stop = 1.   ! Temperature at outer boundary of wind simulation
  integer, parameter :: nlmax = 8192   ! maxium number of steps store in the 1D profile
  real :: time_end, tau_lucy_init
  real :: r_incr,v_incr,T_incr,mu_incr,gamma_incr,r_base,v_base,T_base,mu_base,gamma_base,eps
@@ -943,6 +942,7 @@ subroutine save_windprofile(r0, v0, T0, rout, tend, tcross, filename)
  real, allocatable :: JKmuS_temp(:,:)
  type(wind_state) :: state
  integer ::iter,itermax,nwrite,writeline
+ character(len=64) :: cstop
 
  if (.not. allocated(trvurho_temp)) allocate (trvurho_temp(5,nlmax))
  if (idust_opacity == 2 .and. .not. allocated(JKmuS_temp)) allocate (JKmuS_temp(n_nucleation,nlmax))
@@ -1004,9 +1004,12 @@ subroutine save_windprofile(r0, v0, T0, rout, tend, tcross, filename)
     if (state%r > rout) tcross = min(state%time,tcross)
  enddo
  if (state%time/time_end < .3) then
-    write(*,'("[WARNING] wind integration failed : t/tend = ",f7.5,", dt/tend = ",f7.5,&
-    &" Tgas = ",f6.0,", r/rout = ",f7.5," iter = ",i7,/)') &
-    state%time/time_end,state%dt/time_end,state%Tg,state%r/rout,iter
+    if (state%Tg < Tdust_stop) cstop = 'temperature reached lower limit (Tdust_stop)'
+    if (iter > itermax) cstop = 'maximum iteration reached (itermax)'
+    if (nlmax < writeline) cstop = 'wind storage exceeds limit (nlmax)'
+    write(*,'("[WARNING] wind integration failed because ",A," : t/tend = ",f7.5,", dt/tend = ",&
+    &f7.5," Tgas = ",f6.0,", r/rout = ",f7.5," iter = ",i7,/)') trim(cstop), &
+    state%time/time_end,state%dt/time_end,state%Tg,state%r/max(state%r,rout),iter
  else
     print *,'integration successful, #',iter,' iterations required, rout = ',state%r/au
  endif

@@ -248,7 +248,7 @@ subroutine init_inject(ierr)
     time_between_spheres = mass_of_spheres/wind_mass_rate_low
  endif
  if (time_between_spheres > tmax)  then
-    call logging(initial_wind_velocity_cgs,rsonic,Tsonic,Tboundary)
+    call logging(initial_wind_velocity_cgs,rsonic,Tsonic,Tboundary,time_between_spheres)
     print *,'time_between_spheres = ',time_between_spheres,' < tmax = ',tmax
     call fatal(label,'no shell ejection : tmax < time_between_spheres')
  endif
@@ -291,14 +291,14 @@ subroutine init_inject(ierr)
  xyzmh_ptmass(imloss,wind_emitting_sink) = wind_mass_rate
 
  ! logging
- call logging(initial_wind_velocity_cgs,rsonic,Tsonic,Tboundary)
+ call logging(initial_wind_velocity_cgs,rsonic,Tsonic,Tboundary,tcross)
 
 end subroutine init_inject
 
 
 !-----------------------------------------------------------------------
 
-subroutine logging(initial_wind_velocity_cgs,rsonic,Tsonic,Tboundary)
+subroutine logging(initial_wind_velocity_cgs,rsonic,Tsonic,Tboundary,tcross)
 
 !-----------------------------------------------------------------------
 
@@ -308,18 +308,19 @@ subroutine logging(initial_wind_velocity_cgs,rsonic,Tsonic,Tboundary)
  use ptmass_radiation,  only:alpha_rad
  use part,              only:xyzmh_ptmass, iReff, ispinx, ispiny, ispinz
 
- real, intent(in) :: initial_wind_velocity_cgs,rsonic,Tsonic,Tboundary
+ real, intent(in) :: initial_wind_velocity_cgs,rsonic,Tsonic,Tboundary,tcross
  integer :: ires_min
  real :: vesc,wind_rotation_speed,rotation_speed_crit
 
  vesc = sqrt(2.*Gg*Mstar_cgs*(1.-alpha_rad)/Rstar_cgs)
- write (*,'(/,2(3x,A,es11.4),A,i7)')&
+ write (*,'(/,3(3x,A,es11.4))')&
       'mass_of_particles     (cu) : ',mass_of_particles,&
       'time_between_spheres  (cu) : ',time_between_spheres,&
-      'particles per sphere       : ',particles_per_sphere
- write (*,'(2(3x,A,es11.4))') &
+      'crossing time         (cu) : ',tcross
+ write (*,'(2(3x,A,es11.4),3x,A,i7)') &
       'distance between spheres   : ',wind_shell_spacing*neighbour_distance,&
-      'distance between injection : ',time_between_spheres*wind_injection_speed
+      'distance between injection : ',time_between_spheres*wind_injection_speed,&
+      'particles per sphere       : ',particles_per_sphere
  write (*,'(2(3x,A,es11.4))') &
       'wind_temperature           : ',wind_temperature,&
       'injection_radius (au)      : ',Rinject*au/udist,&
@@ -447,9 +448,8 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,&
     !release background shells
     ipart = igas
     if (.not.released) then
-       if (nfill_domain > 0) print '(/,A,i7,3x,"Mdot : ",es12.4)','release particles :',&
-            npart-nreleased*particles_per_sphere+1,npart,&
-            wind_mass_rate/(solarm/umass)*(years/utime)
+       if (nfill_domain > 0) print '(/,A,i7,3x,"Mdot : ",es12.4)','background particles :',&
+            nreleased*particles_per_sphere,wind_mass_rate/(solarm/umass)*(years/utime)
        do i = max(1,npart-nreleased*particles_per_sphere)+1,npart
           if (isothermal) then
              call add_or_update_particle(ipart,xyzh(1:3,i),vxyzu(1:3,i),xyzh(4,i),dum,&
@@ -537,6 +537,7 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,&
     endif
     !cs2max = max(cs2max,gamma*(gamma-1)*u)
  enddo
+ if (nfill_domain > 0 .and. outer_sphere == 1) print *,'Injecting background particles up to r = ',r
 
  ! update sink particle properties
  if (nptmass > 0 .and. wind_emitting_sink <= nptmass) then
