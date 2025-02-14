@@ -928,12 +928,12 @@ end subroutine interp_wind_profile
 !  Integrate the steady wind equation and save wind profile to a file
 !
 !-----------------------------------------------------------------------
-subroutine save_windprofile(r0, v0, T0, rout, tend, tcross, filename)
+subroutine save_windprofile(r0, v0, T0, rout, rfill, tend, tcross, tfill, filename)
  use physcon,          only:au
  use dust_formation,   only:idust_opacity
  use ptmass_radiation, only:iget_tdust
- real, intent(in) :: r0, v0, T0, tend, rout
- real, intent(out) :: tcross          !time to cross the entire integration domain
+ real, intent(in) :: r0, v0, T0, tend, rout, rfill
+ real, intent(out) :: tcross,tfill          !time to cross the entire integration domain
  character(*), intent(in) :: filename
  integer, parameter :: nlmax = 8192   ! maxium number of steps store in the 1D profile
  real :: time_end, tau_lucy_init
@@ -965,6 +965,7 @@ subroutine save_windprofile(r0, v0, T0, rout, tend, tcross, filename)
  iter      = 0
  itermax   = int(huge(itermax)/10.) !this number is huge but may be needed for RK6 solver
  tcross    = huge(0.)
+ tfill     = huge(0.)
  writeline = 0
 
  r_base     = state%r
@@ -973,7 +974,7 @@ subroutine save_windprofile(r0, v0, T0, rout, tend, tcross, filename)
  mu_base    = state%mu
  gamma_base = state%gamma
 
- do while(state%time < time_end .and. iter < itermax .and. state%Tg > Tdust_stop .and. writeline < nlmax)
+ do while((state%r < rfill .or. state%time < time_end) .and. iter < itermax .and. state%Tg > Tdust_stop .and. writeline < nlmax)
     iter = iter+1
     call wind_step(state)
 
@@ -1001,7 +1002,8 @@ subroutine save_windprofile(r0, v0, T0, rout, tend, tcross, filename)
        if (idust_opacity == 2) JKmuS_temp(:,writeline) = (/state%JKmuS(1:n_nucleation)/)
 
     endif
-    if (state%r > rout) tcross = min(state%time,tcross)
+    if (state%r > rout)  tcross = min(state%time,tcross)
+    if (state%r < rfill) tfill  = state%time
  enddo
  if (state%time/time_end < .3) then
     if (state%Tg < Tdust_stop) cstop = 'temperature reached lower limit (Tdust_stop)'
