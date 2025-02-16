@@ -68,8 +68,8 @@ module inject
  real :: u_to_temperature_ratio,wind_mass_rate,piston_velocity,wind_velocity,&
       omega_osc,mass_of_spheres,time_between_spheres,neighbour_distance,&
       dr3,Rstar_cgs,Rinject,wind_injection_radius,wind_injection_speed,rho_ini,&
-      deltaR_osc,Mstar_cgs, time_period,orbital_period,initial_wind_velocity_cgs,&
-      rho_factor,dt_shift,wind_mass_rate_alt,wind_mass_rate_low
+      deltaR_osc,Mstar_cgs,time_period,orbital_period,initial_wind_velocity_cgs,&
+      wind_mass_rate_alt,wind_mass_rate_low
  integer :: particles_per_sphere,nwall_particles,iresolution,nwrite
 
  logical :: pulsating_wind
@@ -102,9 +102,6 @@ subroutine init_inject(ierr)
 
  if (icooling > 0) nwrite = nwrite+1
  ierr = 0
- dt_shift = 0.
- rho_factor = 1.
-
 
  Tstar              = xyzmh_ptmass(iTeff,wind_emitting_sink)
  Rstar_cgs          = xyzmh_ptmass(iReff,wind_emitting_sink)*udist
@@ -332,7 +329,7 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,&
  integer :: outer_sphere, inner_sphere, inner_boundary_sphere, first_particle, i, ipart, &
             nreleased, nboundaries
  real    :: local_time, GM, r, v, u, rho, e, mass_lost, x0(3), v0(3), inner_radius, fdone, dum
- real    :: tolv,dtinject_next
+ real    :: tolv,dtinject_next,dt_shift,rho_factor
  character(len=*), parameter :: label = 'inject_particles'
  logical, save :: released = .false.
  real :: JKmuS(n_nucleation)
@@ -392,6 +389,9 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,&
 
 ! time varying mass loss rate
  dtinject_next = time_between_spheres
+ dt_shift = 0.
+ rho_factor = 1.
+
  if (wind_type == 3 .and. dt_alt_rate > 0.) then
     wind_mass_rate = calc_wind_mass_loss_rate(time)
     rho_factor = wind_mass_rate/wind_mass_rate_low !also implemenbt change in velocity
