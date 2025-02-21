@@ -163,7 +163,7 @@ subroutine init_inject(ierr)
 !wind_injection_radius = max(wind_injection_radius_au * au, Rstar_cgs) / udist
 !Rstar = min(wind_injection_radius_au*au,Rstar_cgs)
 
-! if trans-sonic wind, integrate wind equation to get initial velocity and sonic radius to set resolution
+! integrate wind equation to get initial velocity and sonic radius to set resolution
     rinject = initial_rinject*udist
     call setup_wind(Mstar_cgs, wind_mass_rate, u_to_temperature_ratio, rinject,&
          wind_temperature,initial_wind_velocity_cgs,rsonic,tsonic,wind_type)
@@ -217,6 +217,89 @@ subroutine init_inject(ierr)
 
 end subroutine init_inject
 
+
+!-----------------------------------------------------------------------
+!+
+!  set particle mass or resolution depending on iwind_resolution
+!+
+!-----------------------------------------------------------------------
+subroutine set_wind_resolution(rsonic,tsonic)
+
+ use part,        only:massoftype,igas,iboundary,npart
+ use io,          only:fatal
+ use units,       only:udist
+ use timestep,    only:tmax,time
+ use physcon,     only:pi
+ use injectutils, only:get_sphere_resolution,get_parts_per_sphere,get_neighb_distance
+
+ real, intent(in) :: rsonic,tsonic
+
+ integer :: nzones_per_sonic_point
+ real :: mV_on_MdotR,check_mass,dr,dist_to_sonic_point,mass_of_particles
+
+ check_mass = massoftype(igas)
+ if (iwind_resolution == 0) then
+    !
+    ! resolution is specified in terms of number of smoothing lengths
+    ! per distance to sonic point (if trans-sonic wind)
+    !
+    if (wind_type == 1) then
+       nzones_per_sonic_point = 8
+       dist_to_sonic_point = rsonic/udist-rinject
+       dr = abs(dist_to_sonic_point)/nzones_per_sonic_point
+       mass_of_particles = rho_ini*dr**3
+       massoftype(igas) = mass_of_particles
+       print*,' suggesting ',mass_of_particles, ' based on desired dr = ',dr,' dist-to-sonic=',dist_to_sonic_point
+    else
+       mass_of_particles = massoftype(igas)
+    endif
+    !
+    ! compute the dimensionless resolution factor m V / (Mdot R)
+    ! where m = particle mass and V, Mdot and R are wind parameters
+    !
+    mV_on_MdotR = mass_of_particles*wind_injection_speed/(wind_mass_rate*rinject)
+    !
+    ! solve for the integer resolution of the geodesic spheres
+    ! gives number of particles on the sphere via N = 20*(2*q*(q - 1)) + 12
+    !
+    iresolution = get_sphere_resolution(wind_shell_spacing,mV_on_MdotR)
+    particles_per_sphere = get_parts_per_sphere(iresolution)
+    neighbour_distance   = get_neighb_distance(iresolution)
+    print *,'iwind_resolution equivalence = ',iresolution
+ else
+    iresolution = iwind_resolution
+    particles_per_sphere = get_parts_per_sphere(iresolution)
+    neighbour_distance   = get_neighb_distance(iresolution)
+    mass_of_particles = wind_shell_spacing*neighbour_distance*rinject*wind_mass_rate &
+         / (particles_per_sphere * wind_injection_speed)
+    massoftype(igas) = mass_of_particles
+    print *,'iwind_resolution unchanged = ',iresolution
+ endif
+ if (npart > 0 .and. abs(log10(check_mass/mass_of_particles)) > 1e-10) then
+    print *,'check_mass = ',check_mass
+    print *,'particle mass = ',mass_of_particles
+    print *,'number of particles = ',npart
+    call fatal(label,"you cannot reset the particle's mass")
+ endif
+ massoftype(iboundary) = mass_of_particles
+
+ !spheres properties
+ mass_of_spheres = massoftype(igas) * particles_per_sphere
+ nwall_particles = iboundary_spheres*particles_per_sphere
+ dr3 = 3.*mass_of_spheres/(4.*pi*rho_ini)
+ if (wind_type == 3) then
+    time_between_spheres = mass_of_spheres/calc_wind_mass_loss_rate(time)
+ else
+    time_between_spheres = mass_of_spheres/wind_mass_rate_low
+ endif
+
+ if (time_between_spheres > tmax)  then
+    call logging(rsonic,tsonic)
+    print *,'time_between_spheres = ',time_between_spheres,' < tmax = ',tmax
+    call fatal(label,'no shell ejection : tmax < time_between_spheres')
+ endif
+
+end subroutine set_wind_resolution
 
 !-----------------------------------------------------------------------
 
@@ -413,6 +496,9 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,&
        dt_shift = 0.
     endif
     !print *,'!!!!! ',dt_shift,time_between_spheres,wind_mass_rate,wind_mass_rate_low
+ else
+    dt_shift = 0.
+    rho_factor = 1.
  endif
 
  outer_sphere = floor((time-dtlast)/time_between_spheres) + 1 + nreleased
@@ -448,7 +534,7 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,&
        ! boundary sphere
        first_particle = (nboundaries-i+inner_sphere)*particles_per_sphere+1
        !print '(" @@ update boundary ",i4,2(i4),i7,6(1x,es12.5))',i,inner_sphere,&
-       !     outer_sphere,first_particle,time,local_time,r/xyzmh_ptmass(iReff,1),v,u,rho
+       !     outer_sphere,first_particle,time,local_time,r/xyzh_ptmass(iReff,1),v,u,rho
        if (idust_opacity == 2) then
           call inject_geodesic_sphere(i, first_particle, iresolution, r, v, u, rho,  geodesic_R, geodesic_V, &
                npart, npartoftype, xyzh, vxyzu, ipart, x0, v0, JKmuS)
@@ -545,91 +631,6 @@ subroutine set_1D_wind_profile (tboundary,tcross,tfill)
  endif
 
 end subroutine set_1D_wind_profile
-
-!-----------------------------------------------------------------------
-!+
-!  set particle mass or resolution depending on iwind_resolution
-!+
-!-----------------------------------------------------------------------
-subroutine set_wind_resolution(rsonic,tsonic)
-
- use part,        only:massoftype,igas,iboundary,npart
- use io,          only:fatal
- use units,       only:udist
- use timestep,    only:tmax,time
- use physcon,     only:pi
- use injectutils, only:get_sphere_resolution,get_parts_per_sphere,get_neighb_distance
-
- real, intent(in) :: rsonic,tsonic
-
- integer :: nzones_per_sonic_point
- real :: mV_on_MdotR,check_mass,dr,dist_to_sonic_point,mass_of_particles
-
-
- check_mass = massoftype(igas)
-
- if (iwind_resolution == 0) then
-    !
-    ! resolution is specified in terms of number of smoothing lengths
-    ! per distance to sonic point (if trans-sonic wind)
-    !
-    if (wind_type == 1) then
-       nzones_per_sonic_point = 8
-       dist_to_sonic_point = rsonic/udist-rinject
-       dr = abs(dist_to_sonic_point)/nzones_per_sonic_point
-       mass_of_particles = rho_ini*dr**3
-       massoftype(igas) = mass_of_particles
-       print*,' suggesting ',mass_of_particles, ' based on desired dr = ',dr,' dist-to-sonic=',dist_to_sonic_point
-    else
-       mass_of_particles = massoftype(igas)
-    endif
-    !
-    ! compute the dimensionless resolution factor m V / (Mdot R)
-    ! where m = particle mass and V, Mdot and R are wind parameters
-    !
-    mV_on_MdotR = mass_of_particles*wind_injection_speed/(wind_mass_rate*rinject)
-    !
-    ! solve for the integer resolution of the geodesic spheres
-    ! gives number of particles on the sphere via N = 20*(2*q*(q - 1)) + 12
-    !
-    iresolution = get_sphere_resolution(wind_shell_spacing,mV_on_MdotR)
-    particles_per_sphere = get_parts_per_sphere(iresolution)
-    neighbour_distance   = get_neighb_distance(iresolution)
-    print *,'iwind_resolution equivalence = ',iresolution
- else
-    iresolution = iwind_resolution
-    particles_per_sphere = get_parts_per_sphere(iresolution)
-    neighbour_distance   = get_neighb_distance(iresolution)
-    mass_of_particles = wind_shell_spacing*neighbour_distance*rinject*wind_mass_rate &
-         / (particles_per_sphere * wind_injection_speed)
-    massoftype(igas) = mass_of_particles
-    print *,'iwind_resolution unchanged = ',iresolution
- endif
- if (npart > 0 .and. abs(log10(check_mass/mass_of_particles)) > 1e-10) then
-    print *,'check_mass = ',check_mass
-    print *,'particle mass = ',mass_of_particles
-    print *,'number of particles = ',npart
-    call fatal(label,"you cannot reset the particle's mass")
- endif
- massoftype(iboundary) = mass_of_particles
-
- !spheres properties
- mass_of_spheres = massoftype(igas) * particles_per_sphere
- nwall_particles = iboundary_spheres*particles_per_sphere
- dr3 = 3.*mass_of_spheres/(4.*pi*rho_ini)
- if (wind_type == 3) then
-    time_between_spheres = mass_of_spheres/calc_wind_mass_loss_rate(time)
- else
-    time_between_spheres = mass_of_spheres/wind_mass_rate_low
- endif
-
- if (time_between_spheres > tmax)  then
-    call logging(rsonic,tsonic)
-    print *,'time_between_spheres = ',time_between_spheres,' < tmax = ',tmax
-    call fatal(label,'no shell ejection : tmax < time_between_spheres')
- endif
-
-end subroutine set_wind_resolution
 
 !-----------------------------------------------------------------------
 !+
