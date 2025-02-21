@@ -929,15 +929,18 @@ end subroutine interp_wind_profile
 !
 !-----------------------------------------------------------------------
 subroutine save_windprofile(r0, v0, T0, rout, rfill, tend, tcross, tfill, filename)
+! all quantities are in cgs
  use physcon,          only:au
  use dust_formation,   only:idust_opacity
+ use units,            only:utime
  use ptmass_radiation, only:iget_tdust
  real, intent(in) :: r0, v0, T0, tend, rout, rfill
  real, intent(out) :: tcross,tfill          !time to cross the entire integration domain
  character(*), intent(in) :: filename
  integer, parameter :: nlmax = 8192   ! maxium number of steps store in the 1D profile
  real :: time_end, tau_lucy_init
- real :: r_incr,v_incr,T_incr,mu_incr,gamma_incr,r_base,v_base,T_base,mu_base,gamma_base,eps
+ real :: r_incr,v_incr,T_incr,mu_incr,gamma_incr,r_base,v_base,T_base,mu_base,gamma_base&
+      ,eps,time_base,time_incr
  real, allocatable :: trvurho_temp(:,:)
  real, allocatable :: JKmuS_temp(:,:)
  type(wind_state) :: state
@@ -948,13 +951,17 @@ subroutine save_windprofile(r0, v0, T0, rout, rfill, tend, tcross, tfill, filena
  if (idust_opacity == 2 .and. .not. allocated(JKmuS_temp)) allocate (JKmuS_temp(n_nucleation,nlmax))
 
  write (*,'("Saving 1D model to ",A)') trim(filename)
- !time_end = tmax*utime
- time_end = tend
+ if (rfill > 0.) then
+    !set a large time_end so the time integration allow the particles to reach rfill
+    time_end = 1e5*utime
+ else
+    time_end = tend
+ endif
  if (iget_tdust == 4) then
     call get_initial_tau_lucy(r0, v0, T0, tend, tau_lucy_init)
-    call init_wind(r0, v0, T0, tend, state, tau_lucy_init)
+    call init_wind(r0, v0, T0, time_end, state, tau_lucy_init)
  else
-    call init_wind(r0, v0, T0, tend, state)
+    call init_wind(r0, v0, T0, time_end, state)
  endif
 
  open(unit=1337,file=filename)
@@ -965,7 +972,7 @@ subroutine save_windprofile(r0, v0, T0, rout, rfill, tend, tcross, tfill, filena
  iter      = 0
  itermax   = int(huge(itermax)/10.) !this number is huge but may be needed for RK6 solver
  tcross    = huge(0.)
- tfill     = huge(0.)
+ tfill     = -1.
  writeline = 0
 
  r_base     = state%r
@@ -973,14 +980,16 @@ subroutine save_windprofile(r0, v0, T0, rout, rfill, tend, tcross, tfill, filena
  T_base     = state%Tg
  mu_base    = state%mu
  gamma_base = state%gamma
+ time_base  = state%time+1e-4
 
- do while((state%r < rfill .or. state%time < time_end) .and. iter < itermax .and. state%Tg > Tdust_stop .and. writeline < nlmax)
+ do while((state%r < rfill .or. state%time < time_end) .and. tfill < 0. .and. state%Tg > Tdust_stop .and. writeline < nlmax)
     iter = iter+1
     call wind_step(state)
 
     r_incr     = state%r
     v_incr     = state%v
     T_incr     = state%Tg
+    time_incr  = state%time
     mu_incr    = state%mu
     gamma_incr = state%gamma
 
@@ -988,6 +997,7 @@ subroutine save_windprofile(r0, v0, T0, rout, rfill, tend, tcross, tfill, filena
          .or. ( abs((v_incr     -v_base)      /v_base)      > eps ) &
          .or. ( abs((T_incr     -T_base)      /T_base)      > eps ) &
          .or. ( abs((gamma_incr -gamma_base)  /gamma_base)  > eps ) &
+         .or. ( abs((time_incr  -time_base)   /time_base)   > 100.*eps ) &
          .or. ( abs((mu_incr    -mu_base)     /mu_base)     > eps ) ) then
 
        writeline = writeline + 1
@@ -997,15 +1007,20 @@ subroutine save_windprofile(r0, v0, T0, rout, rfill, tend, tcross, tfill, filena
        v_base     = state%v
        T_base     = state%Tg
        mu_base    = state%mu
+       time_base  = state%time
        gamma_base = state%gamma
        trvurho_temp(:,writeline) = (/state%time,state%r,state%v,state%u,state%rho/)
        if (idust_opacity == 2) JKmuS_temp(:,writeline) = (/state%JKmuS(1:n_nucleation)/)
 
     endif
+    !if (mod(iter,10000) == 0) then
+    !   iter = 0
+    !   print *,'XX',state%r/rfill , state%time , time_end, state%dt
+    !endif
     if (state%r > rout)  tcross = min(state%time,tcross)
-    if (state%r < rfill) tfill  = state%time
+    if (state%r > rfill) tfill  = state%time
  enddo
- if (state%time/time_end < .3) then
+ if (state%time/time_end < .3 .and. state%r < rfill) then
     if (state%Tg < Tdust_stop) cstop = 'temperature reached lower limit (Tdust_stop)'
     if (iter > itermax) cstop = 'maximum iteration reached (itermax)'
     if (nlmax < writeline) cstop = 'wind storage exceeds limit (nlmax)'
