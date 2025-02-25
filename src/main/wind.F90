@@ -953,7 +953,7 @@ subroutine save_windprofile(r0, v0, T0, rout, rfill, tend, tcross, tfill, filena
  write (*,'("Saving 1D model to ",A)') trim(filename)
  if (rfill > 0.) then
     !set a large time_end so the time integration allow the particles to reach rfill
-    time_end = 1e5*utime
+    time_end = 1e7*utime
  else
     time_end = tend
  endif
@@ -985,6 +985,7 @@ subroutine save_windprofile(r0, v0, T0, rout, rfill, tend, tcross, tfill, filena
  do while((state%r < rfill .or. state%time < time_end) .and. tfill < 0. .and. state%Tg > Tdust_stop .and. writeline < nlmax)
     iter = iter+1
     call wind_step(state)
+    state%Tg = max(state%Tg,1.0001*Tdust_stop)
 
     r_incr     = state%r
     v_incr     = state%v
@@ -1015,11 +1016,13 @@ subroutine save_windprofile(r0, v0, T0, rout, rfill, tend, tcross, tfill, filena
     endif
     !if (mod(iter,10000) == 0) then
     !   iter = 0
-    !   print *,'XX',state%r/rfill , state%time , time_end, state%dt
+    !   print *,'XX',state%r,rfill , state%time , time_end, state%dt
     !endif
     if (state%r > rout)  tcross = min(state%time,tcross)
     if (state%r > rfill) tfill  = state%time
  enddo
+ !print *,state%r < rfill , state%time < time_end,  tfill < 0.,state%Tg > Tdust_stop ,writeline < nlmax
+ !print *,state%r ,rfill , state%time , time_end
  if (state%time/time_end < .3 .and. state%r < rfill) then
     if (state%Tg < Tdust_stop) cstop = 'temperature reached lower limit (Tdust_stop)'
     if (iter > itermax) cstop = 'maximum iteration reached (itermax)'

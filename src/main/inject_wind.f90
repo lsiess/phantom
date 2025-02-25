@@ -560,7 +560,8 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,&
     endif
     !cs2max = max(cs2max,gamma*(gamma-1)*u)
  enddo
- if (nfill_domain > 0 .and. outer_sphere == 1) print *,'  injecting background particles up to r = ',r,' (au)'
+ if (nfill_domain > 0 .and. outer_sphere == 1) print '(3x,"injecting background particles up to r = ",f8.2,&
+      &" (au), nparticles = ",i8)',r,particles_per_sphere*(nfill_domain+iboundary_spheres)
 
  ! update sink particle properties
  if (nptmass > 0) then
@@ -610,7 +611,7 @@ subroutine set_1D_wind_profile (tboundary,tcross,tfill)
  tend      = max(tmax,tboundary)*utime
  call save_windprofile(real(rinject*udist),real(wind_injection_speed*unit_velocity),&
       wind_temperature,real(outer_boundary_au*au),rfill,tend,tcross,tfill,'wind_profile1D.dat')
- if (tboundary > tmax) then
+ if (tboundary > tmax .and. nfill_domain > 1) then
     print *,'simulation time < time to reach the last boundary shell'
  endif
 
@@ -620,7 +621,7 @@ subroutine set_1D_wind_profile (tboundary,tcross,tfill)
        new_nfill = min(nfill_domain,int(tcross/(utime*time_between_spheres))-iboundary_spheres)
        if (new_nfill /= nfill_domain .and. new_nfill > 0) then
           nfill_domain = new_nfill
-          print *,'number of background shells set to',nfill_domain
+          print *,'number of background shells reset to',nfill_domain
        endif
     endif
  endif
@@ -628,6 +629,10 @@ subroutine set_1D_wind_profile (tboundary,tcross,tfill)
  if (tfill < 1.d98) then
     nfill_domain = int(tfill/(utime*time_between_spheres))-iboundary_spheres
     print *,'number of background shells set to',nfill_domain
+    if (nfill_domain < 0 ) then
+       print *,tfill,utime*time_between_spheres,iboundary_spheres
+       stop
+    endif
  endif
 
 end subroutine set_1D_wind_profile
