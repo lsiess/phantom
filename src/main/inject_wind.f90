@@ -316,6 +316,7 @@ subroutine logging(rsonic,tsonic,tboundary,tcross,tfill)
  real, intent(in) :: rsonic,tsonic
  real, optional, intent(in) :: tboundary,tcross,tfill
  integer :: ires_min
+ integer(kind=8) :: ninject
  real :: vesc,wind_rotation_speed,rotation_speed_crit
 
  vesc = sqrt(2.*Gg*Mstar_cgs*(1.-alpha_rad)/Rstar_cgs)
@@ -345,6 +346,8 @@ subroutine logging(rsonic,tsonic,tboundary,tcross,tfill)
       'filling time       (cu) : ',tfill/utime,&
       'boundary time      (cu) : ',tboundary
  endif
+ ninject = particles_per_sphere*(nfill_domain+iboundary_spheres)
+ if (nfill_domain > 0) print '(3x,"number of background particle = ",i10)',ninject
 
  !print*,'hmax/dist_between_spheres  = ',wind_shell_spacing*neighbour_distance*&
  !      initial_wind_velocity_cgs**2/(vesc**2-initial_wind_velocity_cgs**2)
