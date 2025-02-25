@@ -172,18 +172,18 @@ subroutine init_wind(r0, v0, T0, time_end, state, tau_lucy_init)
  state%K2         = 0.
  state%mu         = gmw
  state%gamma      = wind_gamma
- state%dust_array = 0.
  if (idust_opacity == 2 .or. idust_opacity == 3) call init_muGamma(state%rho, state%Tg, state%mu, state%gamma)
  state%alpha = state%alpha_Edd + alpha_rad
  if (idust_opacity == 2) then
     allocate(state%dust_array(n_nucleation))
+    state%dust_array = 0.
     state%dust_array(idalpha) = state%alpha
     state%dust_array(idmu)    = state%mu
     state%dust_array(idgamma) = state%gamma
  elseif (idust_opacity == 3) then
     allocate(state%dust_array(n_condensation))
+    state%dust_array = 0.
     state%dust_array(1:6) = a_init_dust
-    state%dust_array(7:12) = 0.
     state%dust_array(icalpha) = state%alpha
     state%dust_array(icmu)    = state%mu
     state%dust_array(icgamma) = state%gamma

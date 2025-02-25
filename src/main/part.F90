@@ -543,6 +543,7 @@ subroutine allocate_part
  call allocate_array('istsactive', istsactive, maxsts)
  call allocate_array('ibin_sts', ibin_sts, maxsts)
  call allocate_array('nucleation', nucleation, n_nucleation, maxp_nucleation*inucleation)
+ call allocate_array('condensation', condensation, n_condensation, maxp_condensation*icondensation)
  call allocate_array('tau', tau, maxp*itau_alloc)
  call allocate_array('tau_lucy', tau_lucy, maxp*itauL_alloc)
  if (use_krome) then
@@ -624,6 +625,7 @@ subroutine deallocate_part
  if (allocated(dt_in))        deallocate(dt_in)
  if (allocated(twas))         deallocate(twas)
  if (allocated(nucleation))   deallocate(nucleation)
+ if (allocated(condensation)) deallocate(condensation)
  if (allocated(tau))          deallocate(tau)
  if (allocated(tau_lucy))     deallocate(tau_lucy)
  if (allocated(T_gas_cool))   deallocate(T_gas_cool)

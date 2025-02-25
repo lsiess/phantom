@@ -15,7 +15,7 @@ module dust_condensation
 use physcon, only:atomic_mass_unit
 
 implicit none
- !real, parameter :: wind_CO_ratio = 0.34
+
 public :: evolve_condensation,dust_growth_condensation
 
 private
@@ -126,7 +126,6 @@ contains
         real :: Jgr_ol,  Jgr_qu,  Jgr_py,  Jgr_ir,  Jgr_sc,  Jgr_carb
         real :: Jdec_ol, Jdec_qu, Jdec_py, Jdec_ir, Jdec_sc, Jdec_carb
         real :: kappa_ol,kappa_qu,kappa_py,kappa_ir,kappa_sc,kappa_carb
-        real :: alpha_ol,alpha_qu,alpha_py,alpha_ir,alpha_sc,alpha_carb
         real :: fol_dec, fqu_dec ,fpy_dec, fir_dec ,fsc_dec, fcarb_dec
         real :: P_H2, P_Si, G_const(3), root(3) !fol, kappa_dust
         real :: fol_max, fpy_max, fqu_max
@@ -156,7 +155,7 @@ contains
         Jgr_H2O_ol = alpha_ol * abundance(iH2O) * Vth_H2O
 
         Jgr_SiO_qu = alpha_qu * abundance(iSiO) * Vth_SiO !abundance comes from chemical equilibrium
-        Jgr_Mg_qu  = alpha_qu * abundance(78)   * Vth_Mg !Mg = 78 in subroutine network
+        !Jgr_Mg_qu  = alpha_qu * abundance(78)   * Vth_Mg !Mg = 78 in subroutine network
         Jgr_H2O_qu = alpha_qu * abundance(iH2O) * Vth_H2O
 
         Jgr_SiO_py = alpha_py * abundance(iSiO) * Vth_SiO !abundance comes from chemical equilibrium
@@ -179,67 +178,63 @@ contains
         P_Si = abundance(75)*kboltz*T/patm !Si = 75 in subroutine network
 
         !%% Constant term in the law of mass action equation
-        G_const(1) = P_H2**3 / (calc_Kp(coefficients(:,1), T) * pH_tot**6) !for olivine
-        G_const(2) = P_H2 / (calc_Kp(coefficients(:,2),T) * pH_tot**2)     !for Quartz
-        G_const(3) = P_H2**2 / (calc_Kp(coefficients(:,3),T) * pH_tot**4)  !for Pyroxene
+        G_const(1) = P_H2**3 / (calc_Kp(coefficients(:,1),T) * pH_tot**6) !for olivine
+        G_const(2) = P_H2    / (calc_Kp(coefficients(:,2),T) * pH_tot**2) !for Quartz
+        G_const(3) = P_H2**2 / (calc_Kp(coefficients(:,3),T) * pH_tot**4) !for Pyroxene
 
         !%% to determine degree of condensation fol, fqu, fpy
 !LS : this test should be removed, check must be made in init since wind_CO_ratio is constant
-        if (wind_CO_ratio .lt. 1.0) then
-            call find_root(eps(iMg), eps(iSi), eps(iOx), eps(iC), G_const, root)
-        else
-            root = 0.0
-        endif
+        if (wind_CO_ratio <= 0.9) then
+           ! to prevent overflow
+           if (T > 3500.) then
+              root = 0.
+           else
+              call find_root(eps(iMg), eps(iSi), eps(iOx), eps(iC), G_const, root)
+           endif
+        elseif (wind_CO_ratio >= 1.1) then
+            root = 0.
+         endif
 
-        fol_dec   = max(0., root(1))
-        fqu_dec   = max(0., root(2))
-        fpy_dec   = max(0., root(3))
-        fir_dec   = max(0., 1.- 1./(calc_Kp(coefficients(:,4),T) * eps(iFe) * pH_tot))     !For Iron
-        fsc_dec   = max(0., 1.- P_Si / (calc_Kp(coefficients(:,5),T) * eps(iSi) * pH_tot)) !For SiC
-        fcarb_dec = max(0., 1.-1./wind_CO_ratio - 2.*P_H2/(calc_Kp(coefficients(:,6),T) * eps(iC) * pH_tot))
+        fol_dec   = max(0., root(1)) !min(1., max(0., root(1)))
+        fqu_dec   = max(0., root(2)) !min(1., max(0., root(2)))
+        fpy_dec   = max(0., root(3)) !min(1., max(0., root(3)))
+        fir_dec   = min(1., max(0., 1.- 1./(calc_Kp(coefficients(:,4),T) * eps(iFe) * pH_tot)))     !For Iron
+        fsc_dec   = min(1., max(0., 1.- P_Si / (calc_Kp(coefficients(:,5),T) * eps(iSi) * pH_tot))) !For SiC
+        fcarb_dec = min(1., max(0., 1.-1./wind_CO_ratio-2.*P_H2/(calc_Kp(coefficients(:,6),T)*eps(iC)*pH_tot)))
 
         !%% to calculate Quartz degree of condensation fqu
-        !fqu_dec = newton_method(0.,0.,eps(iSi)**2, &
+        !fqu_dec = solve_q(eps(iSi)**2, &
         !      - eps(iSi)*eps(iOx) + eps(iC)*eps(iSi), &
         !      + eps(iSi)*eps(iOx) - eps(iC)*eps(iSi) - eps(iSi)**2 &
-        !      - P_H2 / (calc_Kp(coefficients(:,2), T)*pH_tot**2), &
-        !      min(1.0-0.01, (eps(iOx)-eps(iC)-eps(iSi))/eps(iSi)-0.01) )
+        !      - P_H2 / (calc_Kp(coefficients(:,2), T)*pH_tot**2))
 
         if (Jgr_ol == Jgr_SiO_ol) then ! JgrSiO < JgrMg and JgrSiO < JgrH2O
-            pv_SiO = (1-fol_dec) * eps(iSi) * pH_tot !Check units
-            if (pv_SiO .lt. 0.0) pv_SiO = 0.0
+            pv_SiO = max(0., (1.-fol_dec) * eps(iSi) * pH_tot) !Check units
             Jdec_ol = alpha_ol * Vth_SiO * pv_SiO *patm / kboltz / T !patm to have cgs units
         elseif (Jgr_ol == 0.5*Jgr_Mg_ol) then
-            pv_Mg = (eps(iMg) - 2.0*fol_dec*eps(iSi))*pH_tot
-            if (pv_Mg .lt. 0.0) pv_Mg = 0.0
+            pv_Mg = max(0., (eps(iMg) - 2.0*fol_dec*eps(iSi))*pH_tot)
             Jdec_ol = alpha_ol * Vth_Mg * pv_Mg *patm / kboltz / T !patm to have cgs units
         elseif (Jgr_ol == 0.333*Jgr_H2O_ol) then
-            pv_H2O = (eps(iOx)-eps(iC)-(1.0+3.0*fol_dec)*eps(iSi))*pH_tot
-            if (pv_H2O .lt. 0.0) pv_H2O = 0.0
+            pv_H2O = max(0.,(eps(iOx)-eps(iC)-(1.0+3.0*fol_dec)*eps(iSi))*pH_tot)
             Jdec_ol = alpha_ol * Vth_H2O * pv_H2O * patm / kboltz / T  !patm to have cgs units
         endif
 
         if (Jgr_qu == Jgr_SiO_qu) then
-            pv_SiO = (1-fqu_dec)*eps(iSi)* pH_tot
-            if (pv_SiO .lt. 0.0) pv_SiO = 0.0
+            pv_SiO = max(0., (1.-fqu_dec)*eps(iSi)* pH_tot)
             Jdec_qu = alpha_qu * Vth_SiO * pv_SiO *patm / kboltz / T !!patm to have cgs units
         elseif (Jgr_qu == Jgr_H2O_qu) then
-            pv_H2O = (eps(iOx)-eps(iC)-(1.0+fqu_dec)*eps(iSi))*pH_tot
-            if (pv_H2O .lt. 0.0) pv_H2O = 0.0
+            pv_H2O = max(0.,(eps(iOx)-eps(iC)-(1.0+fqu_dec)*eps(iSi))*pH_tot)
             Jdec_qu = alpha_qu * Vth_H2O * pv_H2O *patm / kboltz / T  !patm to have cgs units
         endif
 
         if (Jgr_py == Jgr_SiO_py) then
-            pv_SiO = (1-fpy_dec)*eps(iSi)* pH_tot
-            if (pv_SiO .lt. 0.0) pv_SiO = 0.0
+            pv_SiO = max(0.,(1.-fpy_dec)*eps(iSi)* pH_tot)
             Jdec_py = alpha_py * Vth_SiO * pv_SiO *patm / kboltz / T  !!patm to have cgs units
         elseif (Jgr_py == Jgr_Mg_py) then
-            pv_Mg = (eps(iMg) - fpy_dec*eps(iSi))*pH_tot
-            if (pv_Mg .lt. 0.0) pv_Mg = 0.0
+            pv_Mg = max(0., (eps(iMg) - fpy_dec*eps(iSi))*pH_tot)
             Jdec_py = alpha_py * Vth_Mg * pv_Mg *patm / kboltz / T   !patm to have cgs units
         elseif (Jgr_py == 0.5*Jgr_H2O_py) then
-            pv_H2O = (eps(iOx)-eps(iC)-(1.0+2.0*fpy_dec)*eps(iSi))*pH_tot
-            if (pv_H2O .lt. 0.0) pv_H2O = 0.0
+            pv_H2O = max(0., (eps(iOx)-eps(iC)-(1.0+2.0*fpy_dec)*eps(iSi))*pH_tot)
             Jdec_py = alpha_py * Vth_H2O * pv_H2O *patm / kboltz / T  !patm to have cgs units
         endif
 
@@ -261,30 +256,38 @@ contains
 
 
         fol = max(0., 4.*pi*(r_ol**3-a_init_dust**3)*1.d-13/3./Vo_ol/eps(iSi)) !fol
-        fol_max = min(1.0, min(0.5*eps(iMg)/eps(iSi),(eps(iOx)-eps(iC)-eps(iSi))/3./eps(iSi)))
-        !%%fol_max is negative if C/O ratio is larger than 1
-        if (fol.gt.fol_max) fol = fol_max
+        if (wind_CO_ratio<=0.9) then
+           fol_max = min(1.0, min(0.5*eps(iMg)/eps(iSi),(eps(iOx)-eps(iC)-eps(iSi))/3./eps(iSi)))
+        elseif (wind_CO_ratio>=1.1) then
+            fol_max = 0.0
+        endif        !%%fol_max is negative if C/O ratio is larger than 1
+        if (fol > fol_max) fol = fol_max
 !%%PUEDE SER QUE fol sea negativo porque fol_max es negativo
 
         fqu = max(0., 4.*pi*(r_qu**3-a_init_dust**3)*1.d-13/3./Vo_qu/eps(iSi)) !fqu
-        fqu_max = min(1.0, (eps(iOx)-eps(iC)-eps(iSi))/eps(iSi))
-        if (fqu.gt.fqu_max) fqu = fqu_max
+        if (wind_CO_ratio<=0.9) then
+           fqu_max = min(1.0, (eps(iOx)-eps(iC)-eps(iSi))/eps(iSi))
+        elseif (wind_CO_ratio>=1.1) then
+           fqu_max = 0.0
+        endif
+        if (fqu > fqu_max) fqu = fqu_max
 
         fpy = max(0., 4.*pi*(r_py**3-a_init_dust**3)*1.d-13/3./Vo_py/eps(iSi)) !fpy
-        fpy_max = min(1.0, min(eps(iMg)/eps(iSi),(eps(iOx)-eps(iC)-eps(iSi))/2./eps(iSi)))
-        if (fpy.gt.fpy_max) fpy = fpy_max
+        if (wind_CO_ratio<=0.9) then
+           fpy_max = min(1.0, min(eps(iMg)/eps(iSi),(eps(iOx)-eps(iC)-eps(iSi))/2./eps(iSi)))
+        elseif (wind_CO_ratio>=1.1) then
+            fpy_max = 0.0
+        endif
+        if (fpy > fpy_max) fpy = fpy_max
 
         fir = max(0., 4.*pi*(r_ir**3-a_init_dust**3)*1.d-13/3./Vo_ir/eps(iFe)) !fir
-        !fpy_max = min(1.0, min(eps(iMg)/eps(iSi),(eps(iOx)-eps(iC)-eps(iSi))/2./eps(iSi)))
-        if (fir.gt.1.0) fir = 1.0d0
+        if (fir > 1.0) fir = 1.
 
         fsc = max(0., 4.*pi*(r_sc**3-a_init_dust**3)*1.d-13/3./Vo_sc/ eps(iSi)) !fsc
-        !fpy_max = min(1.0, min(eps(iMg)/eps(iSi),(eps(iOx)-eps(iC)-eps(iSi))/2./eps(iSi)))
-        if (fsc.gt.1.0) fsc = 1.0d0
+        if (fsc > 1.0) fsc = 1.
 
         fcarb = max(0., 4.*pi*(r_carb**3-a_init_dust**3)*1.d-13/3./Vo_carb/eps(iC)) !fcarb
-        !fpy_max = min(1.0, min(eps(iMg)/eps(iSi),(eps(iOx)-eps(iC)-eps(iSi))/2./eps(iSi)))
-        if (fcarb.gt.1.0) fcarb = 1.0d0
+        if (fcarb > 1.0) fcarb = 1.
 
 
         kappa_ol = ((6.147d-07 * T**2.444)**(-2) &
@@ -328,7 +331,6 @@ subroutine find_root(m, s, o, c, g, root) !, tol, max_iter)
 
     ! Local variables
     real :: x(3), fx(3), dfx(3), A(3), B(3), D(3)
-    !real(8) :: min_val
     integer :: i
 
     ! Calculate the interval boundaries

@@ -41,7 +41,7 @@ subroutine do_analysis(dumpfile,num,xyzh,vxyzu,particlemass,npart,time,iunit)
  character(len=30) :: filename
 
  if (.not.do_nucleation) then
-    stop 'ERROR: need DUST_NUCLEATION=yes for this analysis type'
+    stop 'ERROR: need do_nucleation=true for this analysis type'
  endif
 
  if (.not.allocated(t_formation)) then

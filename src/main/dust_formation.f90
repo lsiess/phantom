@@ -231,8 +231,8 @@ subroutine read_headeropts_dust_formation(hdr,ierr)
  use dump_utils, only:dump_h
   use dim, only: do_nucleation,do_condensation
 
- type(dump_h), intent(inout) :: hdr
- integer,      intent(out)   :: ierr
+ type(dump_h), intent(in)  :: hdr
+ integer,      intent(out) :: ierr
 
  if (do_condensation) then
     call read_headeropts_dust_condensation(wind_CO_ratio,hdr,ierr)
@@ -295,17 +295,19 @@ subroutine read_options_dust_formation(name,valstring,imatch,igotall,ierr)
     ngot = ngot + 1
     if (idust_opacity == 2) then
        do_nucleation = .true.
+       do_condensation = .false.
        inucleation = 1
     endif
     if (idust_opacity == 3) then
        do_condensation = .true.
+       do_nucleation = .false.
        icondensation = 1
     endif
  case('wind_CO_ratio')
     read(valstring,*,iostat=ierr) wind_CO_ratio
     ngot = ngot + 1
     if (wind_CO_ratio < 0.) call fatal(label,'invalid setting for wind_CO_ratio (must be > 0)')
-    if (wind_CO_ratio > 0.9 .or. wind_CO_ratio < 1.1) call fatal(label,'wind_CO_ratio must be < 0.9 or > 1.1)')
+    if (wind_CO_ratio > 0.9 .and. wind_CO_ratio < 1.1) call fatal(label,'wind_CO_ratio must be < 0.9 or > 1.1)')
  case('kappa_gas')
     read(valstring,*,iostat=ierr) kappa_gas
     ngot = ngot + 1

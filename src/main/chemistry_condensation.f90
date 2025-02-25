@@ -24,6 +24,7 @@ module chemistry_condensation
        iNH2=43, iNO2=44, INO3=45, iN2O=46, iN2O4=47, iMgH=48, iMgOH=49, iMgO2H2=50, iMgN=51, iMgO=52, &
        iSiC=53, iSiH2=54, iSiH3=55, iSiN=56, iSiO2=57, iFeO=58, iFeO2H2=59, iCOS=60, iCS=61, &
        iCS2=62, iFeS=63, iH2SO4=64, iMgS=65, iSN=66, iSO=67, iSO2=68, iSO3=69, iTiS=70
+
  private
  integer, parameter :: nMolecules = 69
 
@@ -102,87 +103,8 @@ module chemistry_condensation
        4.16261d+05, -2.59787d+05, 6.30161d+01, 2.30250d-04, -1.21022d-08, & !SO2
        4.54902d+05, -3.43672d+05, 1.00999d+02, 5.09991d-05,  0.00000d+00], shape(coefs)) !SO3
 
-       integer, parameter :: ncols = nElements + nMolecules -2 !Not including Ne and Ti
+       integer, public, parameter :: ncols = nElements + nMolecules -2 !Not including Ne and Ti
        !The vector columns include molecules and atoms
-       character(len=*), parameter :: columns(ncols) =&
-                 (/'nH2              ', &
-                   'nOH              ', &
-                   'nH2O             ', &
-                   'nCO              ', &
-                   'nCO2             ', &
-                   'nCH4             ', &
-                   'nC2H             ', &
-                   'nC2H2            ', &
-                   'nN2              ', &
-                   'nNH3             ', &
-                   'nCN              ', &
-                   'nHCN             ', &
-                   'nSi2             ', &
-                   'nSi3             ', &
-                   'nSiO             ', &
-                   'nSi2C            ', &
-                   'nSiH4            ', &
-                   'nS2              ', &
-                   'nHS              ', &
-                   'nH2S             ', &
-                   'nSiS             ', &
-                   'nSiH             ', &
-                   'nTiO             ', &
-                   'nTiO2            ', &
-                   'nC2              ', &
-                   'nO2              ', &
-                   'nCH              ', &
-                   'nCOH             ', &
-                   'nC20             ', &
-                   'nCH2             ', &
-                   'nH2CO            ', &
-                   'nCH3             ', &
-                   'nC2H4            ', &
-                   'nNH              ', &
-                   'nNO              ', &
-                   'nNCO             ', &
-                   'nHCNO            ', &
-                   'nC2N             ', &
-                   'nC2N2            ', &
-                   'nHNO             ', &
-                   'nHNO2            ', &
-                   'nHNO3            ', &
-                   'nNH2             ', &
-                   'nNO2             ', &
-                   'nNO3             ', &
-                   'nN20             ', &
-                   'nN204            ', &
-                   'nMgH             ', &
-                   'nMgOH            ', &
-                   'nMgO2H2          ', &
-                   'nMgN             ', &
-                   'nMgO             ', &
-                   'nSiC             ', &
-                   'nSiH2            ', &
-                   'nSiH3            ', &
-                   'nSiN             ', &
-                   'nSiO2            ', &
-                   'nFeO             ', &
-                   'nFeO2H2          ', &
-                   'nCOS             ', &
-                   'nCS              ', &
-                   'nCS2             ', &
-                   'nFeS             ', &
-                   'nH2SO4           ', &
-                   'nMgS             ', &
-                   'nSN              ', &
-                   'nSO              ', &
-                   'nSO2             ', &
-                   'nSO3             ', &
-                   'nH               ', &
-                   'nHe              ', &
-                   'nC               ', &
-                   'nO               ', &
-                   'nN               ', &
-                   'nSi              ', &
-                   'nS               ', &
-                   'nFe              ', &
-                   'nMg              '/)
 
 contains
 
@@ -258,7 +180,7 @@ end subroutine read_headeropts_dust_condensation
 !  driver to solve the chemical network
 !+
 !-----------------------------------------------------------------------
-subroutine network(T,rho_cgs,mu,gamma,wind_CO_ratio,pH_tot,fol,fpy,fqu,fir, fsc, fcarb,abundance,pressure_cgs)
+subroutine network(T,rho_cgs,mu,gamma,wind_CO_ratio,pH_tot,fol,fpy,fqu,fir,fsc,fcarb,abundance,pressure_cgs)
  use physcon, only:patm,kboltz
  real, intent(in)     :: wind_CO_ratio, fol, fpy, fqu, fir, fsc, fcarb !rho_cgs
  real, intent(out)    :: mu,gamma,pH_tot
@@ -267,8 +189,6 @@ subroutine network(T,rho_cgs,mu,gamma,wind_CO_ratio,pH_tot,fol,fpy,fqu,fir, fsc,
  real, intent(in), optional :: pressure_cgs
 !       real :: epsC, nH_tot
 !       real :: v1
- real :: rho_cgs_tmp !, !pH_tot
- real :: KH2 !LUIS, pH2
  integer :: j
  real, dimension(nMolecules)    :: pmol  !, nmol=0.
  real                           :: pelm(nElements)
@@ -279,11 +199,11 @@ subroutine network(T,rho_cgs,mu,gamma,wind_CO_ratio,pH_tot,fol,fpy,fqu,fir, fsc,
       !  call set_abundances_condensation(wind_CO_ratio)
       !  print *,'SHOULD  BE DONE ONLY ONCE '
 
-      ! !if (present(pressure_cgs)) then
-      ! !   call init_muGamma_condensation(rho_cgs,T,mu,gamma,pH_tot,pelm(iH),pmol(iH2),pressure_cgs)
-      ! !else
-      !    call init_muGamma_condensation(rho_cgs,T,mu,gamma,pH_tot,pelm(iH),pmol(iH2))
-      ! !endif
+      if (present(pressure_cgs)) then
+         call init_muGamma_condensation(rho_cgs,T,mu,gamma,pH_tot,pelm(iH),pmol(iH2),pressure_cgs)
+      else
+         call init_muGamma_condensation(rho_cgs,T,mu,gamma,pH_tot,pelm(iH),pmol(iH2))
+      endif
 
       pelm(iHe) = eps(iHe)*pH_tot
       call chemical_equilibrium(rho_cgs, T, pmol, pelm, mu, gamma, &
@@ -292,7 +212,6 @@ subroutine network(T,rho_cgs,mu,gamma,wind_CO_ratio,pH_tot,fol,fpy,fqu,fir, fsc,
       if (present(abundance)) then
       !convert the pressure of the molecules in number density
          do j=1,ncols-9
-         !if (j.le.69) then
             abundance(j) = max(1.d-50,pmol(j)*patm/(kboltz*T))  !*patm
          enddo
 
@@ -310,9 +229,9 @@ subroutine network(T,rho_cgs,mu,gamma,wind_CO_ratio,pH_tot,fol,fpy,fqu,fir, fsc,
          !abundance(iH2O) = abundance(iH2O) - (3.*fol + 2.*fpy + fqu) * eps(iSi)*patm *pH_tot/(kboltz*T)
          !abundance(iSiO) = abundance(iSiO) - (fol + fpy + fqu) * eps(iSi)*patm * pH_tot/(kboltz*T)
          !abundance(78) = abundance(78) - (2.*fol + fpy) * eps(iSi)*patm * pH_tot/(kboltz*T)
-         !if (abundance(iH2O) .lt. 0.0) abundance(iH2O) = 0.0
-         !if (abundance(iSiO) .lt. 0.0) abundance(iSiO) = 0.0
-         !if (abundance(78) .lt. 0.0)   abundance(78) = 0.0
+         !if (abundance(iH2O) < 0.0) abundance(iH2O) = 0.0
+         !if (abundance(iSiO) < 0.0) abundance(iSiO) = 0.0
+         !if (abundance(78) < 0.0)   abundance(78) = 0.0
 
          !!Update the abundance of Si and Oxygen.
 
@@ -326,18 +245,12 @@ end subroutine network
 !
 !---------------------------------------------------------------
 subroutine chemical_equilibrium(rho_cgs,T,pmol,pelm,mu,gamma,&
-     wind_CO_ratio, pH_tot, fol, fpy, fqu, fir, fsc, fcarb) !,nMolecules)
+     wind_CO_ratio, pH_tot, fol, fpy, fqu, fir, fsc, fcarb)
 ! all quantities are in cgs
- !real, intent(in)    :: rho_cgs !,epsC
- !integer, intent(in) :: nMolecules !LUIS epsSi
  real, intent(inout) :: T, mu, gamma, pmol(nMolecules), pelm(nElements), rho_cgs
  real, intent(in)    :: wind_CO_ratio, pH_tot, fol, fpy, fqu, fir, fsc, fcarb
- !real, intent(out)   :: pC, pC2, pC2H, pC2H2
- !real, intent(out), optional :: nH, nH2, nHe, nCO, nH2O, nOH,nO, nN, nN2, nCN
- real    :: Kd(nMolecules+1), err(nElements) !, pH_tot !, a, b, c, d !LUIS err
- !real    :: pH, pCO, pO, pSi, pS, pTi, pN, pNewton !LUIS pMg, pFe
- !real    :: pC_old, pO_old, pSi_old, pS_old, pTi_old, cst !LUIS pFe_old, pMg_old
  real, dimension(nMolecules)    :: pmol_old
+ real    :: Kd(nMolecules+1), err(nElements) !, pH_tot !, a, b, c, d !LUIS err
  real    :: pelm_old(nElements)
  integer :: i, nit, rndnmbr
 
@@ -356,18 +269,17 @@ subroutine chemical_equilibrium(rho_cgs,T,pmol,pelm,mu,gamma,&
  enddo
  Kd(iTiS) = calc_Kd_TiS(T)
 
- err      = 1.
- nit      = 0
-
+ err     = 1.
+ nit     = 0
  rndnmbr = 0
 
  do while (maxval(err) > 1.e-6)
 
  pelm_old(:) = pelm(:)
 
- if (wind_CO_ratio .lt. 1.0) then
+ if (wind_CO_ratio < 1.0) then
  if (rndnmbr == 0) then
-         pelm(iOx) = newton_method(4.*(pelm(iN)**2*Kd(iN2O4)+pelm(iH)**2*pelm(iS)*Kd(iH2SO4)), &
+    pelm(iOx) = newton_method(4.*(pelm(iN)**2*Kd(iN2O4)+pelm(iH)**2*pelm(iS)*Kd(iH2SO4)), &
                          3.*(pelm(iH)*pelm(iN)*Kd(iHNO3)+pelm(iN)*Kd(iNO3)+pelm(iS)*Kd(iSO3)), &
                          2.*(Kd(iO2)+pelm(iC)*Kd(iCO2)+pelm(iH)*pelm(iN)*Kd(iHNO2) &
                              +pelm(iN)*Kd(iNO2)+pelm(iH)**2*pelm(iMg)*Kd(iMgO2H2)+pelm(iSi)*Kd(iSiO2) &
@@ -381,7 +293,7 @@ subroutine chemical_equilibrium(rho_cgs,T,pmol,pelm,mu,gamma,&
                           eps(iOx)*pH_tot) !pmol(iCO)  = eps(iC)*pH_tot, pmol(iSiO) = eps(iSi)*pH_tot
                  rndnmbr = rndnmbr + 1
  else !rndnmbr
- pelm(iOx) = newton_method(4.*(pelm(iN)**2*Kd(iN2O4)+pelm(iH)**2*pelm(iS)*Kd(iH2SO4)), &
+    pelm(iOx) = newton_method(4.*(pelm(iN)**2*Kd(iN2O4)+pelm(iH)**2*pelm(iS)*Kd(iH2SO4)), &
                          3.*(pelm(iH)*pelm(iN)*Kd(iHNO3)+pelm(iN)*Kd(iNO3)+pelm(iS)*Kd(iSO3)), &
                          2.*(Kd(iO2)+pelm(iC)*Kd(iCO2)+pelm(iH)*pelm(iN)*Kd(iHNO2) &
                              +pelm(iN)*Kd(iNO2)+pelm(iH)**2*pelm(iMg)*Kd(iMgO2H2)+pelm(iSi)*Kd(iSiO2) &
@@ -394,45 +306,69 @@ subroutine chemical_equilibrium(rho_cgs,T,pmol,pelm,mu,gamma,&
                          (eps(iSi)*(4.*fol+3.*fpy+2.*fqu)-eps(iOx))*pH_tot, &
                          eps(iOx)*pH_tot)
  endif !rndnmbr
- pelm(iC) = newton_method(0., &
-            0., &
-            2.*(Kd(iC2)+pelm(iH)*Kd(iC2H)+pelm(iOx)*Kd(iC2O)+pelm(iH)**2*Kd(iC2H2)+pelm(iH)**4*Kd(iC2H4) &
+ ! pelm(iC) = newton_method(0., &
+ !            0., &
+ !            2.*(Kd(iC2)+pelm(iH)*Kd(iC2H)+pelm(iOx)*Kd(iC2O)+pelm(iH)**2*Kd(iC2H2)+pelm(iH)**4*Kd(iC2H4) &
+ !            +pelm(iN)*Kd(iC2N)+pelm(iN)**2*Kd(iC2N2)), &
+ !            1.+pelm(iH)*Kd(iCH)+pelm(iOx)*Kd(iCO)+pelm(iOx)*pelm(iH)*Kd(iCOH)+pelm(iOx)**2*Kd(iCO2) &
+ !            +pelm(iH)**2*Kd(iCH2)+pelm(iOx)*pelm(iH)**2*Kd(iH2CO)+pelm(iH)**3*Kd(iCH3)+pelm(iH)**4*Kd(iCH4) &
+ !            +pelm(iN)*Kd(iCN)+pelm(iN)*pelm(iH)*Kd(iHCN)+pelm(iOx)*pelm(iN)*Kd(iNCO) &
+ !            +pelm(iOx)*pelm(iH)*pelm(iN)*Kd(iHCNO)+pelm(iSi)*Kd(iSiC)+pelm(iSi)**2*Kd(iSi2C) &
+ !            +pelm(iOx)*pelm(iS)*Kd(iCOS)+pelm(iS)*Kd(iCS)+pelm(iS)**2*Kd(iCS2), &
+ !            (fcarb-1.0)*eps(iC)*pH_tot,eps(iC)*pH_tot)
+ pelm(iC) = solve_q(2.*(Kd(iC2)+pelm(iH)*Kd(iC2H)+pelm(iOx)*Kd(iC2O)+pelm(iH)**2*Kd(iC2H2)+pelm(iH)**4*Kd(iC2H4) &
             +pelm(iN)*Kd(iC2N)+pelm(iN)**2*Kd(iC2N2)), &
             1.+pelm(iH)*Kd(iCH)+pelm(iOx)*Kd(iCO)+pelm(iOx)*pelm(iH)*Kd(iCOH)+pelm(iOx)**2*Kd(iCO2) &
             +pelm(iH)**2*Kd(iCH2)+pelm(iOx)*pelm(iH)**2*Kd(iH2CO)+pelm(iH)**3*Kd(iCH3)+pelm(iH)**4*Kd(iCH4) &
             +pelm(iN)*Kd(iCN)+pelm(iN)*pelm(iH)*Kd(iHCN)+pelm(iOx)*pelm(iN)*Kd(iNCO) &
             +pelm(iOx)*pelm(iH)*pelm(iN)*Kd(iHCNO)+pelm(iSi)*Kd(iSiC)+pelm(iSi)**2*Kd(iSi2C) &
             +pelm(iOx)*pelm(iS)*Kd(iCOS)+pelm(iS)*Kd(iCS)+pelm(iS)**2*Kd(iCS2), &
-            (fcarb-1.0)*eps(iC)*pH_tot,eps(iC)*pH_tot)
+            (fcarb-1.0)*eps(iC)*pH_tot)
 
 else !%% wind_CO is larger than 1.0
   if (rndnmbr == 0) then
-   pelm(iC) = newton_method(0., &
-            0., &
-            2.*(Kd(iC2)+pelm(iH)*Kd(iC2H)+pelm(iOx)*Kd(iC2O)+pelm(iH)**2*Kd(iC2H2)+pelm(iH)**4*Kd(iC2H4) &
+   ! pelm(iC) = newton_method(0., &
+   !          0., &
+   !          2.*(Kd(iC2)+pelm(iH)*Kd(iC2H)+pelm(iOx)*Kd(iC2O)+pelm(iH)**2*Kd(iC2H2)+pelm(iH)**4*Kd(iC2H4) &
+   !          +pelm(iN)*Kd(iC2N)+pelm(iN)**2*Kd(iC2N2)), &
+   !          1.+pelm(iH)*Kd(iCH)+pelm(iOx)*pelm(iH)*Kd(iCOH)+pelm(iOx)**2*Kd(iCO2) &
+   !          +pelm(iH)**2*Kd(iCH2)+pelm(iOx)*pelm(iH)**2*Kd(iH2CO)+pelm(iH)**3*Kd(iCH3)+pelm(iH)**4*Kd(iCH4) &
+   !          +pelm(iN)*Kd(iCN)+pelm(iN)*pelm(iH)*Kd(iHCN)+pelm(iOx)*pelm(iN)*Kd(iNCO) &
+   !          +pelm(iOx)*pelm(iH)*pelm(iN)*Kd(iHCNO)+pelm(iSi)*Kd(iSiC)+pelm(iSi)**2*Kd(iSi2C) &
+   !          +pelm(iOx)*pelm(iS)*Kd(iCOS)+pelm(iS)*Kd(iCS)+pelm(iS)**2*Kd(iCS2), &
+   !          (eps(iOx)+(fcarb-1.0)*eps(iC))*pH_tot, & !pmol(iCO)  = eps(iOx)*pH_tot
+   !          eps(iC)*pH_tot)
+   pelm(iC) = solve_q(2.*(Kd(iC2)+pelm(iH)*Kd(iC2H)+pelm(iOx)*Kd(iC2O)+pelm(iH)**2*Kd(iC2H2)+pelm(iH)**4*Kd(iC2H4) &
             +pelm(iN)*Kd(iC2N)+pelm(iN)**2*Kd(iC2N2)), &
             1.+pelm(iH)*Kd(iCH)+pelm(iOx)*pelm(iH)*Kd(iCOH)+pelm(iOx)**2*Kd(iCO2) &
             +pelm(iH)**2*Kd(iCH2)+pelm(iOx)*pelm(iH)**2*Kd(iH2CO)+pelm(iH)**3*Kd(iCH3)+pelm(iH)**4*Kd(iCH4) &
             +pelm(iN)*Kd(iCN)+pelm(iN)*pelm(iH)*Kd(iHCN)+pelm(iOx)*pelm(iN)*Kd(iNCO) &
             +pelm(iOx)*pelm(iH)*pelm(iN)*Kd(iHCNO)+pelm(iSi)*Kd(iSiC)+pelm(iSi)**2*Kd(iSi2C) &
             +pelm(iOx)*pelm(iS)*Kd(iCOS)+pelm(iS)*Kd(iCS)+pelm(iS)**2*Kd(iCS2), &
-            (eps(iOx)+(fcarb-1.0)*eps(iC))*pH_tot, & !pmol(iCO)  = eps(iOx)*pH_tot
-            eps(iC)*pH_tot)
+            (eps(iOx)+(fcarb-1.0)*eps(iC))*pH_tot)
 
             rndnmbr = rndnmbr + 1
 
   else
 
-   pelm(iC) = newton_method(0., &
-            0., &
-            2.*(Kd(iC2)+pelm(iH)*Kd(iC2H)+pelm(iOx)*Kd(iC2O)+pelm(iH)**2*Kd(iC2H2)+pelm(iH)**4*Kd(iC2H4) &
+   ! pelm(iC) = newton_method(0., &
+   !          0., &
+   !          2.*(Kd(iC2)+pelm(iH)*Kd(iC2H)+pelm(iOx)*Kd(iC2O)+pelm(iH)**2*Kd(iC2H2)+pelm(iH)**4*Kd(iC2H4) &
+   !          +pelm(iN)*Kd(iC2N)+pelm(iN)**2*Kd(iC2N2)), &
+   !          1.+pelm(iH)*Kd(iCH)+pelm(iOx)*Kd(iCO)+pelm(iOx)*pelm(iH)*Kd(iCOH)+pelm(iOx)**2*Kd(iCO2) &
+   !          +pelm(iH)**2*Kd(iCH2)+pelm(iOx)*pelm(iH)**2*Kd(iH2CO)+pelm(iH)**3*Kd(iCH3)+pelm(iH)**4*Kd(iCH4) &
+   !          +pelm(iN)*Kd(iCN)+pelm(iN)*pelm(iH)*Kd(iHCN)+pelm(iOx)*pelm(iN)*Kd(iNCO) &
+   !          +pelm(iOx)*pelm(iH)*pelm(iN)*Kd(iHCNO)+pelm(iSi)*Kd(iSiC)+pelm(iSi)**2*Kd(iSi2C) &
+   !          +pelm(iOx)*pelm(iS)*Kd(iCOS)+pelm(iS)*Kd(iCS)+pelm(iS)**2*Kd(iCS2), &
+   !          (fcarb-1.0)*eps(iC)*pH_tot,eps(iC)*pH_tot)
+   pelm(iC) = solve_q(2.*(Kd(iC2)+pelm(iH)*Kd(iC2H)+pelm(iOx)*Kd(iC2O)+pelm(iH)**2*Kd(iC2H2)+pelm(iH)**4*Kd(iC2H4) &
             +pelm(iN)*Kd(iC2N)+pelm(iN)**2*Kd(iC2N2)), &
             1.+pelm(iH)*Kd(iCH)+pelm(iOx)*Kd(iCO)+pelm(iOx)*pelm(iH)*Kd(iCOH)+pelm(iOx)**2*Kd(iCO2) &
             +pelm(iH)**2*Kd(iCH2)+pelm(iOx)*pelm(iH)**2*Kd(iH2CO)+pelm(iH)**3*Kd(iCH3)+pelm(iH)**4*Kd(iCH4) &
             +pelm(iN)*Kd(iCN)+pelm(iN)*pelm(iH)*Kd(iHCN)+pelm(iOx)*pelm(iN)*Kd(iNCO) &
             +pelm(iOx)*pelm(iH)*pelm(iN)*Kd(iHCNO)+pelm(iSi)*Kd(iSiC)+pelm(iSi)**2*Kd(iSi2C) &
             +pelm(iOx)*pelm(iS)*Kd(iCOS)+pelm(iS)*Kd(iCS)+pelm(iS)**2*Kd(iCS2), &
-            (fcarb-1.0)*eps(iC)*pH_tot,eps(iC)*pH_tot)
+            (fcarb-1.0)*eps(iC)*pH_tot)
   endif  !rndnmbr
 
   pelm(iOx) = newton_method(4.*(pelm(iN)**2*Kd(iN2O4)+pelm(iH)**2*pelm(iS)*Kd(iH2SO4)), &
@@ -450,8 +386,19 @@ else !%% wind_CO is larger than 1.0
 endif !wind_CO
 
 
- pelm(iN) = newton_method(0., 0., &
-            2.*(Kd(iN2)+pelm(iC)**2*Kd(iC2N2) &
+ ! pelm(iN) = newton_method(0., 0., &
+ !            2.*(Kd(iN2)+pelm(iC)**2*Kd(iC2N2) &
+ !            +pelm(iOx)*Kd(iN2O) &
+ !            +pelm(iOx)**4*Kd(iN2O4)), &
+ !            1.+pelm(iH)*Kd(iNH)+pelm(iOx)*Kd(iNO)+pelm(iC)*Kd(iCN)+pelm(iC)*pelm(iH)*Kd(iHCN) &
+ !            +pelm(iOx)*pelm(iC)*Kd(iNCO)+pelm(iC)*pelm(iOx)*pelm(iH)*Kd(iHCNO)+pelm(iC)**2*Kd(iC2N) &
+ !            +pelm(iOx)*pelm(iH)*Kd(iHNO)+pelm(iOx)**2*pelm(iH)*Kd(iHNO2) &
+ !            +pelm(iOx)**3*pelm(iH)*Kd(iHNO3)+pelm(iH)**2*Kd(iNH2)+pelm(iH)**3*Kd(iNH3) &
+ !            +pelm(iOx)**2*Kd(iNO2)+pelm(iOx)**3*Kd(iNO3)+pelm(iMg)*Kd(iMgN) &
+ !            +pelm(iSi)*Kd(iSiN) &
+ !            +pelm(iS)*Kd(iSN), &
+ !            -eps(iN)*pH_tot,eps(iN)*pH_tot)
+ pelm(iN) = solve_q(2.*(Kd(iN2)+pelm(iC)**2*Kd(iC2N2) &
             +pelm(iOx)*Kd(iN2O) &
             +pelm(iOx)**4*Kd(iN2O4)), &
             1.+pelm(iH)*Kd(iNH)+pelm(iOx)*Kd(iNO)+pelm(iC)*Kd(iCN)+pelm(iC)*pelm(iH)*Kd(iHCN) &
@@ -461,33 +408,44 @@ endif !wind_CO
             +pelm(iOx)**2*Kd(iNO2)+pelm(iOx)**3*Kd(iNO3)+pelm(iMg)*Kd(iMgN) &
             +pelm(iSi)*Kd(iSiN) &
             +pelm(iS)*Kd(iSN), &
-            -eps(iN)*pH_tot,eps(iN)*pH_tot)
+            -eps(iN)*pH_tot)
 
  pelm(iMg) = (eps(iMg)-(2.*fol+fpy)*eps(iSi))*pH_tot/(1.+pelm(iH)*Kd(iMgH)+pelm(iOx)*pelm(iH)*Kd(iMgOH) &
              +pelm(iOx)**2*pelm(iH)**2*Kd(iMgO2H2)+pelm(iN)*Kd(iMgN) &
              +pelm(iOx)*Kd(iMgO)+pelm(iS)*Kd(iMgS))
 
 
- pelm(iSi) = newton_method(0., 0., &
-             2.*(Kd(iSi2)+pelm(iC)*Kd(iSi2C)), &
+ ! pelm(iSi) = newton_method(0., 0., &
+ !             2.*(Kd(iSi2)+pelm(iC)*Kd(iSi2C)), &
+ !             1.+pelm(iC)*Kd(iSiC)+pelm(iH)*Kd(iSiH)+pelm(iH)**2*Kd(iSiH2) &
+ !             +pelm(iH)**3*Kd(iSiH3)+pelm(iH)**4*Kd(iSiH4)+pelm(iN)*Kd(iSiN)+pelm(iOx)*Kd(iSiO) &
+ !             +pelm(iOx)**2*Kd(iSiO2) &
+ !             +pelm(iS)*Kd(iSiS), &
+ !             (fol+fpy+fqu+fsc-1.0)*eps(iSi)*pH_tot, &
+ !             eps(iSi)*pH_tot)
+ pelm(iSi) = solve_q(2.*(Kd(iSi2)+pelm(iC)*Kd(iSi2C)), &
              1.+pelm(iC)*Kd(iSiC)+pelm(iH)*Kd(iSiH)+pelm(iH)**2*Kd(iSiH2) &
              +pelm(iH)**3*Kd(iSiH3)+pelm(iH)**4*Kd(iSiH4)+pelm(iN)*Kd(iSiN)+pelm(iOx)*Kd(iSiO) &
              +pelm(iOx)**2*Kd(iSiO2) &
              +pelm(iS)*Kd(iSiS), &
-             (fol+fpy+fqu+fsc-1.0)*eps(iSi)*pH_tot, &
-             eps(iSi)*pH_tot)
+             (fol+fpy+fqu+fsc-1.0)*eps(iSi)*pH_tot)
 
 
  pelm(iFe) = (1.0 - fir)*eps(iFe)*pH_tot/(1.+pelm(iOx)*Kd(iFeO)+pelm(iOx)**2*pelm(iH)**2*Kd(iFeO2H2) &
              +pelm(iS)*Kd(iFeS))
 
- pelm(iS) = newton_method(0., 0., 2.*(Kd(iS2)+pelm(iC)*Kd(iCS2)), &
+ ! pelm(iS) = newton_method(0., 0., 2.*(Kd(iS2)+pelm(iC)*Kd(iCS2)), &
+ !            1.+pelm(iOx)*pelm(iC)*Kd(iCOS)+pelm(iC)*Kd(iCS)+pelm(iFe)*Kd(iFeS)+pelm(iH)*Kd(iHS) &
+ !            +pelm(iH)**2*Kd(iH2S)+pelm(iOx)**4*pelm(iH)**2*Kd(iH2SO4)+pelm(iMg)*Kd(iMgS)+pelm(iN)*Kd(iSN) &
+ !            +pelm(iOx)*Kd(iSO)+pelm(iOx)**2*Kd(iSO2)+pelm(iOx)**3*Kd(iSO3)+pelm(iSi)*Kd(iSiS), &
+ !            -eps(iS)*pH_tot,eps(iS)*pH_tot)
+ pelm(iS) = solve_q(2.*(Kd(iS2)+pelm(iC)*Kd(iCS2)), &
             1.+pelm(iOx)*pelm(iC)*Kd(iCOS)+pelm(iC)*Kd(iCS)+pelm(iFe)*Kd(iFeS)+pelm(iH)*Kd(iHS) &
             +pelm(iH)**2*Kd(iH2S)+pelm(iOx)**4*pelm(iH)**2*Kd(iH2SO4)+pelm(iMg)*Kd(iMgS)+pelm(iN)*Kd(iSN) &
             +pelm(iOx)*Kd(iSO)+pelm(iOx)**2*Kd(iSO2)+pelm(iOx)**3*Kd(iSO3)+pelm(iSi)*Kd(iSiS), &
-            -eps(iS)*pH_tot,eps(iS)*pH_tot)
+            -eps(iS)*pH_tot)
 
-   err = abs((pelm-pelm_old)/(pelm_old+1.0e-60))
+  err = abs((pelm-pelm_old)/(pelm_old+1.0e-60))
 
   pmol(iH2)  = Kd(iH2)*pelm(iH)**2
   pmol(iOH)  = Kd(iOH)*pelm(iOx)*pelm(iH)
@@ -557,24 +515,24 @@ endif !wind_CO
   pmol(iSO2)  = Kd(iSO2)*pelm(iOx)**2*pelm(iS)
   pmol(iSO3)  = Kd(iSO3)*pelm(iOx)**3*pelm(iS)
 
-    nit = nit + 1
-    if (nit == 200) exit
+  nit = nit + 1
+  if (nit == 200) exit
 
  enddo
 end subroutine chemical_equilibrium
 
 
-!pure real function solve_q(a, b, c)
-! real, intent(in) :: a, b, c
-! real :: delta
-! if (-4.*a*c/b**2 > epsilon(0.)) then
-!    delta = max(b**2-4.*a*c, 0.)
-!    solve_q = (-b+sqrt(delta))/(2.*a)
-! else
-!    solve_q = -c/b
-! endif
-! solve_q = max(solve_q,1e-50)
-!end function solve_q
+pure real function solve_q(a, b, c)
+ real, intent(in) :: a, b, c
+ real :: delta
+ if (-4.*a*c/b**2 > epsilon(0.)) then
+    delta = max(b**2-4.*a*c, 0.)
+    solve_q = (-b+sqrt(delta))/(2.*a)
+ else
+    solve_q = -c/b
+ endif
+ solve_q = max(solve_q,1e-50)
+end function solve_q
 
 pure real function calc_Kd(coefs, T)
 ! all quantities are in cgs
@@ -602,15 +560,14 @@ end function calc_Kd_TiS
 !  Initialise mean molecular weight and gamma
 !
 !--------------------------------------------
-subroutine init_muGamma_condensation(rho_cgs,T,mu,gamma, pH_tot, ppH, ppH2)
+subroutine init_muGamma_condensation(rho_cgs,T,mu,gamma, pH_tot, ppH, ppH2,pressure_cgs)
    ! all quantities are in cgs
-    !real, intent(in)              :: mass_per_H,eps(nElements) !rho_cgs
-    real, intent(in)           :: rho_cgs
+    real, intent(in)              :: rho_cgs
     real, intent(inout)           :: T, mu, gamma
     real, intent(out)             :: pH_tot
-    !real, intent(in), optional    :: pressure_cgs
+    real, intent(in),  optional   :: pressure_cgs
     real, intent(out), optional   :: ppH, ppH2
-    real :: KH2,  pH, pH2
+    real :: pH, pH2
 
     mu     = (1.+4.*eps(iHe))/(1.+eps(iHe))
     gamma  = 5./3.
@@ -648,8 +605,7 @@ subroutine calc_muGamma_condensation(rho_cgs,T, mu, gamma, pH, pH_tot, pH2, pres
  integer, parameter :: itermax = 100
  character(len=30), parameter :: label = 'calc_muGamma'
 
- !print *, "present(pressure_cgs) = ", present(pressure_cgs)
- print *,'WARNING you cannot redefine the density'
+ if (present(pressure_cgs)) print *,'WARNING you cannot redefine the density'
  if (T > 1.d4) then
     mu     = (1.+4.*eps(iHe))/(1.+eps(iHe))
     gamma  = 5./3.
@@ -675,15 +631,14 @@ subroutine calc_muGamma_condensation(rho_cgs,T, mu, gamma, pH, pH_tot, pH2, pres
        i = i+1
        KH2       = calc_Kd(coefs(:,iH2), T)
        if (present(pressure_cgs)) then
-         pH = newton_method(0.,0.,1.,(1.+eps(iHe))/((1.+2.*eps(iHe))*KH2), &
-                    -pressure_cgs/patm/((1.+2.*eps(iHe))*KH2),pressure_cgs/patm)
+         pH = solve_q(1.,(1.+eps(iHe))/((1.+2.*eps(iHe))*KH2), &
+                    -pressure_cgs/patm/((1.+2.*eps(iHe))*KH2))
          pH2 = KH2*pH**2
          pH_tot = pH+2.*pH2
          !rho_cgs = pH_tot*patm*mass_per_H/(T*kboltz)
        else
          pH_tot    = rho_cgs*T*kboltz/(patm*mass_per_H)
-         !KH2       = calc_Kd(coefs(:,iH2), T)
-         pH        = newton_method(0.,0.,2.*KH2,1.,-pH_tot,pH_tot) !solve_q(2.*KH2, 1., -pH_tot)
+         pH        = solve_q(2.*KH2, 1., -pH_tot)
          pH2       = KH2*pH**2
        endif
        mu        = (1.+4.*eps(iHe))*pH_tot/(pH+pH2+eps(iHe)*pH_tot)
@@ -722,7 +677,6 @@ subroutine calc_muGamma_condensation(rho_cgs,T, mu, gamma, pH, pH_tot, pH2, pres
       pH_tot = rho_cgs*T*kboltz/(patm*mass_per_H)
    endif
     pH2    = pH_tot/2.
-    !print *,"pH2 = ",pH2*patm
     pH     = 0.
     mu     = (1.+4.*eps(iHe))/(0.5+eps(iHe))
     gamma  = (5.*eps(iHe)+3.5)/(3.*eps(iHe)+2.5)
@@ -730,21 +684,20 @@ subroutine calc_muGamma_condensation(rho_cgs,T, mu, gamma, pH, pH_tot, pH2, pres
 end subroutine calc_muGamma_condensation
 
 
-
 !Fortran subroutine that implements Newton's method for
 !root-finding with the given polynomial function
 !f(x) = a*x^4 + b*x^3 + c*x^2 + d*x + e
 
-pure real(kind=16) function newton_method(aa, bb, cc, dd, ee, zz)
-    real(kind=8), intent(in) :: aa, bb, cc, dd, ee, zz
-    real(kind=16) :: a,b,c,d,e,z
+real function newton_method(aa, bb, cc, dd, ee, zz)
+    real, intent(in) :: aa, bb, cc, dd, ee, zz
+    real :: a,b,c,d,e,z
     ! Parameters
     integer, parameter :: max_iter = 350 !350
-    real(kind=16), parameter :: tolerance = 1.0d-50 !1.d-50
-    real(kind=16), parameter :: tolerance_rel = 1.0d-50 !1.d-50
+    real, parameter :: tolerance = 1.d-50 !1.d-50
+    real, parameter :: tolerance_rel = 1.d-12 !1.d-50
 
     ! Local variables
-    real(kind=16) :: fx, dfx, x
+    real :: fx, dfx, x
     integer :: iter
 
     a = aa
@@ -753,7 +706,6 @@ pure real(kind=16) function newton_method(aa, bb, cc, dd, ee, zz)
     d = dd
     e = ee
     z = zz
-
     x = z
 
     ! Newton's method loop
@@ -763,61 +715,16 @@ pure real(kind=16) function newton_method(aa, bb, cc, dd, ee, zz)
         dfx = 4*a*x**3 + 3*b*x**2 + 2*c*x + d
 
         ! Check for convergence
-        if (abs(fx) < tolerance .or. abs(fx) < abs(x) * tolerance_rel) then
-                exit
-        end if
+        if (abs(fx) < tolerance .or. abs(fx) < abs(x) * tolerance_rel) exit
 
         ! Update x using Newton's method
         x = x - fx / dfx
 
     end do
     newton_method = x
+    !print *,iter,max_iter,x,fx,dfx
+    !stop
 
 end function newton_method
-
-!This subroutine takes input variables a, b, c, d, e,
-!and the initial guess for the root z. It then
-!iteratively applies Newton's method until convergence
-!or reaching the maximum number of iterations.
-
-
-subroutine write_time_file(name_in, cols, time, data_in, ncols, num)
- !outputs a file over a series of dumps
- character(len=*), intent(in) :: name_in
- integer, intent(in)          :: ncols, num
- character(len=*), dimension(ncols), intent(in) :: cols
- character(len=20), dimension(ncols) :: columns
- character(len=40)             :: data_formatter, column_formatter
- character(len(name_in)+9)    :: file_name
- real, intent(in)             :: time
- real, dimension(ncols), intent(in) :: data_in
- integer                      :: i, unitnum
-
- write(column_formatter, "(a,I2.2,a)") "('#',2x,", ncols+1, "('[',a15,']',3x))"
- write(data_formatter, "(a,I2.2,a)") "(", ncols+1, "(2x,es18.11e2))"
- write(file_name,"(2a,i3.3,a)") name_in, '.ev'
-
- if (num == 0) then
-    unitnum = 1000
-
-    open(unit=unitnum, file=file_name, status='replace')
-    do i=1,ncols
-       write(columns(i), "(I2,a)") i+1, cols(i)
-    enddo
-
-    !set column headings
-    write(unitnum, column_formatter) '1  Temperature', columns(:)
-    close(unit=unitnum)
- endif
-
- unitnum=1001+num
-
- open(unit=unitnum, file=file_name, position='append')
-
- write(unitnum,data_formatter) time, data_in(:ncols)
-
- close(unit=unitnum)
-
-end subroutine write_time_file
 
 end module chemistry_condensation
