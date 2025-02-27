@@ -1019,7 +1019,7 @@ subroutine save_windprofile(r0, v0, T0, rout, rfill, tend, tcross, tfill, filena
     !   print *,'XX',state%r,rfill , state%time , time_end, state%dt
     !endif
     if (state%r > rout)  tcross = min(state%time,tcross)
-    if (state%r > rfill) tfill  = state%time
+    if (state%r > rfill .and. rfill > 0.) tfill  = state%time
  enddo
  !print *,state%r < rfill , state%time < time_end,  tfill < 0.,state%Tg > Tdust_stop ,writeline < nlmax
  !print *,state%r ,rfill , state%time , time_end

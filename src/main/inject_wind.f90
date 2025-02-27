@@ -618,6 +618,7 @@ subroutine set_1D_wind_profile (tboundary,tcross,tfill)
     print *,'simulation time < time to reach the last boundary shell'
  endif
 
+ if (nfill_domain <= 0) return
  !reduce the value of nfill_domain if it is too large
  if (tcross < 1.d98) then
     if (tcross/time_between_spheres < 1.d4) then
