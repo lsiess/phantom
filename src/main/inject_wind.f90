@@ -618,19 +618,8 @@ subroutine set_1D_wind_profile (tboundary,tcross,tfill)
     print *,'simulation time < time to reach the last boundary shell'
  endif
 
- if (nfill_domain <= 0) return
- !reduce the value of nfill_domain if it is too large
- if (tcross < 1.d98) then
-    if (tcross/time_between_spheres < 1.d4) then
-       new_nfill = min(nfill_domain,int(tcross/(utime*time_between_spheres))-iboundary_spheres)
-       if (new_nfill /= nfill_domain .and. new_nfill > 0) then
-          nfill_domain = new_nfill
-          print *,'number of background shells reset to',nfill_domain
-       endif
-    endif
- endif
 !define the number of background shells
- if (tfill < 1.d98) then
+ if (tfill < 1.d98 .and. rfill_domain_au > 1e-5) then
     nfill_domain = int(tfill/(utime*time_between_spheres))-iboundary_spheres
     print *,'number of background shells set to',nfill_domain
     if (nfill_domain < 0 ) then
