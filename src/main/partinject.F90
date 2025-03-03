@@ -40,7 +40,7 @@ contains
 !  Inject or update a particle into the simulation.
 !+
 !-----------------------------------------------------------------------
-subroutine add_or_update_particle(itype,position,velocity,h,u,particle_number,npart,npartoftype,xyzh,vxyzu,JKmuS)
+subroutine add_or_update_particle(itype,position,velocity,h,u,particle_number,npart,npartoftype,xyzh,vxyzu,JKmuS,isink)
  use part, only:maxp,iamtype,iphase,maxvxyzu,iboundary,nucleation,eos_vars,abundance
  use part, only:maxalpha,alphaind,maxgradh,gradh,fxyzu,fext,set_particle_type
  use part, only:mhd,Bevol,dBevol,Bxyz,divBsymm,gr,pxyzu!,dust_temp
@@ -53,6 +53,7 @@ subroutine add_or_update_particle(itype,position,velocity,h,u,particle_number,np
  use cooling_ism,  only:abund_default
  integer, intent(in)    :: itype
  real,    intent(in)    :: position(3), velocity(3), h, u
+ integer, intent(in), optional :: isink
  real,    intent(in), optional :: JKmuS(:)
  integer, intent(in)    :: particle_number
  integer, intent(inout) :: npart, npartoftype(:)
@@ -96,12 +97,12 @@ subroutine add_or_update_particle(itype,position,velocity,h,u,particle_number,np
  if (maxvxyzu>=4) vxyzu(4,particle_number) = u
 
  fxyzu(:,particle_number) = 0.
- fext(:,particle_number) = 0.
+ fext(:,particle_number)  = 0.
 
  if (mhd) then
-    Bevol(:,particle_number) = 0.
+    Bevol(:,particle_number)  = 0.
     dBevol(:,particle_number) = 0.
-    Bxyz(:,particle_number) = 0.
+    Bxyz(:,particle_number)   = 0.
     divBsymm(particle_number) = 0.
  endif
 

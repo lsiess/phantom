@@ -35,6 +35,7 @@ module inject
 
  public :: init_inject,inject_particles,write_options_inject,read_options_inject,&
       wind_injection_radius,set_default_options_inject,update_injected_par
+
  private
 !
 !--runtime settings for this module
@@ -46,7 +47,6 @@ module inject
  integer:: nfill_domain = 0
  real :: wind_velocity_km_s = 10.
  real :: wind_mass_rate_Msun_yr
- real :: wind_mass_rate_alt_Msun_yr = 1e-5
  real :: wind_injection_radius_au
  real :: wind_temperature
  real :: outer_boundary_au = 30.
@@ -57,20 +57,20 @@ module inject
  real :: rfill_domain_au = 0.
  real :: piston_velocity_km_s = 0.
  real :: dtpulsation = huge(0.)
+ real :: wind_mass_rate_alt_Msun_yr = 1e-5
  real :: dt_alt_rate_yr = 0.
  real :: dt_alt_rate
  real :: tbeg_alt_rate_yr = 10.
  real :: tbeg_alt_rate
 
 ! global variables
- integer, parameter :: wind_emitting_sink = 1
  real :: geodesic_R(0:19,3,3), geodesic_v(0:11,3)
- real :: u_to_temperature_ratio,wind_mass_rate,wind_velocity,&
-      mass_of_spheres,time_between_spheres,neighbour_distance,&
-      Rstar_cgs,rinject,wind_injection_radius,wind_injection_speed,&
-      rho_ini,Mstar_cgs,time_period,initial_wind_velocity_cgs,&
+ real :: u_to_temperature_ratio,wind_mass_rate,rho_ini,&
+      mass_of_spheres,time_between_spheres,neighbour_distance,wind_velocity,&
+      Rstar_cgs,Mstar_cgs,wind_injection_radius,wind_injection_speed,&
+      rinject,time_period,initial_wind_velocity_cgs,&
       wind_mass_rate_alt,wind_mass_rate_low
- real :: omega_osc,deltaR_osc,piston_velocity,dr3,orbital_period
+ real :: omega_puls,deltaR_puls,piston_velocity,dr3,orbital_period
  integer :: particles_per_sphere,nwall_particles,iresolution,nwrite
 
  logical :: pulsating_wind
@@ -92,35 +92,41 @@ subroutine init_inject(ierr)
  use physcon,           only:mass_proton_cgs, kboltz, Rg, days, km, au, years, solarm, pi, Gg
  use icosahedron,       only:compute_matrices, compute_corners
  use eos,               only:gmw,gamma,polyk
- use units,             only:unit_velocity, umass, utime, udist
+ use units,             only:unit_velocity,umass,utime,udist
  use part,              only:xyzmh_ptmass,vxyz_ptmass,massoftype,igas,imloss,ilum,iTeff,iReff,nptmass
- use injectutils,       only:get_parts_per_sphere,get_neighb_distance
+ use injectutils,       only:get_parts_per_sphere,get_neighb_distance,use_icosahedron
 
  integer, intent(out) :: ierr
+ integer :: wind_emitting_sink = 1
  real :: semimajoraxis_cgs
  real :: dr,dp,mass_of_particles,tcross,rsonic,tsonic,initial_rinject,tboundary
  real :: separation_cgs,ecc(3),eccentricity,Tstar,tfill
 
+ if (iwind_resolution > 20) then
+    use_icosahedron = .false.
+ else
+    use_icosahedron = .true.
+ endif
+
  if (icooling > 0) nwrite = nwrite+1
  ierr = 0
-
- Tstar     = xyzmh_ptmass(iTeff,wind_emitting_sink)
- Rstar_cgs = xyzmh_ptmass(iReff,wind_emitting_sink)*udist
- Mstar_cgs = xyzmh_ptmass(4,wind_emitting_sink)*umass
- !
- ! convert input parameters to code units
- !
- wind_velocity  = wind_velocity_km_s * (km / unit_velocity)
- wind_mass_rate = wind_mass_rate_Msun_yr * (solarm/umass) / (years/utime)
- wind_mass_rate_alt = wind_mass_rate_alt_Msun_yr * (solarm/umass) / (years/utime)
- wind_mass_rate_low = wind_mass_rate
- if (wind_temperature == 0.)  wind_temperature = Tstar
- if (wind_injection_radius_au == 0.) wind_injection_radius_au = Rstar_cgs/au
- wind_injection_radius = wind_injection_radius_au * au / udist
 
  pulsating_wind = (pulsation_period_days > 0.) .and. (piston_velocity_km_s > 0.)
  if (pulsating_wind .and. ieos == 6) call fatal(label,'cannot use ieos=6 with pulsation')
  call init_pulsating_wind(pulsating_wind)
+
+ Tstar     = xyzmh_ptmass(iTeff,wind_emitting_sink)
+ Rstar_cgs = xyzmh_ptmass(iReff,wind_emitting_sink)*udist
+ Mstar_cgs = xyzmh_ptmass(4,wind_emitting_sink)*umass
+
+ wind_velocity  = wind_velocity_km_s * (km / unit_velocity)
+ wind_mass_rate = wind_mass_rate_Msun_yr * (solarm/umass) / (years/utime)
+ wind_mass_rate_alt = wind_mass_rate_alt_Msun_yr * (solarm/umass) / (years/utime)
+ wind_mass_rate_low = wind_mass_rate
+
+ if (wind_temperature == 0.)  wind_temperature = Tstar
+ if (wind_injection_radius_au == 0.) wind_injection_radius_au = Rstar_cgs/au
+ wind_injection_radius = wind_injection_radius_au * au / udist
 
  dt_alt_rate = dt_alt_rate_yr * years/utime
  tbeg_alt_rate = tbeg_alt_rate_yr * years/utime
@@ -148,7 +154,7 @@ subroutine init_inject(ierr)
  initial_rinject = wind_injection_radius
  if (pulsating_wind) then
     !implement background spheres starting from the smallest radius
-    !initial_rinject = min(initial_rinject,xyzmh_ptmass(iReff,wind_emitting_sink)-deltaR_osc)
+    !initial_rinject = min(initial_rinject,xyzmh_ptmass(iReff,wind_emitting_sink)-deltaR_puls)
  else
     if (initial_rinject < xyzmh_ptmass(5,wind_emitting_sink)) then
        print *,'stop wind_inject_radius < Racc (au)',wind_injection_radius_au,xyzmh_ptmass(5,wind_emitting_sink)
@@ -169,16 +175,19 @@ subroutine init_inject(ierr)
          wind_temperature,initial_wind_velocity_cgs,rsonic,tsonic,wind_type)
     initial_rinject = rinject/udist
  endif
+
  rinject = initial_rinject
  wind_injection_speed = initial_wind_velocity_cgs/unit_velocity
  rho_ini = wind_mass_rate/(4.*pi*rinject**2*wind_injection_speed)
 
  ! set wind resolution parameters
- call set_wind_resolution(rsonic,tsonic)
+ call init_resolution(rsonic,tsonic)
 
- ! compute matrices for geodesic
- call compute_matrices(geodesic_R)
- call compute_corners(geodesic_v)
+    ! compute matrices for geodesic (only if wind from one sink)
+ if (use_icosahedron) then
+   call compute_matrices(geodesic_R)
+   call compute_corners(geodesic_v)
+ endif
 
  ! compute 1D wind profile to get tcross & save 1D profile
  if ( .not. pulsating_wind .or. rfill_domain_au > 0.) then
@@ -223,7 +232,7 @@ end subroutine init_inject
 !  set particle mass or resolution depending on iwind_resolution
 !+
 !-----------------------------------------------------------------------
-subroutine set_wind_resolution(rsonic,tsonic)
+subroutine init_resolution(rsonic,tsonic)
 
  use part,        only:massoftype,igas,iboundary,npart
  use io,          only:fatal
@@ -275,17 +284,17 @@ subroutine set_wind_resolution(rsonic,tsonic)
     massoftype(igas) = mass_of_particles
     print *,'iwind_resolution unchanged = ',iresolution
  endif
- if (npart > 0 .and. abs(log10(check_mass/mass_of_particles)) > 1e-10) then
+ if (npart > 0 .and. abs(log10(check_mass/mass_of_particles)) > 1e-9) then
     print *,'check_mass = ',check_mass
     print *,'particle mass = ',mass_of_particles
     print *,'number of particles = ',npart
     call fatal(label,"you cannot reset the particle's mass")
  endif
- massoftype(iboundary) = mass_of_particles
+ massoftype(iboundary) = check_mass
 
  !spheres properties
  mass_of_spheres = massoftype(igas) * particles_per_sphere
- nwall_particles = iboundary_spheres*particles_per_sphere
+ nwall_particles = iboundary_spheres* particles_per_sphere
  dr3 = 3.*mass_of_spheres/(4.*pi*rho_ini)
  if (wind_type == 3) then
     time_between_spheres = mass_of_spheres/calc_wind_mass_loss_rate(time)
@@ -299,7 +308,7 @@ subroutine set_wind_resolution(rsonic,tsonic)
     call fatal(label,'no shell ejection : tmax < time_between_spheres')
  endif
 
-end subroutine set_wind_resolution
+end subroutine init_resolution
 
 !-----------------------------------------------------------------------
 
@@ -315,7 +324,7 @@ subroutine logging(rsonic,tsonic,tboundary,tcross,tfill)
 
  real, intent(in) :: rsonic,tsonic
  real, optional, intent(in) :: tboundary,tcross,tfill
- integer :: ires_min
+ integer :: ires_min,isink = 1
  integer(kind=8) :: ninject
  real :: vesc,wind_rotation_speed,rotation_speed_crit
 
@@ -358,8 +367,8 @@ subroutine logging(rsonic,tsonic,tboundary,tcross,tfill)
          'time_to_sonic_point        : ',tsonic/utime, &
          'number of shells to sonic  : ',(rsonic/udist-rinject)/(wind_shell_spacing*neighbour_distance)
  endif
- wind_rotation_speed = sqrt(sum(xyzmh_ptmass(ispinx:ispinz,1)**2))/xyzmh_ptmass(iReff,1)**2
- rotation_speed_crit = sqrt(xyzmh_ptmass(4,1)/xyzmh_ptmass(iReff,1))
+ wind_rotation_speed = sqrt(sum(xyzmh_ptmass(ispinx:ispinz,isink)**2))/xyzmh_ptmass(iReff,isink)**2
+ rotation_speed_crit = sqrt(xyzmh_ptmass(4,isink)/xyzmh_ptmass(iReff,isink))
  if (wind_rotation_speed > 1e-20) then
     write (*,'(4(3x,A,es11.4))') &
          'rotation speed (km/s)      = ',wind_rotation_speed*unit_velocity/km,&
@@ -449,7 +458,7 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,&
     !
     ! delete particles that exit the outer boundary
     !
-    inner_radius = wind_injection_radius + deltaR_osc*sin(omega_osc*time)
+    inner_radius = wind_injection_radius + deltaR_puls*sin(omega_puls*time)
 
     if (outer_boundary_au > rinject) call delete_particles_outside_sphere(x0,real(outer_boundary_au*au/udist),npart)
     call delete_dead_particles_inside_radius(x0,inner_radius,npart)
@@ -529,7 +538,7 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,&
        endif
        rho = rho*rho_factor
        if (iverbose > 0) print '(" ## update boundary ",i4,2(i4),i7,8(1x,es12.5))',i,&
-            inner_sphere,outer_sphere,npart,time,local_time,r/xyzmh_ptmass(iReff,1),local_time*utime,&
+            inner_sphere,outer_sphere,npart,time,local_time,r/xyzmh_ptmass(iReff,isink),local_time*utime,&
             r*udist,v*udist/utime,wind_mass_rate /(solarm/umass) * (years/utime)
     endif
 
@@ -537,29 +546,29 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,&
        ! boundary sphere
        first_particle = (nboundaries-i+inner_sphere)*particles_per_sphere+1
        !print '(" @@ update boundary ",i4,2(i4),i7,6(1x,es12.5))',i,inner_sphere,&
-       !     outer_sphere,first_particle,time,local_time,r/xyzh_ptmass(iReff,1),v,u,rho
+       !     outer_sphere,first_particle,time,local_time,r/xyzh_ptmass(iReff,isink),v,u,rho
        if (idust_opacity == 2) then
           call inject_geodesic_sphere(i, first_particle, iresolution, r, v, u, rho,  geodesic_R, geodesic_V, &
-               npart, npartoftype, xyzh, vxyzu, ipart, x0, v0, JKmuS)
+               npart, npartoftype, xyzh, vxyzu, ipart, x0, v0, isink, JKmuS)
        else
           call inject_geodesic_sphere(i, first_particle, iresolution, r, v, u, rho,  geodesic_R, geodesic_V, &
-               npart, npartoftype, xyzh, vxyzu, ipart, x0, v0)
+               npart, npartoftype, xyzh, vxyzu, ipart, x0, v0, isink)
        endif
-       if (isink_radiation > 0) dust_temp(first_particle:first_particle+particles_per_sphere-1) = &
-            xyzmh_ptmass(iTeff,wind_emitting_sink)
+       if (isink_radiation > 0) dust_temp(first_particle:first_particle+particles_per_sphere-1) = xyzmh_ptmass(iTeff,isink)
     else
        ! ejected particles + create new  inner sphere
        if (idust_opacity == 2) then
           call inject_geodesic_sphere(i, npart+1, iresolution, r, v, u, rho, geodesic_R, geodesic_V,&
-               npart, npartoftype, xyzh, vxyzu, igas, x0, v0, JKmuS)
+               npart, npartoftype, xyzh, vxyzu, igas, x0, v0, isink, JKmuS)
        else
           call inject_geodesic_sphere(i, npart+1, iresolution, r, v, u, rho, geodesic_R, geodesic_V,&
-               npart, npartoftype, xyzh, vxyzu, igas, x0, v0)
+               npart, npartoftype, xyzh, vxyzu, igas, x0, v0, isink)
        endif
        !initialize dust temperature to star's effective temperature
-       if (isink_radiation > 0) dust_temp(npart+1-particles_per_sphere:npart) = xyzmh_ptmass(iTeff,wind_emitting_sink)
+       if (isink_radiation > 0) dust_temp(npart+1-particles_per_sphere:npart) = xyzmh_ptmass(iTeff,isink)
        print '(" ## eject particles [",i7,"-",i7,"] ",3(i4),10(1x,es11.4))',npart+1-particles_per_sphere,npart,i,&
-            inner_sphere,outer_sphere,time,local_time,r/xyzmh_ptmass(iReff,1),v,u,rho,wind_mass_rate/(solarm/umass)*(years/utime)
+            inner_sphere,outer_sphere,time,local_time,r/xyzmh_ptmass(iReff,isink),v,u,rho,&
+            wind_mass_rate/(solarm/umass)*(years/utime)
     endif
     !cs2max = max(cs2max,gamma*(gamma-1)*u)
  enddo
@@ -571,7 +580,7 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,&
     mass_lost = mass_of_spheres * (inner_sphere-outer_sphere+1)
     xyzmh_ptmass(4,isink) = xyzmh_ptmass(4,isink) - mass_lost
     if (pulsating_wind) then
-       inner_radius = wind_injection_radius + deltaR_osc*sin(omega_osc*time)
+       inner_radius = wind_injection_radius + deltaR_puls*sin(omega_puls*time)
        !v2 xyzh_ptmass(5,isink) = (inner_radius**3-dr3)**(1./3.) !accretion radius
        xyzmh_ptmass(5,isink) = inner_radius
     endif
@@ -608,12 +617,11 @@ subroutine set_1D_wind_profile (tboundary,tcross,tfill)
 
  real, intent(out)  :: tboundary,tcross,tfill
  real :: tend
- integer :: new_nfill
 
  tboundary = (iboundary_spheres+nfill_domain)*time_between_spheres
  tend      = max(tmax,tboundary)*utime
- call save_windprofile(real(rinject*udist),real(wind_injection_speed*unit_velocity),&
-      wind_temperature,real(outer_boundary_au*au),rfill,tend,tcross,tfill,'wind_profile1D.dat')
+ call save_windprofile(rinject*udist,wind_injection_speed*unit_velocity,&
+      wind_temperature,outer_boundary_au*au,rfill,tend,tcross,tfill,'wind_profile1D.dat')
  if (tboundary > tmax .and. nfill_domain > 1) then
     print *,'simulation time < time to reach the last boundary shell'
  endif
@@ -664,12 +672,12 @@ subroutine init_pulsating_wind(pulsating_wind)
  if (pulsating_wind) then
     pulsation_period = pulsation_period_days * (days/utime)
     dtpulsation      = pulsation_period/50.
-    omega_osc        = 2.*pi/pulsation_period
-    deltaR_osc       = pulsation_period*piston_velocity/(2.*pi)
+    omega_puls       = 2.*pi/pulsation_period
+    deltaR_puls      = pulsation_period*piston_velocity/(2.*pi)
     piston_velocity  = piston_velocity_km_s * (km / unit_velocity)
  else
-    omega_osc        = 0.d0
-    deltaR_osc       = 0.d0
+    omega_puls       = 0.d0
+    deltaR_puls      = 0.d0
     piston_velocity  = 0.d0
  endif
 
@@ -695,8 +703,8 @@ subroutine pulsating_wind_profile(time,local_time,r,v,u,rho,e,GM,sphere_number, 
  real :: inner_radius,r3
  logical :: verbose = .true.
 
- v = wind_velocity + piston_velocity* cos(omega_osc*time) !same velocity for all wall particles
- inner_radius = wind_injection_radius + deltaR_osc*sin(omega_osc*time)
+ v = wind_velocity + piston_velocity* cos(omega_puls*time) !same velocity for all wall particles
+ inner_radius = wind_injection_radius + deltaR_puls*sin(omega_puls*time)
  !ejected spheres
  if (sphere_number <= inner_sphere) then
     r = inner_radius
@@ -809,6 +817,7 @@ end subroutine write_options_inject
 subroutine read_options_inject(name,valstring,imatch,igotall,ierr)
  use io,      only:fatal
  use physcon, only:au
+
  character(len=*), intent(in)  :: name,valstring
  logical, intent(out) :: imatch,igotall
  integer,intent(out) :: ierr

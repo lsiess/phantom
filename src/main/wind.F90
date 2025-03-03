@@ -37,7 +37,7 @@ module wind
  ! input parameters
  real :: Mstar_cgs, Lstar_cgs, wind_gamma, Mdot_cgs, Tstar, Rstar
  real :: u_to_temperature_ratio
- real, dimension (:,:), allocatable, public :: trvurho_1D, JKmuS_1D
+ real, dimension (:,:), allocatable, public :: trvurho_1D,JKmuS_1D
 
  ! wind properties
  type wind_state
@@ -345,7 +345,7 @@ subroutine wind_step(state)
  use ptmass_radiation, only:alpha_rad,iget_tdust,tdust_exp, isink_radiation
  use physcon,          only:pi,Rg
  use dust_formation,   only:evolve_chem,calc_kappa_dust,calc_kappa_bowen,&
-      calc_Eddington_factor,idust_opacity, calc_muGamma
+      calc_Eddington_factor,idust_opacity,calc_muGamma
  use part,             only:idK3,idmu,idgamma,idsat,idkappa
  use cooling_solver,   only:calc_cooling_rate
  use options,          only:icooling
@@ -934,9 +934,11 @@ subroutine save_windprofile(r0, v0, T0, rout, rfill, tend, tcross, tfill, filena
  use dust_formation,   only:idust_opacity
  use units,            only:utime
  use ptmass_radiation, only:iget_tdust
- real, intent(in) :: r0, v0, T0, tend, rout, rfill
- real, intent(out) :: tcross,tfill          !time to cross the entire integration domain
+
+ real,    intent(in) :: r0,v0,T0,tend,rout,rfill
+ real,   intent(out) :: tcross,tfill          !time to cross the entire integration domain
  character(*), intent(in) :: filename
+
  integer, parameter :: nlmax = 8192   ! maxium number of steps store in the 1D profile
  real :: time_end, tau_lucy_init
  real :: r_incr,v_incr,T_incr,mu_incr,gamma_incr,r_base,v_base,T_base,mu_base,gamma_base&
@@ -1040,6 +1042,7 @@ subroutine save_windprofile(r0, v0, T0, rout, rfill, tend, tcross, tfill, filena
  allocate (trvurho_1D(5, writeline))
  trvurho_1D(:,:) = trvurho_temp(:,1:writeline)
  deallocate(trvurho_temp)
+
  if (idust_opacity == 2) then
     if (allocated(JKmuS_1D)) deallocate(JKmuS_1D)
     allocate (JKmuS_1D(n_nucleation, writeline))
