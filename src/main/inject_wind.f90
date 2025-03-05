@@ -34,7 +34,8 @@ module inject
  character(len=*), parameter, public :: inject_type = 'wind'
 
  public :: init_inject,inject_particles,write_options_inject,read_options_inject,&
-      wind_injection_radius,set_default_options_inject,update_injected_par
+      wind_injection_radius,set_default_options_inject,update_injected_par,&
+      write_headeropts_inject_wind,read_headeropts_inject_wind
 
  private
 !
@@ -290,7 +291,7 @@ subroutine init_resolution(rsonic,tsonic)
     print *,'number of particles = ',npart
     call fatal(label,"you cannot reset the particle's mass")
  endif
- massoftype(iboundary) = check_mass
+ massoftype(iboundary) = massoftype(igas)
 
  !spheres properties
  mass_of_spheres = massoftype(igas) * particles_per_sphere
@@ -537,16 +538,16 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,&
           call interp_wind_profile(time, local_time, r, v, u, rho, e, GM, fdone)
        endif
        rho = rho*rho_factor
-       if (iverbose > 0) print '(" ## update boundary ",i4,2(i4),i7,8(1x,es12.5))',i,&
-            inner_sphere,outer_sphere,npart,time,local_time,r/xyzmh_ptmass(iReff,isink),local_time*utime,&
-            r*udist,v*udist/utime,wind_mass_rate /(solarm/umass) * (years/utime)
+       !if (iverbose > 0) print '(" ## update boundary ",i4,2(i4),i7,8(1x,es12.5))',i,&
+       !     inner_sphere,outer_sphere,npart,time,local_time,r/xyzmh_ptmass(iReff,isink),v*udist/utime,&
+       !     wind_mass_rate /(solarm/umass) * (years/utime)
     endif
 
     if (i > inner_sphere) then
        ! boundary sphere
        first_particle = (nboundaries-i+inner_sphere)*particles_per_sphere+1
-       !print '(" @@ update boundary ",i4,2(i4),i7,6(1x,es12.5))',i,inner_sphere,&
-       !     outer_sphere,first_particle,time,local_time,r/xyzh_ptmass(iReff,isink),v,u,rho
+       print '(" @@ update boundary ",i4,2(i4),i7,8(1x,es12.5))',i,inner_sphere,&
+            outer_sphere,first_particle,time,local_time,r/xyzmh_ptmass(iReff,isink),v*udist/utime,u,rho
        if (idust_opacity == 2) then
           call inject_geodesic_sphere(i, first_particle, iresolution, r, v, u, rho,  geodesic_R, geodesic_V, &
                npart, npartoftype, xyzh, vxyzu, ipart, x0, v0, isink, JKmuS)
@@ -773,6 +774,36 @@ subroutine set_default_options_inject(flag)
  endif
 
 end subroutine set_default_options_inject
+
+!-----------------------------------------------------------------------
+!+
+!  write relevant options to the header of the dump file
+!+
+!-----------------------------------------------------------------------
+subroutine write_headeropts_inject_wind(hdr,ierr)
+ use dump_utils,        only:dump_h,add_to_iheader
+ type(dump_h), intent(inout) :: hdr
+ integer,      intent(out)   :: ierr
+
+ ierr = 0
+ call add_to_iheader(iwind_resolution,'iwind_res',hdr,ierr) ! integer
+
+end subroutine write_headeropts_inject_wind
+
+!-----------------------------------------------------------------------
+!+
+!  read relevant options from the header of the dump file
+!+
+!-----------------------------------------------------------------------
+subroutine read_headeropts_inject_wind(hdr,ierr)
+ use dump_utils, only:dump_h,extract
+ type(dump_h), intent(in)  :: hdr
+ integer,      intent(out) :: ierr
+
+ ierr = 0
+ call extract('iwind_res',iwind_resolution,hdr,ierr) ! real
+
+end subroutine read_headeropts_inject_wind
 
 !-----------------------------------------------------------------------
 !+

@@ -275,6 +275,7 @@ subroutine fill_header(sphNGdump,t,nparttot,npartoftypetot,nblocks,nptmass,hdr,i
                           phantom_version_major,phantom_version_minor,phantom_version_micro,periodic,idumpfile
  use units,          only:udist,umass,utime,unit_Bfield
  use dust_formation, only:write_headeropts_dust_formation
+ use inject,         only:write_headeropts_inject_wind,inject_type
 
  logical,         intent(in)    :: sphNGdump
  real,            intent(in)    :: t
@@ -344,6 +345,7 @@ subroutine fill_header(sphNGdump,t,nparttot,npartoftypetot,nblocks,nptmass,hdr,i
     call add_to_rheader(alphaB,'alphaB',hdr,ierr)
     call add_to_rheader(massoftype,'massoftype',hdr,ierr) ! array
     if (do_nucleation) call write_headeropts_dust_formation(hdr,ierr)
+    if (inject_type == 'wind') call write_headeropts_inject_wind(hdr,ierr)
     call add_to_rheader(Bextx,'Bextx',hdr,ierr)
     call add_to_rheader(Bexty,'Bexty',hdr,ierr)
     call add_to_rheader(Bextz,'Bextz',hdr,ierr)
@@ -411,6 +413,7 @@ subroutine unfill_rheader(hdr,phantomdump,ntypesinfile,nptmass,&
  use units,          only:unit_density,udist
  use timestep,       only:idtmax_n,idtmax_frac
  use dust_formation, only:read_headeropts_dust_formation
+ use inject,         only:read_headeropts_inject_wind,inject_type
  type(dump_h), intent(in)  :: hdr
  logical,      intent(in)  :: phantomdump
  integer,      intent(in)  :: iprint,ntypesinfile,nptmass
@@ -455,6 +458,10 @@ subroutine unfill_rheader(hdr,phantomdump,ntypesinfile,nptmass,&
     endif
     if (do_nucleation) then
        call read_headeropts_dust_formation(hdr,ierr)
+       if (ierr /= 0) ierr = 6
+    endif
+    if (inject_type == 'wind') then
+       call read_headeropts_inject_wind(hdr,ierr)
        if (ierr /= 0) ierr = 6
     endif
 
