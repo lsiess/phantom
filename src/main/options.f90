@@ -48,6 +48,9 @@ module options
 ! dust method
  logical, public :: use_dustfrac, use_hybrid, use_porosity
 
+! wind resolution
+ integer, public :: iwind_res
+
 ! mcfost
  logical, public :: use_mcfost, use_Voronoi_limits_file, use_mcfost_stellar_parameters, mcfost_computes_Lacc
  logical, public :: mcfost_uses_PdV, mcfost_dust_subl

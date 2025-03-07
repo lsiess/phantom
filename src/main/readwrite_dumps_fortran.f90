@@ -492,10 +492,10 @@ subroutine read_dump_fortran(dumpfile,tfile,hfactfile,idisk1,iprint,id,nprocs,ie
                     xyzmh_ptmass,vxyz_ptmass
  use dump_utils,   only:get_dump_size,skipblock,skip_arrays,check_tag,lenid,ndatatypes,read_header, &
                         open_dumpfile_r,get_error_text,ierr_realsize,free_header,read_block_header,&
-                        get_blocklimits
+                        get_blocklimits,extract
  use mpiutils,     only:reduce_mpi,reduceall_mpi
  use sphNGutils,   only:convert_sinks_sphNG,mass_sphng
- use options,      only:use_dustfrac
+ use options,      only:use_dustfrac,iwind_res
  use boundary_dyn, only:dynamic_bdy
  character(len=*),  intent(in)  :: dumpfile
  real,              intent(out) :: tfile,hfactfile
@@ -563,6 +563,7 @@ subroutine read_dump_fortran(dumpfile,tfile,hfactfile,idisk1,iprint,id,nprocs,ie
     call error('read_dump','error reading header from file')
     return
  endif
+ call extract('iwind_res',iwind_res,hdr,ierr) ! integer
  !
  ! for backwards compatibility with old phantom files
  ! fake the tags as if they had been read from the file
