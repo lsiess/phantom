@@ -229,7 +229,8 @@ end subroutine init_inject
 !-----------------------------------------------------------------------
 subroutine adjust_boundary_shells(iwind_res)
 
- use part, only:iphase,xyzh,vxyzu,iorig,fxyzu,fext,npartoftype,npart,iboundary,igas
+ use part, only:iphase,xyzh,vxyzu,iorig,fxyzu,fext,npartoftype,npart,iboundary,igas,nucleation
+ use dim,  only:do_nucleation
  use io,   only:iverbose
 
  integer, intent(in) :: iwind_res
@@ -264,6 +265,9 @@ subroutine adjust_boundary_shells(iwind_res)
     fxyzu(:,i+nshift) = fxyzu(:,i)
     fext(:,i+nshift)  = fext(:,i)
     iphase(i+nshift) = iphase(i)
+    if (do_nucleation) then
+       nucleation(:,i+nshift) = nucleation(:,i)
+    endif
  enddo
  if (iwind_resolution*iboundary_spheres > npart .and. incr <0) iphase(npart:iwind_resolution*iboundary_spheres) = 1
  npart = npart+nshift
