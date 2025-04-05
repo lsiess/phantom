@@ -102,8 +102,9 @@ module icosahedron
 
  use io, only:error
  implicit none
- public :: demo,vector2pixel,pixel2vector,compute_matrices,compute_corners,fibonacci_sphere
-
+ public :: demo,vector2pixel,pixel2vector,compute_matrices,compute_corners
+ public :: fibonacci_sphere,fibonacci_jets
+ 
  private
 
 contains
@@ -915,17 +916,18 @@ end subroutine unadjust_sixth
 !-----------------------------------------------------------------------
 !+
 !  Inject a quasi-uniform distribution of particles
-!  using Fibonacci lattices 
+!  using Fibonacci spheres 
 ! 
 !  Reference : Gonzalez A. (2009)
 !+
 !-----------------------------------------------------------------------
 subroutine fibonacci_sphere(j,resolution,radial_unit_vector)
 
+ use physcon, only:pi
+
  integer, intent(in) :: j, resolution
  real, intent(out)   :: radial_unit_vector(3)
 
- real, parameter :: pi = 4. * atan(1.)
  real, parameter :: phi = pi * (sqrt(5.)-1.) ! Golden angle  
  real :: radius, theta
 
@@ -940,6 +942,37 @@ subroutine fibonacci_sphere(j,resolution,radial_unit_vector)
  radial_unit_vector(3) = sin(theta) * radius
 
 end subroutine fibonacci_sphere
+
+!-----------------------------------------------------------------------
+!+
+!  Modified Fibonacci sphere routine to only inject particles at 
+!  the poles of the sink
+!+
+!-----------------------------------------------------------------------
+subroutine fibonacci_jets(j,resolution,radial_unit_vector)
+
+ use physcon, only:pi
+
+ integer, intent(in) :: j, resolution
+ real, intent(out)   :: radial_unit_vector(3)
+
+ real, parameter :: phi = pi * (sqrt(5.)-1.) ! Golden angle  
+ real :: radius, theta
+
+ if (2 * j < resolution) then
+    radial_unit_vector(3) = 1. - ((j + 0.5)/resolution) * 0.1
+ else 
+    radial_unit_vector(3) = - 1. + ((j - resolution/2 + 0.5)/resolution) * 0.1
+ endif
+
+ radius = sqrt(1. - radial_unit_vector(3) * radial_unit_vector(3))
+
+ theta = phi * j
+
+ radial_unit_vector(1) = cos(theta) * radius
+ radial_unit_vector(2) = sin(theta) * radius
+
+end subroutine fibonacci_jets
 
 end module icosahedron
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
