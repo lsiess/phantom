@@ -101,10 +101,8 @@ subroutine init_inject(ierr)
  real :: separation_cgs,ecc(3),eccentricity
 
  use_icosahedron = .false.
- if (iwind_resolution > 20 .or. use_icosahedron) then
-    use_icosahedron = .false.
- else
-    use_icosahedron = .true.
+ if (iwind_resolution > 15 .and. use_icosahedron) use_icosahedron = .false.
+ if (use_icosahedron) then
     call compute_matrices(geodesic_R)
     call compute_corners(geodesic_v)
  endif
@@ -176,7 +174,7 @@ subroutine init_inject(ierr)
  rho_ini = wind_mass_rate/(4.*pi*rinject**2*wind_injection_speed)
 
  ! set wind resolution parameters
-     if (isink == 1) call init_resolution(rsonic,tsonic)
+ if (isink == 1) call init_resolution(rsonic,tsonic)
 
  ! compute 1D wind profile to get tcross & save 1D profile
  if ( .not. pulsating_wind .or. rfill_domain_au > 0.) then
@@ -357,6 +355,7 @@ subroutine logging(rsonic,tsonic,tboundary,tcross,tfill)
  use ptmass_radiation,  only:alpha_rad
  use part,              only:massoftype,igas,xyzmh_ptmass,iReff,&
                              ispinx,ispiny,ispinz,imloss
+ use injectutils,       only:use_icosahedron
 
  real, intent(in) :: rsonic,tsonic
  real, optional, intent(in) :: tboundary,tcross,tfill
@@ -365,9 +364,10 @@ subroutine logging(rsonic,tsonic,tboundary,tcross,tfill)
  real :: vesc,wind_rotation_speed,rotation_speed_crit
 
  vesc = sqrt(2.*Gg*Mstar_cgs*(1.-alpha_rad)/Rstar_cgs)
- write (*,'(/,2(3x,A,es11.4))')&
+ write (*,'(/,2(3x,A,es11.4),3x,A,l1)')&
       'mass_of_particles       : ',massoftype(igas),&
-      'time_between_spheres    : ',time_between_spheres
+      'time_between_spheres    : ',time_between_spheres,&
+      'use_icosahedron         : ',use_icosahedron
  write (*,'(2(3x,A,es11.4),3x,A,i7)') &
       'dist between spheres    : ',wind_shell_spacing*neighbour_distance,&
       'dist between injection  : ',time_between_spheres*wind_injection_speed,&
