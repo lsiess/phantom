@@ -39,7 +39,7 @@ subroutine do_analysis(dumpfile,num,xyzh,vxyzu,particlemass,npart,time,iunit)
  use units,      only: utime,unit_density,udist
  use physcon,    only: atomic_mass_unit
  use eos,        only: get_temperature, ieos, gamma,gmw, init_eos
- use io,         only: fatal
+ use io,         only: fatal, iverbose
  use krome_main, only: krome_init, krome
  use krome_user, only: krome_get_names,krome_set_user_Auv,krome_set_user_xi,&
                        krome_set_user_alb,krome_set_user_AuvAv
@@ -146,9 +146,11 @@ subroutine do_analysis(dumpfile,num,xyzh,vxyzu,particlemass,npart,time,iunit)
              abundance_part = Y/numberdensity
              abundance(:,i) = abundance_part
        endif
-       !$omp atomic
-       completed_iterations = completed_iterations + 1
-       print*, 'Completed ', completed_iterations, ' of ', npart
+       if (iverbose > 1) then
+          !$omp atomic
+          completed_iterations = completed_iterations + 1
+          print*, 'Completed ', completed_iterations, ' of ', npart
+       endif
     enddo outer
  endif
 
