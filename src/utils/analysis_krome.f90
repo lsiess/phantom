@@ -34,7 +34,7 @@ module analysis
 contains
 
 subroutine do_analysis(dumpfile,num,xyzh,vxyzu,particlemass,npart,time,iunit)
- use part,       only: isdead_or_accreted, iorig, rhoh, nptmass, xyzmh_ptmass, iReff
+ use part,       only: isdead_or_accreted, iorig, rhoh, nptmass, xyzmh_ptmass, iReff, iboundary, igas, iphase, iamtype
  use linklist,   only: set_linklist
  use units,      only: utime,unit_density,udist
  use physcon,    only: atomic_mass_unit
@@ -132,6 +132,7 @@ subroutine do_analysis(dumpfile,num,xyzh,vxyzu,particlemass,npart,time,iunit)
           else
              call chem_init(abundance_part)
           endif
+          if (iamtype(iphase(i)) /= iboundary .and. i > 2460 .and. mod(iorig(i), 100) == 0) then ! 2460 is the amount of boundary particles
              !Thermodynamic quantities
              rho_cgs = rhoh(xyzh(4,i),particlemass)*unit_density
              gammai = gamma
