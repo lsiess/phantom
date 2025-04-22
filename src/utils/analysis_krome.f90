@@ -36,7 +36,8 @@ contains
 subroutine do_analysis(dumpfile,num,xyzh,vxyzu,particlemass,npart,time,iunit)
  use part,       only: isdead_or_accreted, iorig, rhoh, nptmass, xyzmh_ptmass, iReff
  use linklist,   only: set_linklist
- use units,      only: utime,unit_density
+ use units,      only: utime,unit_density,udist
+ use physcon,    only: atomic_mass_unit
  use eos,        only: get_temperature, ieos, gamma,gmw, init_eos
  use io,         only: fatal
  use krome_main, only: krome_init, krome
@@ -58,7 +59,6 @@ subroutine do_analysis(dumpfile,num,xyzh,vxyzu,particlemass,npart,time,iunit)
     call krome_init()
     print*, "Initialised KROME"
     abundance_label(:) = krome_get_names()
-    maxp = maxp /2
     allocate(abundance(krome_nmols,maxp))
     abundance = 0.
     allocate(abundance_prev(krome_nmols,maxp))
@@ -86,7 +86,7 @@ subroutine do_analysis(dumpfile,num,xyzh,vxyzu,particlemass,npart,time,iunit)
  else
     dt_cgs = (time - tprev)*utime
     completed_iterations = 0
-    print*, "not first step data, timestep = ",dt_cgs, "npart = ",npart, "nprev = ",nprev
+    print*, dumpfile, ": not first step data, timestep = ",dt_cgs, "npart = ",npart, "nprev = ",nprev
     xyzmh_ptmass(iReff,1) = 2.
     npart_copy = npart
     xyzh_copy = xyzh(:,:npart)
@@ -94,7 +94,7 @@ subroutine do_analysis(dumpfile,num,xyzh,vxyzu,particlemass,npart,time,iunit)
     call get_all_tau(npart, nptmass, xyzmh_ptmass, xyzh, one, 5, .false., column_density)
     !$omp parallel do default(none) &
     !$omp shared(npart,xyzh,vxyzu,dt_cgs,nprev,iorig,iorig_old,iprev) &
-    !$omp shared(abundance,abundance_prev,particlemass,unit_density) &
+    !$omp shared(abundance,abundance_prev,particlemass,unit_density,udist) &
     !$omp shared(ieos,gamma,gmw,time,completed_iterations,column_density,AuvAv,albedo) &
     !$omp private(i,j,abundance_part,Y,rho_cgs,numberdensity,T_gas,gammai,mui,AUV,xi)
     outer: do i=1,npart
@@ -114,12 +114,12 @@ subroutine do_analysis(dumpfile,num,xyzh,vxyzu,particlemass,npart,time,iunit)
              rho_cgs = rhoh(xyzh(4,i),particlemass)*unit_density
              gammai = gamma
              mui    = gmw
-             numberdensity = rho_cgs / (mui * 1.6605E-24)
+             numberdensity = rho_cgs / (mui * atomic_mass_unit)
              T_gas = get_temperature(ieos,xyzh(1:3, i),rhoh(xyzh(4,i),particlemass),vxyzu(:,i),gammai,mui)
              T_gas = max(T_gas,20.0d0)
              
              !Radiation quantities
-             AUV = 4.65 * column_density(i) / 1.87e21
+             AUV = AuvAv * column_density(i) / (mui * atomic_mass_unit) / 1.87e21
              xi = get_xi(AUV)
              
              call krome_set_user_Auv(AUV)
