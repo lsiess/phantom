@@ -100,8 +100,9 @@ subroutine init_inject(ierr)
  real :: tcross,rsonic,tsonic,tfill,initial_rinject,tboundary
  real :: separation_cgs,ecc(3),eccentricity
 
- use_icosahedron = .false.
- if (iwind_resolution > 15 .and. use_icosahedron) use_icosahedron = .false.
+! use_icosahedron = .false.
+! if (iwind_resolution > 15 .and. use_icosahedron) use_icosahedron = .false.
+ use_icosahedron = .true.
  if (use_icosahedron) then
     call compute_matrices(geodesic_R)
     call compute_corners(geodesic_v)
@@ -765,18 +766,21 @@ subroutine set_default_options_inject(flag)
  endif
 
  if (isothermal) then
+    wind_type = 1
     wind_velocity_km_s = 0.
     wind_mass_rate_Msun_yr = 8.2d-8
     wind_injection_radius_au = 0.
  else
     if (icase == 1) then
        !trans-sonic wind
+       wind_type = 1
        wind_velocity_km_s = 0.
        wind_mass_rate_Msun_yr = 1.d-5
        wind_injection_radius_au = 2.
        wind_temperature = 50000.
     else
        !super sonic-wind
+       wind_type = 0
        wind_velocity_km_s = 20.
        wind_mass_rate_Msun_yr = 1.d-5
        wind_injection_radius_au = 2.
