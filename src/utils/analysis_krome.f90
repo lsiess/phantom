@@ -49,7 +49,8 @@ subroutine do_analysis(dumpfile,num,xyzh,vxyzu,particlemass,npart,time,iunit)
  real,             intent(in) :: particlemass,time
  real, save    :: tprev = 0.
  integer, save :: nprev = 0
- real          :: dt_cgs, rho_cgs, numberdensity, T_gas, gammai, mui, AUV, xi
+ real          :: dt_cgs, rho_cgs, rholist(maxp), Tlist(maxp), mulist(maxp), Auvlist(maxp), xilist(maxp) &
+ , numberdensity, T_gas, gammai, mui, AUV, xi
  real          :: abundance_part(krome_nmols), Y(krome_nmols), column_density(npart), xyzh_copy(4,npart)
  real          :: max_radius, radius
  integer       :: i, j, i_radius, ierr, completed_iterations, npart_copy = 0
@@ -105,11 +106,18 @@ subroutine do_analysis(dumpfile,num,xyzh,vxyzu,particlemass,npart,time,iunit)
        endif
     enddo
     column_density = column_density + rhoh(xyzh(4,i_radius),particlemass)*unit_density * max_radius * udist
+
+    rholist = 0.
+      Tlist = 0.
+     mulist = 0.
+    Auvlist = 0.
+     xilist = 0.
      
     !$omp parallel do default(none) schedule(dynamic) &
     !$omp shared(npart,xyzh,vxyzu,dt_cgs,nprev,iorig,iorig_old,iprev) &
     !$omp shared(abundance,abundance_prev,particlemass,unit_density,udist) &
     !$omp shared(ieos,gamma,gmw,time,completed_iterations,column_density,AuvAv,albedo) &
+    !$omp shared(rholist,Tlist,mulist,Auvlist,xilist,iphase) &
     !$omp private(i,j,abundance_part,Y,rho_cgs,numberdensity,T_gas,gammai,mui,AUV,xi)
     outer: do i=1,npart
        if (.not.isdead_or_accreted(xyzh(4,i))) then
@@ -145,6 +153,13 @@ subroutine do_analysis(dumpfile,num,xyzh,vxyzu,particlemass,npart,time,iunit)
              call krome(Y,T_gas,dt_cgs)
              abundance_part = Y/numberdensity
              abundance(:,i) = abundance_part
+
+             rholist(i) = rho_cgs
+               Tlist(i) = T_gas
+              mulist(i) = mui
+             Auvlist(i) = AUV
+              xilist(i) = xi
+          endif
        endif
        if (iverbose > 1) then
           !$omp atomic
@@ -154,7 +169,7 @@ subroutine do_analysis(dumpfile,num,xyzh,vxyzu,particlemass,npart,time,iunit)
     enddo outer
  endif
 
- call write_chem(npart, dumpfile)
+ call write_chem(npart, dumpfile, rholist, Tlist, mulist, Auvlist, xilist)
  nprev = npart
  tprev = time
  iorig_old(1:npart) = iorig(1:npart)
@@ -192,13 +207,14 @@ real function get_xi(AUV)
 
 end function get_xi
 
-subroutine write_chem(npart, dumpfile)
+subroutine write_chem(npart, dumpfile, rholist, Tlist, mulist, Auvlist, xilist)
  use krome_user, only: krome_idx_He,krome_idx_C,krome_idx_N,krome_idx_O,&
        krome_idx_H,krome_idx_S,krome_idx_Fe,krome_idx_Si,krome_idx_Mg,&
        krome_idx_Na,krome_idx_P,krome_idx_F,krome_idx_CO,krome_idx_C2H2,&
        krome_idx_C2H,krome_idx_H2,krome_idx_SiNC,krome_idx_e
  integer, intent(in)          :: npart
  character(len=*), intent(in) :: dumpfile
+   real, intent(in)          :: rholist(*), Tlist(*), mulist(*), Auvlist(*), xilist(*)
  integer :: i, iu
 
  open(newunit=iu, file=dumpfile//'.comp', status='replace', action='write')
@@ -209,7 +225,8 @@ subroutine write_chem(npart, dumpfile)
                  abundance(krome_idx_Fe, i), abundance(krome_idx_Si, i),   abundance(krome_idx_Mg, i),  &
                  abundance(krome_idx_Na, i), abundance(krome_idx_P, i),    abundance(krome_idx_F, i),   &
                  abundance(krome_idx_CO, i), abundance(krome_idx_C2H2, i), abundance(krome_idx_C2H, i), &
-                 abundance(krome_idx_H2, i), abundance(krome_idx_SiNC, i), abundance(krome_idx_e, i)
+                 abundance(krome_idx_H2, i), abundance(krome_idx_SiNC, i), abundance(krome_idx_e, i), rholist(i), &
+                 Tlist(i), mulist(i), Auvlist(i), xilist(i)
  enddo
  close(iu)
  
