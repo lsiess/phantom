@@ -51,7 +51,8 @@ subroutine do_analysis(dumpfile,num,xyzh,vxyzu,particlemass,npart,time,iunit)
  integer, save :: nprev = 0
  real          :: dt_cgs, rho_cgs, numberdensity, T_gas, gammai, mui, AUV, xi
  real          :: abundance_part(krome_nmols), Y(krome_nmols), column_density(npart), xyzh_copy(4,npart)
- integer       :: i, j, ierr, completed_iterations, npart_copy = 0
+ real          :: max_radius, radius
+ integer       :: i, j, i_radius, ierr, completed_iterations, npart_copy = 0
 
  if (.not.done_init) then
     done_init = .true.
@@ -92,7 +93,20 @@ subroutine do_analysis(dumpfile,num,xyzh,vxyzu,particlemass,npart,time,iunit)
     xyzh_copy = xyzh(:,:npart)
     call set_linklist(npart_copy,npart_copy,xyzh_copy,vxyzu)
     call get_all_tau(npart, nptmass, xyzmh_ptmass, xyzh, one, 5, .false., column_density)
-    !$omp parallel do default(none) &
+
+    max_radius = 0.0
+    do i = 1, npart
+       if (.not.isdead_or_accreted(xyzh(4, i))) then
+          radius = sqrt(xyzh(1, i)**2 + xyzh(2, i)**2 + xyzh(3, i)**2)
+          if (radius > max_radius) then
+             max_radius = radius
+             i_radius = i
+          endif
+       endif
+    enddo
+    column_density = column_density + rhoh(xyzh(4,i_radius),particlemass)*unit_density * max_radius * udist
+     
+    !$omp parallel do default(none) schedule(dynamic) &
     !$omp shared(npart,xyzh,vxyzu,dt_cgs,nprev,iorig,iorig_old,iprev) &
     !$omp shared(abundance,abundance_prev,particlemass,unit_density,udist) &
     !$omp shared(ieos,gamma,gmw,time,completed_iterations,column_density,AuvAv,albedo) &
