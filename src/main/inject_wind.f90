@@ -100,9 +100,9 @@ subroutine init_inject(ierr)
  real :: tcross,rsonic,tsonic,tfill,initial_rinject,tboundary
  real :: separation_cgs,ecc(3),eccentricity
 
-! use_icosahedron = .false.
-! if (iwind_resolution > 15 .and. use_icosahedron) use_icosahedron = .false.
- use_icosahedron = .true.
+ use_icosahedron = .false.
+ if (iwind_resolution > 15 .and. use_icosahedron) use_icosahedron = .false.
+ !use_icosahedron = .true.
  if (use_icosahedron) then
     call compute_matrices(geodesic_R)
     call compute_corners(geodesic_v)
