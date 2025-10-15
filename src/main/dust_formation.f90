@@ -217,7 +217,7 @@ pure elemental real function calc_kappa_bowen(Teq)
 
  dlnT = (Teq-bowen_Tcond)/bowen_delta
  if (dlnT > 50.) then
-    calc_kappa_bowen = 0.
+    calc_kappa_bowen = kappa_gas
  else
     calc_kappa_bowen = bowen_kmax/(1.0 + exp(dlnT)) + kappa_gas
  endif

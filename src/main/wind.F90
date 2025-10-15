@@ -25,7 +25,7 @@ module wind
  use dim,  only:isothermal
  implicit none
  public :: setup_wind
- public :: wind_state,save_windprofile,interp_wind_profile,interp_tau_profile!,wind_profile
+ public :: wind_state,save_windprofile,interp_wind_profile!,wind_profile
 
  private
  ! Shared variables
@@ -37,7 +37,7 @@ module wind
  ! input parameters
  real :: Mstar_cgs, Lstar_cgs, wind_gamma, Mdot_cgs, Tstar, Rstar
  real :: u_to_temperature_ratio
- real, dimension (:,:), allocatable, public :: trvurho_1D, rtau, JKmuS_1D
+ real, dimension (:,:), allocatable, public :: trvurho_1D, JKmuS_1D
 
  ! wind properties
  type wind_state
@@ -867,24 +867,6 @@ subroutine get_initial_tau_lucy(r0, v0, T0, time_end, tau_lucy_init)
  endif
 end subroutine get_initial_tau_lucy
 
-subroutine interp_tau_profile(r, tau_lucy, tau)
- use table_utils,    only:find_nearest_index_binary,interp_1d
- use units,          only:udist
-
- real, intent(in) :: r
- real, intent(out) :: tau, tau_lucy
-
- real    :: r_temp
- integer :: indx
-
- r_temp = r*udist
- call find_nearest_index_binary(rtau(1,:),r_temp,indx)
-
- tau_lucy = interp_1d(r_temp,rtau(1,indx),rtau(1,indx+1),rtau(2,indx),rtau(2,indx+1))
- tau      = interp_1d(r_temp,rtau(1,indx),rtau(1,indx+1),rtau(3,indx),rtau(3,indx+1))
-
-end subroutine interp_tau_profile
-
 !-----------------------------------------------------------------------
 !
 !  Interpolate 1D wind profile
@@ -946,6 +928,7 @@ subroutine save_windprofile(r0, v0, T0, rout, tend, tcross, filename)
  use physcon,          only:au
  use dust_formation,   only:idust_opacity
  use ptmass_radiation, only:iget_tdust
+ use ptmass_radiation, only:rtau
  real, intent(in) :: r0, v0, T0, tend, rout
  real, intent(out) :: tcross          !time to cross the entire integration domain
  character(*), intent(in) :: filename

@@ -10,12 +10,13 @@ module analysis
 !
 ! :References: Esseldeurs M., Siess L. et al, 2023, A&A, 674, A122
 !
-! :Owner: Mats Esseldeurs
+! :Owner: Lionel Siess
 !
 ! :Runtime parameters: None
 !
 ! :Dependencies: dump_utils, dust_formation, getneighbours, linklist,
-!   omp_lib, part, physcon, raytracer, raytracer_all
+!   omp_lib, part, physcon, ptmass_radiation, raytracer, raytracer_all,
+!   units
 !
  use raytracer_all,    only:get_all_tau_inwards, get_all_tau_outwards, get_all_tau_adaptive
  use raytracer,        only:get_all_tau
@@ -107,41 +108,41 @@ subroutine do_analysis(dumpfile,num,xyzh,vxyzu,particlemass,npart,time,iunit)
  allocate(tau(npart2))
 
  if (kappa(1) <= 0. .and. kappa(2) <= 0. .and. kappa(2) <= 0.) then
-   xa = primsec(1,1)
-   ya = primsec(2,1)
-   za = primsec(3,1)
-   open(newunit=iu4, file='tauL_'//dumpfile//'.txt', status='old', action='read')
-   do i=1, npart2
-         read(iu4,*) tauL(i)
-   enddo
-   close(iu4)
-   ! Lucy approximation for Tdust
-   !$omp parallel  do default(none) &
-   !$omp shared(npart,xa,ya,za,Rstar,Tstar,xyzh,temp,tauL,tau_lucy) &
-   !$omp private(i,r)
-   do i=1,npart2
-      if (.not.isdead_or_accreted(xyzh(4,i))) then
-         r = sqrt((xyzh(1,i)-xa)**2 + (xyzh(2,i)-ya)**2 + (xyzh(3,i)-za)**2)
-         if (r  <  Rstar) r = Rstar
-         temp(i) = Tstar * (.5*(1.-sqrt(1.-(Rstar/r)**2)+3./2.*tauL(i)))**(1./4.)
-        !  print*,temp(i), tauL(i), tau_lucy(i)
-      endif
-   enddo
-   !$omp end parallel do
-   do i=1,npart2
-      rho(i) = rhoh(xyzh2(4,i), particlemass)*umass/udist**3
-      if (rho(i) < 1e-13) then
-         dlnT = (temp(i)-1200)/50
-         if (dlnT > 50.) then
-            kappa(i) = 0.
-         else
-            kappa(i) = 6/(1.0 + exp(dlnT)) + 2e-4
-         endif
-      else
-         kappa(i)=0.
-      endif
-   enddo
-endif
+    xa = primsec(1,1)
+    ya = primsec(2,1)
+    za = primsec(3,1)
+    open(newunit=iu4,file='tauL_'//dumpfile//'.txt',status='old',action='read')
+    do i=1, npart2
+       read(iu4,*) tauL(i)
+    enddo
+    close(iu4)
+    ! Lucy approximation for Tdust
+    !$omp parallel  do default(none) &
+    !$omp shared(npart,xa,ya,za,Rstar,Tstar,xyzh,temp,tauL,tau_lucy) &
+    !$omp private(i,r)
+    do i=1,npart2
+       if (.not.isdead_or_accreted(xyzh(4,i))) then
+          r = sqrt((xyzh(1,i)-xa)**2 + (xyzh(2,i)-ya)**2 + (xyzh(3,i)-za)**2)
+          if (r  <  Rstar) r = Rstar
+          temp(i) = Tstar * (.5*(1.-sqrt(1.-(Rstar/r)**2)+3./2.*tauL(i)))**(1./4.)
+          !  print*,temp(i), tauL(i), tau_lucy(i)
+       endif
+    enddo
+    !$omp end parallel do
+    do i=1,npart2
+       rho(i) = rhoh(xyzh2(4,i), particlemass)*umass/udist**3
+       if (rho(i) < 1e-13) then
+          dlnT = (temp(i)-1200)/50
+          if (dlnT > 50.) then
+             kappa(i) = 0.
+          else
+             kappa(i) = 6/(1.0 + exp(dlnT)) + 2e-4
+          endif
+       else
+          kappa(i)=0.
+       endif
+    enddo
+ endif
 
 
  print *,'What do you want to do?'
@@ -684,7 +685,7 @@ endif
     enddo
     print*,maxval(tau)
     close(iu4)
-    open(newunit=iu4, file='Tdust_'//dumpfile//'.txt', status='replace', action='write')
+    open(newunit=iu4,file='Tdust_'//dumpfile//'.txt',status='replace',action='write')
     do i=1, npart2
        write(iu4, *) temp(i)
     enddo

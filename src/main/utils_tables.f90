@@ -218,7 +218,7 @@ subroutine find_nearest_index_binary(arr,val,indx)
        imid = (istart + istop)/2
        if (arr(imid) > val) then
           istop = imid - 1
-       else if (arr(imid) < val) then
+       elseif (arr(imid) < val) then
           istart = imid + 1
        else
           indx = imid
