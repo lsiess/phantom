@@ -103,7 +103,7 @@ subroutine AGB_cooling(T, Tdust, rho_cgs, mu, gamma, K3, Q_cgs, dlnQ_cgs, divv, 
 
  use dim,              only:nabn_AGB
  use cooling_AGBwinds, only:energ_cooling_AGB
- use dust_formation,   only:mass_per_H, eps, chemical_equilibrium_light
+ use dust_formation,   only:mass_per_H, eps, chemical_equilibrium_light,icoolTi
  use physcon,          only:kboltz,mass_proton_cgs
  use units,            only:unit_density
  real, intent(in)  :: mu, gamma, K3
@@ -127,7 +127,7 @@ subroutine AGB_cooling(T, Tdust, rho_cgs, mu, gamma, K3, Q_cgs, dlnQ_cgs, divv, 
  end if
 
  epsC = eps(3) - K3
- if (abundi(16) < 0.0) then
+ if (abundi(icoolTi) < 0.0) then
     ! skip abundance calculation (flag set in cooling_solver after first iteration of implicit loop)
  else
     ! compute chemical equilibrium abundances
@@ -137,7 +137,6 @@ subroutine AGB_cooling(T, Tdust, rho_cgs, mu, gamma, K3, Q_cgs, dlnQ_cgs, divv, 
  ndens_H = rho_cgs / mass_per_H
  abundi = abundi / ndens_H
 
-!  ui = T*kboltz / (mu*mass_proton_cgs*(gamma-1.))
  rhoi = rho_cgs / unit_density
 
  call energ_cooling_AGB(T,Tdust,rhoi,divv,mui,abundi,dudti)
@@ -145,20 +144,12 @@ subroutine AGB_cooling(T, Tdust, rho_cgs, mu, gamma, K3, Q_cgs, dlnQ_cgs, divv, 
 
  Q_cgs = dudti
 
- delta = 1.e-6 * T  ! 1% perturbation
+ delta = 1.e-6 * T  ! perturbation
  Tp = T + delta
  Tm = max(T - delta, 1.0)  ! prevent T < 0
 
  call energ_cooling_AGB(Tp,Tdust,rhoi,divv,mui,abundi,Qp)
  call energ_cooling_AGB(Tm,Tdust,rhoi,divv,mui,abundi,Qm)
-
-!  if (Qp > 0. .and. Qm > 0.) then
-!     dlogQ = log(Qp) - log(Qm)
-!     dlogT = log(Tp) - log(Tm)
-!     dlnQ_dlnT = dlogQ / dlogT
-!  else
-!     dlnQ_dlnT = 0.0  ! fallback in degenerate cases
-!  end if
 
  dQdT = (Qp - Qm) / (Tp - Tm)
 

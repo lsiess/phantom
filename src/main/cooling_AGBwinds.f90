@@ -224,6 +224,7 @@ subroutine cool_func(temp, Tdust, yn, dl, divv, abundances, ylam, rates)
  use mol_data
  use dim,     only:nElements
  use io, only:fatal
+ use dust_formation, only:icoolH,icoolC,icoolO,icoolSi,icoolH2,icoolCO,icoolH2O,icoolOH,icoolHe
  real,         intent(in)  :: temp, Tdust
  real,         intent(in)  :: yn
  real(kind=8), intent(in)  :: dl
@@ -241,9 +242,6 @@ subroutine cool_func(temp, Tdust, yn, dl, divv, abundances, ylam, rates)
             abcI      , abcII     , absiI   , absiII   , abe    , &
             abhp      , abhI      , abco    , abheI    , abheII , &
             abheIII
-! Indices for cooling species (same as in dust_formation):
- integer, parameter :: icoolH=1, icoolC=2, icoolO=3, icoolSi=4, icoolH2=5, icoolCO=6, &
-                       icoolH2O=7, icoolOH=8, icoolHe=12
 
  integer, parameter :: iH = 1, iHe=2, iC=3, iOx=4, iN=5, iNe=6, iSi=7, iS=8, iFe=9, iTi=10
 

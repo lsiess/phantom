@@ -921,8 +921,7 @@ pure real(kind=16) function solve_q(a, b, c)
   real(kind=16) :: delta
 
   if (-4.0_16 * a * c / (b**2) > epsilon(0.0_16)) then
-   !   delta = max(b**2 - 4.0_16 * a * c, 0.0_16)
-     delta = b**2 - 4.0_16 * a * c
+     delta = max(b**2 - 4.0_16 * a * c, 0.0_16)
      solve_q = (-b + sqrt(delta)) / (2.0_16 * a)
   else
      solve_q = -c / b
