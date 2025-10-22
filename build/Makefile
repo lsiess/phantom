@@ -505,9 +505,10 @@ SRCCHEM= fs_data.f90 mol_data.f90 utils_spline.f90 \
          cooling_koyamainutsuka.f90 \
          cooling_ism.f90 \
          dust_formation.f90 \
+         h2_opac_table.f90 \
          cooling_AGBwinds.f90 \
          cooling_molecular.f90 \
-	 cooling_radapprox.f90\
+         cooling_radapprox.f90 \
          cooling_functions.f90 \
          cooling_solver.f90 \
          h2chem.f90 cooling.f90
