@@ -35,7 +35,6 @@ module analysis
 
  private
  integer :: analysis_to_perform
- real    :: Aw(nElements) = [1.0079, 4.0026, 12.011, 15.9994, 14.0067, 20.17, 28.0855, 32.06, 55.847, 47.867]
 ! Indices for cooling species:
  integer, parameter :: icoolH=1, icoolC=2, icoolO=3, icoolSi=4, icoolH2=5, icoolCO=6, &
                        icoolH2O=7, icoolOH=8, icoolC2=9, icoolC2H=10, icoolC2H2=11, &
@@ -110,26 +109,22 @@ subroutine test_cooling()
 !+
 !--------------------------------------------
 subroutine test_cooling_rate()
-  use cooling_AGBwinds, only:nrates,dphot0,init_cooling_AGB,energ_cooling_AGB,dphotflag
+  use cooling_AGBwinds, only:nrates,init_cooling_AGB,energ_cooling_AGB
   !use cooling,     only:energ_cooling
   ! use chem,           only:init_chem,get_dphot
-  use dust_formation, only:chemical_equilibrium_light,wind_CO_ratio,init_muGamma,mass_per_H, &
-                            chemical_equilibrium_light_fixed_mu_gamma_broyden, &
-                            chemical_equilibrium_light_fixed_mu_gamma
+  use dust_formation, only:chemical_equilibrium_light,init_muGamma,mass_per_H
   use physcon,        only:Rg,mass_proton_cgs,kboltz,patm
-  use units,          only:unit_ergg,unit_density,udist,utime
+  use units,          only:unit_density
   use dim,            only:nElements
 
 implicit none
 
   integer, parameter :: nt = 1000
   real :: logtmin,logtmax,logt,dlogt,t,crate,Tdust
-  real :: tempiso,ndens,xi,yi,zi,mu,rho_cgs,rhoi,ui,dt
-  real :: h2ratio,dudti,dphot
+  real :: ndens,xi,yi,zi,mu,rho_cgs,rhoi,dt
+  real :: dudti
   real(kind=4) :: divv_cgs
-  integer :: i,ichem,iunit
-  real    :: h2_H, o_H, oh_H, h20_H, co_H, cI_H, CII_H, siI_H, siII_H, e_H, &
-             hp_H, hI_H, hd_H, heI_H, heII_H, heIII_H
+  integer :: i,iunit
   real    :: ratesq(nrates)
   real    :: abundi(nabn_AGB)
   integer, parameter :: iH = 1, iHe=2, iC=3, iOx=4, iN=5, iNe=6, iSi=7, iS=8, iFe=9, iTi=10
@@ -189,9 +184,7 @@ implicit none
     
     ! dphot = get_dphot(dphotflag,dphot0,xi,yi,zi)
 
-    call chemical_equilibrium_light_fixed_mu_gamma(rho_cgs, t, epsC, mu, gamma, abundi)
-    ! call chemical_equilibrium_light_fixed_mu_gamma_broyden(rho_cgs, t, epsC, mu, gamma, abundi)
-    ! call chemical_equilibrium_light(rho_cgs, t, epsC, mu, gamma, abundi)
+    call chemical_equilibrium_light(rho_cgs, t, epsC, mu, gamma, abundi)
     
     abundi = abundi / ndens_H
     Tdust = t
@@ -200,13 +193,13 @@ implicit none
 
     ndens = rhoi*unit_density/(mu*mass_proton_cgs)
     crate = dudti*(rhoi*unit_density)
-    write(iunit,*)  t,crate/ndens**2,                     &
-                    abundi(icoolH2), abundi(icoolOH), abundi(icoolH2O), &
-                    abundi(icoolCO), abundi(icoolH), abundi(icoolHe), &
-                    abundi(icoolO), abundi(icoolC2), abundi(icoolC), &
-                    abundi(icoolC2H2), abundi(icoolSi), abundi(icoolSiO), &
-                    abundi(icoolCH4), &
-                    ratesq(:)/ndens**2
+    write(iunit,*)  t,crate/ndens_H**2,                     &
+                    abundi(icoolH), abundi(icoolH2), abundi(icoolHe), &
+                    abundi(icoolCO), abundi(icoolH2O), abundi(icoolOH), &
+                    abundi(icoolO), abundi(icoolSi), abundi(icoolC2), &
+                    abundi(icoolC), abundi(icoolC2H2), abundi(icoolC2H), &
+                    abundi(icoolSiO), abundi(icoolCH4), &
+                    ratesq(:)/ndens_H**2
   enddo
   call cpu_time(finish)
   print '("Time = ",f6.3," seconds.")',finish-start
@@ -241,34 +234,31 @@ end subroutine cooling_temp_dens
 !+
 !------------------------------------------------
 subroutine cooling_rate_temp_dens()
-  use cooling_AGBwinds, only:nrates,dphot0,init_cooling_AGB,energ_cooling_AGB,dphotflag
-  use dust_formation, only:chemical_equilibrium_light_fixed_mu_gamma_broyden,eps, &
-                           wind_CO_ratio,init_muGamma,set_abundances,mass_per_H
+  use cooling_AGBwinds, only:nrates,init_cooling_AGB,energ_cooling_AGB
+  use dust_formation, only:chemical_equilibrium_light,eps, &
+                           init_muGamma,set_abundances,mass_per_H
   use physcon,        only:Rg,mass_proton_cgs,kboltz,patm
-  use units,          only:unit_ergg,unit_density,udist,utime
+  use units,          only:unit_density
   integer, parameter :: nt_grid = 15
   integer, parameter :: nd_grid = 15
   real :: logtmin,logtmax,logrhomin,logrhomax,logt,logrho,dlogt,dlogrho,t,crate,Tdust
-  real :: tempiso,ndens,xi,yi,zi,mu,rho_cgs,rhoi,ui,dt
-  real :: h2ratio,dudti,dphot
+  real :: xi,yi,zi,mu,rho_cgs,rhoi,dt
+  real :: dudti
   real(kind=4) :: divv_cgs
   integer :: i,l,iunit
-  real    :: h2_H, o_H, oh_H, h20_H, co_H, cI_H, CII_H, siI_H, siII_H, e_H, &
-             hp_H, hI_H, hd_H, heI_H, heII_H, heIII_H
   real    :: ratesq(nrates)
   real    :: abundi(nabn_AGB)
   integer, parameter :: iH = 1, iHe=2, iC=3, iOx=4, iN=5, iNe=6, iSi=7, iS=8, iFe=9, iTi=10
   real    :: ndens_H, epsC
   real    :: gamma
-  real    :: pC_old, pO_old, pSi_old, pS_old, pTi_old
 
 
   if (id==master) write(*,"(/,a)") '--> testing cooling_AGB rate'
 
-  logtmax = log10(2.d3)
-  logtmin = log10(8.d2)
-  logrhomin = 4.0d0
-  logrhomax = 1.45d1
+  logtmax = log10(2.d4)
+  logtmin = log10(5.d2)
+  logrhomin = log10(1.d4)
+  logrhomax = log10(7.d13)
 
   !set atomic abundances
 
@@ -288,11 +278,12 @@ subroutine cooling_rate_temp_dens()
 
 
   open(newunit=iunit,file='cooltable_dens.txt',status='replace')
-  write(iunit,"(a)") '#   T   \Lambda_E(T) erg s^{-1} cm^3   \Lambda erg s^{-1} cm^{-3}'
+  write(iunit,"(a)") '#   T   \Lambda_E(T) erg s^{-1} cm^3   \Lambda erg s^{-1} cm^{-3}  '
 
-  dlogt = (logtmax - logtmin)/real(nt_grid)
-  dlogrho = (logrhomax - logrhomin)/real(nd_grid)
+  dlogt = (logtmax - logtmin)/real(nt_grid, kind=8)
+  dlogrho = (logrhomax - logrhomin)/real(nd_grid, kind=8)
   divv_cgs = 0.
+  abundi = 0.0
 
   do l=1,nd_grid
     logrho = logrhomin + (l-1)*dlogrho
@@ -305,7 +296,6 @@ subroutine cooling_rate_temp_dens()
       call init_muGamma(rho_cgs, t, mu, gamma)
       
 
-      ! call chemical_equilibrium_light_fixed_mu_gamma_broyden(rho_cgs, t, epsC, mu, gamma, abundi)
       call chemical_equilibrium_light(rho_cgs, t, epsC, mu, gamma, abundi)
 
       abundi = abundi / ndens_H
@@ -313,15 +303,14 @@ subroutine cooling_rate_temp_dens()
 
       call energ_cooling_AGB(t,Tdust,rhoi,divv_cgs,mu,abundi,dudti,ratesq)
 
-      ndens = (rhoi*unit_density/mass_proton_cgs)*5.d0/7.d0
       crate = dudti*(rhoi*unit_density)
-      write(iunit,*)  t,ndens_H,crate/ndens**2,                     &
-                      abundi(icoolH2), abundi(icoolOH), abundi(icoolH2O), &
-                      abundi(icoolCO), abundi(icoolH), abundi(icoolH), &
-                      abundi(icoolO), abundi(icoolC2), abundi(icoolC), &
-                      abundi(icoolC2H2), abundi(icoolSi), abundi(icoolSiO), &
-                      abundi(icoolCH4), &
-                      ratesq(:)/ndens**2
+      write(iunit,*)  t,ndens_H,crate/ndens_H**2,                     &
+                      abundi(icoolH), abundi(icoolH2), abundi(icoolHe), &
+                      abundi(icoolCO), abundi(icoolH2O), abundi(icoolOH), &
+                      abundi(icoolO), abundi(icoolSi), abundi(icoolC2), &
+                      abundi(icoolC), abundi(icoolC2H2), abundi(icoolC2H), &
+                      abundi(icoolSiO), abundi(icoolCH4), &
+                      ratesq(:)/ndens_H**2
     enddo
   enddo
   close(iunit)
@@ -345,13 +334,12 @@ subroutine test_speed_AGB_cooling(dumpfile)
   implicit none
 
   character(len=*), intent(in)  ::   dumpfile
-  character(len=120)            ::   infile,logfile,evfile,dfile
+  character(len=120)            ::   infile
   real :: start, finish
   integer, parameter :: ndt = 1000
-  real :: dti(ndt)
-  integer :: i,iunit,ifunct,ierr
-  real :: dt,tcool0,T_gas,rho_cgs,rho,ui,u,dudt,mu,gamma,T_on_u,T_floor
-  real :: Tout,K2,K3,tstart,dtstep,label
+  integer :: i,iunit
+  real :: dt,T_gas,rho_cgs,rho,ui,dudt,mu,gamma,T_on_u,T_floor
+  real :: Tout,K2,K3,tstart
   real :: Q,dlnQ_dlnT,kappa
   real :: tlast,time
   real(kind=4) :: divv

@@ -176,7 +176,7 @@ contains
 !+
 !----------------------------------------------------------------
 subroutine energ_cooling_AGB(T_in,Tdust,rhoi,divv,gmwvar,abund,dudti,ratesq)
- use units,     only:utime,udist,unit_density,unit_ergg
+ use units,     only:utime,unit_density
  use physcon,   only:mass_proton_cgs,Rg
  use dust_formation, only:mass_per_H
  real,         intent(in)    :: T_in,Tdust,rhoi,gmwvar
@@ -222,6 +222,7 @@ end subroutine energ_cooling_AGB
 subroutine cool_func(temp, Tdust, yn, dl, divv, abundances, ylam, rates)
  use fs_data
  use mol_data
+ use h2_opac_table
  use dim,     only:nElements
  use io, only:fatal
  use dust_formation, only:icoolH,icoolC,icoolO,icoolSi,icoolH2,icoolCO,icoolH2O,icoolOH,icoolHe
@@ -236,10 +237,10 @@ subroutine cool_func(temp, Tdust, yn, dl, divv, abundances, ylam, rates)
  integer :: itemp
  real    :: dtemp
 
- real    :: ynh2      , ynh       , yne     , ynhp     , ynhd   , ynhe
+ real    :: ynh2      , ynh       , yne     , ynhp     , ynhe
 
- real    :: abh2      , abo       , aboh    , abh2o    , abhd   , &
-            abcI      , abcII     , absiI   , absiII   , abe    , &
+ real    :: abh2      , abo       , aboh    , abh2o   , &
+            abcI      , absiI     , abe    , &
             abhp      , abhI      , abco    , abheI    , abheII , &
             abheIII
 
@@ -247,7 +248,7 @@ subroutine cool_func(temp, Tdust, yn, dl, divv, abundances, ylam, rates)
 
  real    :: abundo, abundc, abundsi
 
- real    :: h2var0    , h2var1
+ real    :: h2var0
 
  real    :: oxc01, oxc02, oxlam1, oxlam2, oxb10, oxb01, oxc10 , oxb02 , &
             oxb20, oxb21, oxb12,  oxc20,  oxn1,  oxn2,  oxn0  , oxr01 , &
@@ -263,13 +264,6 @@ subroutine cool_func(temp, Tdust, yn, dl, divv, abundances, ylam, rates)
             siIb02, siIb20, siIb21,  siIb12,  siIc20, siIn1  , siIn2 , &
             siIn0,  siIr01, siIr02,  siIr12,  siIr10, siIr20 , siIr21, &
             siIa ,  siIb  , siIc  ,  siIc21 , siIc12
-
- real    :: cIIc10,   cIIc01, cIIn1
-
- real    :: siIIc10, siIIc01, siIIn1
-
- real    :: PEvar0   , PEvar1   , PEvar2, &
-            G_dust    , AV       , fdust    , NH_tot
 
  real    :: cmb_temp
  real, parameter :: redshift = 0.0d0
@@ -351,7 +345,7 @@ subroutine cool_func(temp, Tdust, yn, dl, divv, abundances, ylam, rates)
     itemp = nmd
     dtemp = temp - temptab(itemp)
  else
-    itemp = dlog10(temp) / dtlog + 1
+    itemp = nint(dlog10(temp) / dtlog + 1)
     if (itemp /= itemp .or. itemp <= 0.or. itemp > nmd) then
        print*, 'fatal error in cool_func.f', itemp, temp
        stop
@@ -508,13 +502,10 @@ subroutine cool_func(temp, Tdust, yn, dl, divv, abundances, ylam, rates)
  abh2o  = abundances(icoolH2O)
  abco   = abundances(icoolCO)
  abcI   = abundances(icoolC)
-!  abcIi  = abundances(7)
  absiI  = abundances(icoolSi)
-!  absiII = abundances(9)
 !  abe    = abundances(10)
 !  abhp   = abundances(11)
  abhI   = abundances(icoolH)
-!  abhd   = abundances(13)
  abhei  = abundances(icoolHe)
 !  abheII = abundances(15)
 !  abheIII = abundances(16)
@@ -531,7 +522,6 @@ subroutine cool_func(temp, Tdust, yn, dl, divv, abundances, ylam, rates)
  ynh  = abhI * yn
  yne  = abe  * yn
  ynhp = abhp * yn
-!  ynhd = abhd * yn
  ynhe = abhei * yn
 
  if (temp < 50) then
@@ -655,9 +645,9 @@ subroutine cool_func(temp, Tdust, yn, dl, divv, abundances, ylam, rates)
        n_h2o18_eff_vib = h2o_vib_colntab(ncdh2o_vib)
     else
        dv = 1d-5 * dabs(divv)
+       N_h2o_eff_vib = dlog10(abh2o * yn / dv)
        N_h2o_eff_para  = N_h2o_eff_vib + log_fp_h2o
        N_h2o_eff_ortho = N_h2o_eff_vib + log_fo_h2o
-       N_h2o_eff_vib = dlog10(abh2o * yn / dv)
        ! isotopic abundance ratio is from nlm95
        n_h2o18_eff_para  = N_h2o_eff_para  - 2.69897d0  ! log10(2d-3)
        n_h2o18_eff_ortho = N_h2o_eff_ortho - 2.69897d0  ! log10(2d-3)
@@ -1488,22 +1478,22 @@ end subroutine compute_stim
 !=======================================================================
 !
 
-subroutine load_H2_table
- use mol_data
+! subroutine load_H2_table
+!  use mol_data
 
-    implicit none
+!     implicit none
 
-    integer i, j
-    open(12, file='H2-cooling-ratios.dat', status='old')
-    do i = 1, nh2op
-       do j = 1, nh2op
-          read(12,*) h2_opac_temp(i), h2_opac_column(j), h2_opac(i,j)
-       enddo
-    enddo
-    close (12, status='keep')
+!     integer i, j
+!     open(12, file='H2-cooling-ratios.dat', status='old')
+!     do i = 1, nh2op
+!        do j = 1, nh2op
+!           read(12,*) h2_opac_temp(i), h2_opac_column(j), h2_opac(i,j)
+!        enddo
+!     enddo
+!     close (12, status='keep')
 
- return
-end subroutine load_H2_table
+!  return
+! end subroutine load_H2_table
 !=======================================================================
 !
 !    \\\\\\\\\\        E N D   S U B R O U T I N E        //////////
@@ -1522,6 +1512,7 @@ end subroutine load_H2_table
 
 subroutine compute_h2_opacity(temp, N_H2_eff, opac)
  use mol_data
+ use h2_opac_table
 
     implicit none
    
@@ -1692,7 +1683,7 @@ subroutine init_cooling_AGB
 !
  real :: temp    , temp2   , f       , gg       , hh      &
        , dtemp   , tinv    , tau     , tsqrt    , opratio &
-       , fortho  , brem    , fpara   , atomic   , tloge   &
+       , fortho  , fpara   , atomic   , tloge   &
        , h2e20   , h2e31   , h2n2    , h2n3     , h2q02   &
        , h2q13   , phi_pah , tinth   , tinq     , tintq   &
        , tisqt   , tfix    , tfintq  , tfinq    , tfinth  &
