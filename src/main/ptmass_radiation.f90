@@ -287,6 +287,7 @@ subroutine get_dust_temperature_from_ptmass(npart,xyzh,eos_vars,nptmass,xyzmh_pt
  real,     intent(inout), optional :: tau(:), tau_lucy(:)
  real,     intent(out)   :: dust_temp(:)
  real                    :: r,L_star,T_star,R_star,xa,ya,za,tau_lucy1D,tau_1D,rho,kappa
+ real                    :: xc,yc,zc,rc,dlnrho
  integer                 :: i,j
 
  ! sanity check, return zero if no sink particles or dust flag is off
@@ -357,26 +358,36 @@ subroutine get_dust_temperature_from_ptmass(npart,xyzh,eos_vars,nptmass,xyzmh_pt
     !$omp end parallel do
  case(5)
     ! Combination approximation for Tdust
+    j = 2
+    xc = xyzmh_ptmass(1,j)
+    yc = xyzmh_ptmass(2,j)
+    zc = xyzmh_ptmass(3,j)
     !$omp parallel  do default(none) &
     !$omp shared(npart,xa,ya,za,R_star,T_star,xyzh,dust_temp,tdust_exp,tau,tau_lucy,alpha_eq,beta_eq) &
     !$omp shared(massoftype,unit_density,eos_vars) &
-    !$omp private(i,r,tau_lucy1D,tau_1D,rho,kappa)
+    !$omp shared(xc,yc,zc) &
+    !$omp private(i,r,tau_lucy1D,tau_1D,rho,kappa) &
+    !$omp private(rc,dlnrho)
     do i=1,npart
        if (.not.isdead_or_accreted(xyzh(4,i))) then
           r = sqrt((xyzh(1,i)-xa)**2 + (xyzh(2,i)-ya)**2 + (xyzh(3,i)-za)**2)
           if (r  <  R_star) r = R_star
           if (isnan(tau_lucy(i))) tau_lucy(i) = 2./3.
           call interp_tau_profile(r,tau_lucy1D,tau_1D)
-          ! if (tau(i) > 5*tau_1D) then
-          !    tau(i) = 5*tau_1D
-          ! endif
           dust_temp(i) = T_star * (.5*(1.-sqrt(1.-(R_star/r)**2)+ &
                           3./2.*(tau_lucy1D+alpha_eq*(tau_lucy(i)-tau_lucy1D))) &
                                                      *exp(-beta_eq*(tau(i)-tau_1D)))**(1./4.)
-          rho = rhoh(xyzh(4,i), massoftype(igas)) * unit_density
-          kappa = calc_kappa_bowen(dust_temp(i))
-          if (rho * kappa * 14959787070000.0 > 10.) then ! Check if this region is optically thick on a lenght scale of 1 au. If so, dust_temp = gas_temp
-             dust_temp(i) = eos_vars(itemp,i)
+          if (.false.) then
+             rc = sqrt((xyzh(1,i)-xc)**2 + (xyzh(2,i)-yc)**2 + (xyzh(3,i)-zc)**2)
+             if (rc < 0.5) then
+                dust_temp(i) = eos_vars(itemp,i)
+             endif
+          else
+             rho = rhoh(xyzh(4,i), massoftype(igas)) * unit_density
+             dlnrho = (1e-12-rho)/1e-13
+             if (dlnrho < 50.) then
+                dust_temp(i) = (eos_vars(itemp,i)-dust_temp(i))/(1.0 + exp(dlnrho)) + dust_temp(i)
+             endif
           endif
        endif
     enddo
