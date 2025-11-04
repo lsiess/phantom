@@ -59,11 +59,12 @@ subroutine do_analysis(dumpfile,num,xyzh,vxyzu,particlemass,npart,time,iunit)
  ' 3) test speed of AGB cooling', &
  ' 4) check dust formation and destruction', &
  ' 5) total dust mass', &
- ' 6) reconstruct logNormal from moments'
+ ' 6) reconstruct logNormal from moments', &
+ ' 7) delete particles'
 
 analysis_to_perform = 1
 
-call prompt('Choose analysis type ',analysis_to_perform,1,6)
+call prompt('Choose analysis type ',analysis_to_perform,1,7)
 print *,''
 
 !analysis
@@ -80,6 +81,8 @@ case(5)
   call total_dust_mass(time,npart,particlemass,xyzh)
 case(6)
   call reconstruct_logNorm_from_moments()
+case(7)
+  call delete_particles(npart)
 end select
 
 end subroutine do_analysis
@@ -113,9 +116,7 @@ subroutine test_cooling_rate()
   use cooling_AGBwinds, only:nrates,dphot0,init_cooling_AGB,energ_cooling_AGB,dphotflag
   !use cooling,     only:energ_cooling
   ! use chem,           only:init_chem,get_dphot
-  use dust_formation, only:chemical_equilibrium_light,wind_CO_ratio,init_muGamma,mass_per_H, &
-                            chemical_equilibrium_light_fixed_mu_gamma_broyden, &
-                            chemical_equilibrium_light_fixed_mu_gamma
+  use dust_formation, only:chemical_equilibrium_light,wind_CO_ratio,init_muGamma,mass_per_H
   use physcon,        only:Rg,mass_proton_cgs,kboltz,patm
   use units,          only:unit_ergg,unit_density,udist,utime
   use dim,            only:nElements
@@ -189,9 +190,7 @@ implicit none
     
     ! dphot = get_dphot(dphotflag,dphot0,xi,yi,zi)
 
-    call chemical_equilibrium_light_fixed_mu_gamma(rho_cgs, t, epsC, mu, gamma, abundi)
-    ! call chemical_equilibrium_light_fixed_mu_gamma_broyden(rho_cgs, t, epsC, mu, gamma, abundi)
-    ! call chemical_equilibrium_light(rho_cgs, t, epsC, mu, gamma, abundi)
+    call chemical_equilibrium_light(rho_cgs, t, epsC, mu, gamma, abundi)
     
     abundi = abundi / ndens_H
     Tdust = t
@@ -242,8 +241,7 @@ end subroutine cooling_temp_dens
 !------------------------------------------------
 subroutine cooling_rate_temp_dens()
   use cooling_AGBwinds, only:nrates,dphot0,init_cooling_AGB,energ_cooling_AGB,dphotflag
-  use dust_formation, only:chemical_equilibrium_light_fixed_mu_gamma_broyden,eps, &
-                           wind_CO_ratio,init_muGamma,set_abundances,mass_per_H
+  use dust_formation, only:eps,wind_CO_ratio,init_muGamma,set_abundances,mass_per_H
   use physcon,        only:Rg,mass_proton_cgs,kboltz,patm
   use units,          only:unit_ergg,unit_density,udist,utime
   integer, parameter :: nt_grid = 15
@@ -677,6 +675,21 @@ subroutine reconstruct_logNorm_from_moments()
 
 
 end subroutine reconstruct_logNorm_from_moments
+
+subroutine delete_particles(npart_in)
+  use part, only:delete_dead_or_accreted_particles,npartoftype
+  integer, intent(in) :: npart_in
+  integer :: npart
+
+  npart = npart_in
+
+  print *, 'Number of particles before deletion: ', npart
+
+  call delete_dead_or_accreted_particles(npart, npartoftype)
+
+  print *, 'Number of particles after deletion: ', npart
+
+end subroutine delete_particles
 
 
 end module analysis

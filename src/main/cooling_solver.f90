@@ -144,6 +144,7 @@ subroutine implicit_cooling (ui, dudt, rho, dt, mu, gamma, Tdust, K2, K3, kappa,
  use physcon, only:Rg
  use units,   only:unit_ergg
  use dim,     only:nabn_AGB
+ use io,      only:warning
 !  use dust_formation, only:chemical_equilibrium_light_fixed_mu_gamma_broyden
 
  real, intent(in)  :: ui, rho, dt, mu, gamma
@@ -159,6 +160,7 @@ subroutine implicit_cooling (ui, dudt, rho, dt, mu, gamma, Tdust, K2, K3, kappa,
  logical            :: converged, bisection
  real               :: deltaT, dfdT, dQdT, f
  real               :: Tnew, Tmin_bisect, Tmax_bisect
+ character(len=256) :: msg
 
  u       = ui
  T_on_u  = (gamma-1.)*mu*unit_ergg/Rg
@@ -239,7 +241,10 @@ subroutine implicit_cooling (ui, dudt, rho, dt, mu, gamma, Tdust, K2, K3, kappa,
  Tmid=T
 
  if (.not. converged) then
-   print *, '[cooling] iterations did not converge. iter=', iter, ' T=', T, ' f=', f, ' dT/T=', deltaT/T
+   write(msg,'(a,i0,a,es10.3,a,es10.3,a,es10.3)') &
+     'iterations did not converge. iter=', iter, &
+     ' T=', T, ' f=', f, ' dT/T=', deltaT/T
+   call warning('[implicit cooling] ', trim(adjustl(msg)))
    ! stop '[implicit_cooling] Newton-Raphson failed'
  !elseif (iter > iter_nr_max) then
    !print *, '[cooling] Newton converged after bisection. iter=', iter, ' T=', T

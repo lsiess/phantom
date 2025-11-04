@@ -173,16 +173,18 @@ subroutine evolve_chem(dt, T, rho_cgs, JKmuS)
  real :: nH, nH2, v1
  real, parameter :: A0 = 20.7d-16
  real, parameter :: alpha2 = 0.34
- real :: cst
+ real :: cst, adot
  real :: abundi(nabn_AGB)
  ! Needed to write output abundances to external file:
- integer :: iunit_out, j
- character(len=100) :: filename
- logical :: file_exists
+!  integer :: iunit_out, j
+!  character(len=100) :: filename
+!  logical :: file_exists
 
+ abundi = 0.
  nH_tot = rho_cgs/mass_per_H
+ JKmuS(idK3) = min(JKmuS(idK3), eps(iC) - eps(iOx)) ! Same amount of C as O is locked in CO
  epsC   = eps(iC) - JKmuS(idK3)
- if (epsC < 0.) then
+ if (epsC < 0.-tiny(0.)) then
     print *,'eps(C) =',eps(iC),', K3=',JKmuS(idK3),', epsC=',epsC,', T=',T,' rho=',rho_cgs
     print *,'JKmuS=',JKmuS
     stop '[S-dust_formation] epsC < 0!'
@@ -220,8 +222,10 @@ subroutine evolve_chem(dt, T, rho_cgs, JKmuS)
     else
        if (any(JKmuS(idK0:idK3) > 0.0)) then
           call calc_nucleation(T, pC, pC2, 0.0, pC2H, pC2H2, S, JstarS, taustar, taugr)
-          JstarS = JstarS / nH_tot
-          call evol_K_ev(JKmuS(idJstar), JKmuS(idK0:idK3), taustar, taugr, dt, Jstar_new, K_new)
+          ! JstarS = JstarS / nH_tot
+          adot = 1. / 3. / taugr    ! Equation 28 in Gauger 1990
+          call evap_shift_remove(JKmuS(idK0:idK3), dt, adot, K_new(0:3))
+          Jstar_new = 0.0
        else
           Jstar_new = 0.0
           K_new(0:3) = JKmuS(idK0:idK3)
@@ -241,7 +245,7 @@ subroutine evolve_chem(dt, T, rho_cgs, JKmuS)
     pC2   = 0.
     S     = 1.d-3
     v1    = vfactor*sqrt(T)
-    taugr = kboltz*T/(A0*v1*sqrt(2.)*alpha2*(pC2+pC2H+pC2H2))
+    taugr = kboltz*T/(A0*v1*sqrt(2.)*alpha2*max(pC2+pC2H+pC2H2, 1.e-50))
     call evol_K(0., JKmuS(idK0:idK3), 0., 1., taugr, dt, Jstar_new, K_new)
  endif
  JKmuS(idJstar)   = Jstar_new
@@ -508,25 +512,23 @@ pure elemental function phi(z) result(cdf)
 !   end if
 end function phi
 
-
-
-
 !------------------------------------------------------------
 !
 !  Compute evaporation with shift and removal of small grains
 !
 !------------------------------------------------------------
-subroutine evap_shift_remove(M0, M1, M2, M3, dt, adot, &
-                                M0f, M1f, M2f, M3f)
+subroutine evap_shift_remove(M, dt, adot, Mf)
   use physcon, only:pi
 
   implicit none
 
-  real, intent(in) :: M0, M1, M2, M3
+  real, intent(in) :: M(0:3)
   real, intent(in) :: dt, adot
-  real, intent(out) :: M0f, M1f, M2f, M3f
+  real, intent(out) :: Mf(0:3)
 
+  real :: M0, M1, M2, M3
   real :: M0i, M1i, M2i, M3i
+  real :: M0f, M1f, M2f, M3f
   real :: mu, sigma
   integer :: fit_info, info
   real :: delta_a, abs_da, a_cross, ln_ac
@@ -539,11 +541,13 @@ subroutine evap_shift_remove(M0, M1, M2, M3, dt, adot, &
   a_min = 10.d0     ! Value from some paper, to be checked
 
   ! Save initial
+  M0 = M(0); M1 = M(1); M2 = M(2); M3 = M(3)
   M0i = M0; M1i = M1; M2i = M2; M3i = M3
 
   ! Quick exit: no grains
   if (M0 <= 0.0d0 .or. M1 <= 0.0d0 .or. M2 <= 0.0d0) then
      M0f = M0i; M1f = M1i; M2f = M2i; M3f = M3i
+     Mf(0) = M0f; Mf(1) = M1f; Mf(2) = M2f; Mf(3) = M3f
      info = 0
      return
   end if
@@ -557,6 +561,7 @@ subroutine evap_shift_remove(M0, M1, M2, M3, dt, adot, &
   call fit_lognormal_from_m012(M0i, M1i, M2i, mu, sigma, fit_info)
   if (fit_info == 0) then
      M0f = M0i; M1f = M1i; M2f = M2i; M3f = M3i
+     Mf(0) = M0f; Mf(1) = M1f; Mf(2) = M2f; Mf(3) = M3f
      info = 0
      return
   end if
@@ -566,6 +571,7 @@ subroutine evap_shift_remove(M0, M1, M2, M3, dt, adot, &
      if (M1i/M0i <= a_cross) then
         ! all vanish
         M0f = 0.0d0; M1f = 0.0d0; M2f = 0.0d0; M3f = 0.0d0
+        Mf(0) = M0f; Mf(1) = M1f; Mf(2) = M2f; Mf(3) = M3f
         info = fit_info
         return
      else
@@ -574,6 +580,8 @@ subroutine evap_shift_remove(M0, M1, M2, M3, dt, adot, &
         M1f = M1i + delta_a*M0i
         M2f = M2i + 2.0d0*delta_a*M1i + delta_a*delta_a*M0i
         M3f = M3i + 3.0d0*delta_a*M2i + 3.0d0*(delta_a**2)*M1i + (delta_a**3)*M0i
+
+        Mf(0) = M0f; Mf(1) = M1f; Mf(2) = M2f; Mf(3) = M3f
         info = fit_info
         return
      end if
@@ -603,6 +611,7 @@ subroutine evap_shift_remove(M0, M1, M2, M3, dt, adot, &
 
   if (M0_surv <= 0.0d0) then
      M0f = 0.0d0; M1f = 0.0d0; M2f = 0.0d0; M3f = 0.0d0
+     Mf(0) = M0f; Mf(1) = M1f; Mf(2) = M2f; Mf(3) = M3f
      info = fit_info
      return
   end if
@@ -619,6 +628,11 @@ subroutine evap_shift_remove(M0, M1, M2, M3, dt, adot, &
   M1f = max(M1f, 0.0)
   M2f = max(M2f, 0.0)
   M3f = max(M3f, 0.0)
+
+  Mf(0) = M0f
+  Mf(1) = M1f
+  Mf(2) = M2f
+  Mf(3) = M3f
 
 end subroutine evap_shift_remove
 
