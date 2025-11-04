@@ -54,11 +54,12 @@ subroutine do_analysis(dumpfile,num,xyzh,vxyzu,particlemass,npart,time,iunit)
 
  print "(29(a,/))", &
  ' 1) check cooling only for temperature', &
- ' 2) check cooling for temperature and density (to be checked)', &
- ' 3) test speed of AGB cooling', &
- ' 4) check dust formation and destruction', &
- ' 5) total dust mass', &
- ' 6) reconstruct logNormal from moments'
+ ' 2) check cooling only for density', &
+ ' 3) check cooling for temperature and density (to be checked)', &
+ ' 4) test speed of AGB cooling', &
+ ' 5) check dust formation and destruction', &
+ ' 6) total dust mass', &
+ ' 7) reconstruct logNormal from moments'
 
 analysis_to_perform = 1
 
@@ -67,17 +68,19 @@ print *,''
 
 !analysis
 select case(analysis_to_perform)
-case(1) !test rate
+case(1) !test temperature
   call test_cooling()
-case(2)
-  call cooling_temp_dens()
+case(2) !test density
+  call test_density()
 case(3)
-  call test_speed_AGB_cooling(dumpfile)
+  call cooling_temp_dens()
 case(4)
-  call compute_dust_formation()
+  call test_speed_AGB_cooling(dumpfile)
 case(5)
-  call total_dust_mass(time,npart,particlemass,xyzh)
+  call compute_dust_formation()
 case(6)
+  call total_dust_mass(time,npart,particlemass,xyzh)
+case(7)
   call reconstruct_logNorm_from_moments()
 end select
 
@@ -206,6 +209,101 @@ implicit none
   close(iunit)
   
   end subroutine test_cooling_rate
+
+!--------------------------------------------
+!+
+!  Cooling rates on density grid
+!+
+!--------------------------------------------
+subroutine test_density()
+  use cooling_AGBwinds, only:nrates,init_cooling_AGB,energ_cooling_AGB
+  !use cooling,     only:energ_cooling
+  ! use chem,           only:init_chem,get_dphot
+  use dust_formation, only:chemical_equilibrium_light,init_muGamma,mass_per_H
+  use physcon,        only:Rg,mass_proton_cgs,kboltz,patm
+  use units,          only:unit_density
+  use dim,            only:nElements
+
+implicit none
+
+  integer, parameter :: nt = 1000
+  real :: lognmin,lognmax,logn,dlogn,t,crate,Tdust
+  real :: ndens,xi,yi,zi,mu,rho_cgs,rhoi,dt
+  real :: dudti
+  real(kind=4) :: divv_cgs
+  integer :: i,iunit
+  real    :: ratesq(nrates)
+  real    :: abundi(nabn_AGB)
+  integer, parameter :: iH = 1, iHe=2, iC=3, iOx=4, iN=5, iNe=6, iSi=7, iS=8, iFe=9, iTi=10
+  real    :: epsC
+  real    :: gamma, n, ab_H2, n_H2
+  real    :: start, finish
+  
+  if (id==master) write(*,"(/,a)") '--> testing cooling_AGB rate'
+  
+  lognmax = 15.
+  lognmin = 3.
+  T = 500.
+
+  call set_abundances
+ 
+
+  epsC = eps(3) ! ignoring nucleation
+
+  xi = 0.
+  yi = 0.
+  zi = 0.
+  dt = 1.0d0
+  ! rho_cgs = 2.0d-14
+  ! rhoi = rho_cgs/unit_density 
+  ! ndens_H = rhoi*unit_density / mass_per_H
+
+
+  call init_cooling_AGB()
+  
+  open(newunit=iunit,file='density_test.txt',status='replace')
+  write(iunit,'(A, E12.4)') '#   T   \Lambda_E(T) erg s^{-1} cm^3   T: ', T
+  dlogn = (lognmax - lognmin)/real(nt)
+  divv_cgs = 0.
+
+  call cpu_time(start)
+
+  abundi = 0.0
+
+  do i=1,nt
+    dudti = 0.
+    logn = lognmin + (i-1)*dlogn
+    n_H2 = 10**logn
+    n = 2.0 * n_H2
+    rho_cgs = n * mass_per_H
+    rhoi = rho_cgs/unit_density
+    call init_muGamma(rho_cgs, T, mu, gamma)
+
+    ! dphot = get_dphot(dphotflag,dphot0,xi,yi,zi)
+
+    call chemical_equilibrium_light(rho_cgs, T, epsC, mu, gamma, abundi)
+    ! ab_H2 = abundi(icoolH2)
+    abundi = abundi / n
+    Tdust = T
+    
+
+    call energ_cooling_AGB(T,Tdust,rhoi,divv_cgs,mu,abundi,dudti,ratesq)
+
+    ndens = rhoi*unit_density/(mu*mass_proton_cgs)
+    crate = dudti*(rhoi*unit_density)
+    write(iunit,*)  n,crate/n_H2**2,                     &
+                    abundi(icoolH), abundi(icoolH2), abundi(icoolHe), &
+                    abundi(icoolCO), abundi(icoolH2O), abundi(icoolOH), &
+                    abundi(icoolO), abundi(icoolSi), abundi(icoolC2), &
+                    abundi(icoolC), abundi(icoolC2H2), abundi(icoolC2H), &
+                    abundi(icoolSiO), abundi(icoolCH4), &
+                    ratesq(:)/n_H2**2
+  enddo
+  call cpu_time(finish)
+  print '("Time = ",f6.3," seconds.")',finish-start
+  close(iunit)
+  
+  end subroutine test_density
 
 
 !--------------------------------------------
