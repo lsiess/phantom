@@ -126,7 +126,7 @@ implicit none
   real :: logtmin,logtmax,logt,dlogt,t,crate,Tdust
   real :: ndens,xi,yi,zi,mu,rho_cgs,rhoi,dt
   real :: dudti
-  real(kind=4) :: divv_cgs
+  real(kind=4) :: divv_cgs, divv
   integer :: i,iunit
   real    :: ratesq(nrates)
   real    :: abundi(nabn_AGB)
@@ -164,7 +164,8 @@ implicit none
   open(newunit=iunit,file='cooltable.txt',status='replace')
   write(iunit,'(A, E12.4)') '#   T   \Lambda_E(T) erg s^{-1} cm^3   N dens H: ', ndens_H
   dlogt = (logtmax - logtmin)/real(nt)
-  divv_cgs = 0.
+  divv_cgs = real(1.e-7, kind=4)   ! arbitrary non-zero value to test effect
+  divv = divv_cgs*real(utime, kind=4)
   ! T = 1.5d3
   ! ui = 1.5*T*(Rg/mu)/unit_ergg
   ! call energ_cooling_AGB(ui,rhoi,divv_cgs,mu,abundance,dudti,ratesq)
@@ -192,10 +193,10 @@ implicit none
     abundi = abundi / ndens_H
     Tdust = t
     
-    call energ_cooling_AGB(t,Tdust,rhoi,divv_cgs,mu,abundi,dudti,ratesq)
+    call energ_cooling_AGB(t,Tdust,rhoi,divv,mu,abundi,dudti,ratesq)
 
     ndens = rhoi*unit_density/(mu*mass_proton_cgs)
-    crate = dudti*(rhoi*unit_density)
+    crate = dudti*(rhoi*unit_density) ! ylamq is divided by rho_cgs in energ_cooling_AGB
     write(iunit,*)  t,crate/ndens_H**2,                     &
                     abundi(icoolH), abundi(icoolH2), abundi(icoolHe), &
                     abundi(icoolCO), abundi(icoolH2O), abundi(icoolOH), &
@@ -221,50 +222,46 @@ subroutine test_density()
   ! use chem,           only:init_chem,get_dphot
   use dust_formation, only:chemical_equilibrium_light,init_muGamma,mass_per_H
   use physcon,        only:Rg,mass_proton_cgs,kboltz,patm
-  use units,          only:unit_density
+  use units,          only:unit_density,utime
   use dim,            only:nElements
 
 implicit none
 
   integer, parameter :: nt = 1000
   real :: lognmin,lognmax,logn,dlogn,t,crate,Tdust
-  real :: ndens,xi,yi,zi,mu,rho_cgs,rhoi,dt
+  real :: xi,yi,zi,mu,rho_cgs,rhoi,dt
   real :: dudti
-  real(kind=4) :: divv_cgs
+  real(kind=4) :: divv_cgs, divv
   integer :: i,iunit
   real    :: ratesq(nrates)
   real    :: abundi(nabn_AGB)
   integer, parameter :: iH = 1, iHe=2, iC=3, iOx=4, iN=5, iNe=6, iSi=7, iS=8, iFe=9, iTi=10
   real    :: epsC
-  real    :: gamma, n, ab_H2, n_H2
+  real    :: gamma, n_H, n_H2
   real    :: start, finish
   
   if (id==master) write(*,"(/,a)") '--> testing cooling_AGB rate'
   
-  lognmax = 15.
+  lognmax = 15. ! H2 number density cm^-3
   lognmin = 3.
   T = 500.
 
   call set_abundances
  
-
   epsC = eps(3) ! ignoring nucleation
 
   xi = 0.
   yi = 0.
   zi = 0.
   dt = 1.0d0
-  ! rho_cgs = 2.0d-14
-  ! rhoi = rho_cgs/unit_density 
-  ! ndens_H = rhoi*unit_density / mass_per_H
-
 
   call init_cooling_AGB()
   
   open(newunit=iunit,file='density_test.txt',status='replace')
-  write(iunit,'(A, E12.4)') '#   T   \Lambda_E(T) erg s^{-1} cm^3   T: ', T
+  write(iunit,'(A, E12.4)') '#   n_H2  Lambda_E  abundances  c.rates (\Lambda_E(T) erg s^{-1} cm^3)   T: ', T
   dlogn = (lognmax - lognmin)/real(nt)
-  divv_cgs = 0.
+  divv_cgs = real(1.e-7, kind=4)   ! arbitrary non-zero value to test effect
+  divv = divv_cgs*real(utime, kind=4)
 
   call cpu_time(start)
 
@@ -274,8 +271,8 @@ implicit none
     dudti = 0.
     logn = lognmin + (i-1)*dlogn
     n_H2 = 10**logn
-    n = 2.0 * n_H2
-    rho_cgs = n * mass_per_H
+    n_H = 2.0 * n_H2
+    rho_cgs = n_H * mass_per_H
     rhoi = rho_cgs/unit_density
     call init_muGamma(rho_cgs, T, mu, gamma)
 
@@ -283,15 +280,14 @@ implicit none
 
     call chemical_equilibrium_light(rho_cgs, T, epsC, mu, gamma, abundi)
     ! ab_H2 = abundi(icoolH2)
-    abundi = abundi / n
+    abundi = abundi / n_H
     Tdust = T
     
 
-    call energ_cooling_AGB(T,Tdust,rhoi,divv_cgs,mu,abundi,dudti,ratesq)
+    call energ_cooling_AGB(T,Tdust,rhoi,divv,mu,abundi,dudti,ratesq)
 
-    ndens = rhoi*unit_density/(mu*mass_proton_cgs)
-    crate = dudti*(rhoi*unit_density)
-    write(iunit,*)  n,crate/n_H2**2,                     &
+    crate = dudti*(rhoi*unit_density) ! ylamq is divided by rho_cgs in energ_cooling_AGB
+    write(iunit,*)  n_H2,crate/n_H2**2,                     &
                     abundi(icoolH), abundi(icoolH2), abundi(icoolHe), &
                     abundi(icoolCO), abundi(icoolH2O), abundi(icoolOH), &
                     abundi(icoolO), abundi(icoolSi), abundi(icoolC2), &
@@ -342,7 +338,7 @@ subroutine cooling_rate_temp_dens()
   real :: logtmin,logtmax,logrhomin,logrhomax,logt,logrho,dlogt,dlogrho,t,crate,Tdust
   real :: xi,yi,zi,mu,rho_cgs,rhoi,dt
   real :: dudti
-  real(kind=4) :: divv_cgs
+  real(kind=4) :: divv_cgs, divv
   integer :: i,l,iunit
   real    :: ratesq(nrates)
   real    :: abundi(nabn_AGB)
@@ -380,7 +376,8 @@ subroutine cooling_rate_temp_dens()
 
   dlogt = (logtmax - logtmin)/real(nt_grid, kind=8)
   dlogrho = (logrhomax - logrhomin)/real(nd_grid, kind=8)
-  divv_cgs = 0.
+  divv_cgs = real(1.e-7, kind=4)   ! arbitrary non-zero value to test effect
+  divv = divv_cgs*real(utime, kind=4)
   abundi = 0.0
 
   do l=1,nd_grid
@@ -399,7 +396,7 @@ subroutine cooling_rate_temp_dens()
       abundi = abundi / ndens_H
       Tdust = t
 
-      call energ_cooling_AGB(t,Tdust,rhoi,divv_cgs,mu,abundi,dudti,ratesq)
+      call energ_cooling_AGB(t,Tdust,rhoi,divv,mu,abundi,dudti,ratesq)
 
       crate = dudti*(rhoi*unit_density)
       write(iunit,*)  t,ndens_H,crate/ndens_H**2,                     &
@@ -440,7 +437,7 @@ subroutine test_speed_AGB_cooling(dumpfile)
   real :: Tout,K2,K3,tstart
   real :: Q,dlnQ_dlnT,kappa
   real :: tlast,time
-  real(kind=4) :: divv
+  real(kind=4) :: divv, divv_cgs
   real :: abundi(nabn_AGB)
 
   logical :: file_exists
@@ -457,7 +454,8 @@ subroutine test_speed_AGB_cooling(dumpfile)
   K2 = 0
   K3 = 0.d0
   kappa = 0.
-  divv = 0.d0
+  divv_cgs = real(1.e-7, kind=4)   ! arbitrary non-zero value to test effect
+  divv = divv_cgs*real(utime, kind=4)
   abundi = 0.0
 
   !temperature and density
