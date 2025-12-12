@@ -117,7 +117,7 @@ subroutine test_cooling_rate()
   ! use chem,           only:init_chem,get_dphot
   use dust_formation, only:chemical_equilibrium_light,init_muGamma,mass_per_H
   use physcon,        only:Rg,mass_proton_cgs,kboltz,patm
-  use units,          only:unit_density
+  use units,          only:unit_density,utime
   use dim,            only:nElements
 
 implicit none
@@ -332,7 +332,7 @@ subroutine cooling_rate_temp_dens()
   use dust_formation, only:chemical_equilibrium_light,eps, &
                            init_muGamma,set_abundances,mass_per_H
   use physcon,        only:Rg,mass_proton_cgs,kboltz,patm
-  use units,          only:unit_density
+  use units,          only:unit_density,utime
   integer, parameter :: nt_grid = 15
   integer, parameter :: nd_grid = 15
   real :: logtmin,logtmax,logrhomin,logrhomax,logt,logrho,dlogt,dlogrho,t,crate,Tdust
@@ -421,7 +421,7 @@ subroutine test_speed_AGB_cooling(dumpfile)
   use cooling_solver,   only:energ_cooling_solver,calc_cooling_rate,cooling_AGB,icool_method, &
                            excitation_HI
   use cooling_AGBwinds,   only:init_cooling_AGB
-  use units,            only:unit_density,unit_ergg
+  use units,            only:unit_density,unit_ergg,utime
   use physcon,          only:kboltz,atomic_mass_unit,Rg
   use dust_formation,   only:set_abundances,init_muGamma
   use initial,          only:initialise

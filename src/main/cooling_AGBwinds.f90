@@ -510,8 +510,11 @@ subroutine cool_func(temp, Tdust, yn, dl, divv, abundances, ylam, rates)
 !  abheII = abundances(15)
 !  abheIII = abundances(16)
 
- abe  = 1.0d-4  ! To make it consistent with cooling_ism: 
-                ! SHOULD WE USE THE ELECTRON ABUNDANCE FUNCTION AS IN JOLIEN'S (MODIFIED)?
+! abe  = 1.0d-4  ! To make it consistent with cooling_ism
+ abe = calc_eps_e(temp) ! This function gives wrong abundances at very high temperatures: FIX!
+!  if (abe > 1.0d-4) then
+!    print*, 'Electron abundance used in cooling_ism_AGB.f90:', abe, ' temp', temp
+!  endif
  abhp = 1.0d-7
  abheII = 0.0d0
  abheIII = 0.0d0
@@ -3016,5 +3019,29 @@ end subroutine init_cooling_AGB
 !    //////////        I N I T _ H 2 C O O L I N G        \\\\\\\\\\
 !
 !=======================================================================
+
+!-----------------------------------------------------------------------
+!+
+!  compute electron equilibrium abundance per nH atom (Palla et al 1983)
+!  Same as in cooling_functions.f90, but I could not use it from there
+!  because of module circular dependencies.
+!+
+!-----------------------------------------------------------------------
+real function calc_eps_e(T)
+
+ real, intent(in) :: T
+
+ real             :: k1, k2, k3, k8, k9, p, q
+
+ k1 = 1.88d-10 / T**6.44e-1
+ k2 = 1.83d-18 * T
+ k3 = 1.35d-9
+ k8 = 5.80d-11 * sqrt(T) * exp(-1.58d5/T)
+ k9 = 1.7d-4 * k8
+ p  = .5*k8/k9
+ q  = k1*(k2+k3)/(k3*k9)
+ calc_eps_e = min(1.,(p + sqrt(q+p**2))/q) !must be <= 1
+
+end function calc_eps_e
 
 end module cooling_AGBwinds
