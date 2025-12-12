@@ -536,9 +536,9 @@ subroutine evap_shift_remove(M, dt, adot, Mf)
   real :: f0, f1, f2, f3
   real :: M0_less, M1_less, M2_less, M3_less
   real :: M0_surv, M1_surv, M2_surv, M3_surv
-  real :: a_min   ! To be checked, needs to import
+  real :: a_min
 
-  a_min = 10.d0     ! Value from some paper, to be checked
+  a_min = 10.d0     !(lower grain size limit)**1/3, as in evol_K
 
   ! Save initial
   M0 = M(0); M1 = M(1); M2 = M(2); M3 = M(3)
@@ -567,7 +567,7 @@ subroutine evap_shift_remove(M, dt, adot, Mf)
   end if
 
   ! Small sigma -> delta-like distribution
-  if (sigma <= 1.0d-12) then
+  if (sigma <= 1.0d-3) then
      if (M1i/M0i <= a_cross) then
         ! all vanish
         M0f = 0.0d0; M1f = 0.0d0; M2f = 0.0d0; M3f = 0.0d0

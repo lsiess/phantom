@@ -145,6 +145,7 @@ subroutine implicit_cooling (ui, dudt, rho, dt, mu, gamma, Tdust, K2, K3, kappa,
  use units,   only:unit_ergg
  use dim,     only:nabn_AGB
  use io,      only:warning
+ use dust_formation, only:icoolTi
 !  use dust_formation, only:chemical_equilibrium_light_fixed_mu_gamma_broyden
 
  real, intent(in)  :: ui, rho, dt, mu, gamma
@@ -191,7 +192,7 @@ subroutine implicit_cooling (ui, dudt, rho, dt, mu, gamma, Tdust, K2, K3, kappa,
  Tmax_bisect = 1e6
 
  do while (iter < iter_max)
-   if (iter > iter_nr_max) abundi(16) = -1.0  ! flag to skip abundance calculation after first iteration
+   if (iter > iter_nr_max) abundi(icoolTi) = -1.0  ! flag to skip abundance calculation after first iteration
    call calc_cooling_rate(Qi,dlnQ_dlnT, rho, T, Tdust, mu, gamma, K2, K3, kappa, divv_in=divv, abundi_in=abundi)
 
    f   = T - T0 - Qi*dt*T_on_u

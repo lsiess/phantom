@@ -470,7 +470,7 @@ subroutine compute_dust_formation()
   call set_abundances
   eps(iOx) = 9e-4  ! Adjusted O abundance to better match Gauger 1990
   eps(iC) = eps(iOx) * wind_CO_ratio
-  ! eps(iH) = 1.0
+  eps(iH) = 1.0
   epsC = eps(iC)
 
   inquire(file='abundances_output.txt', exist=id_exist)
