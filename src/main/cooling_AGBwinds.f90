@@ -137,6 +137,7 @@ module cooling_AGBwinds
 !  simplicity that this scales linearly with metallicity,
 !   but it need not do so]
 !
+! WILL NEED TO BE CHANGED AND COMPUTED FROM K3 MOMENT
  real, public :: dust_to_gas_ratio = 0.5d-2
 !
 ! Visual extinction (A_V) per unit column density (in cm^-2)
@@ -189,7 +190,7 @@ subroutine energ_cooling_AGB(T_in,Tdust,rhoi,divv,gmwvar,abund,dudti,ratesq)
 !
 ! Compute temperature and number density
 !
- T = max(T_in, 20.d0)
+ T = max(T_in, 10.d0)
  np1     = rhoi*unit_density/mass_per_H  ! n = (5/7)*(rho/mp), gamma=7/5?
 !
 ! Call cooling function with all abundances
