@@ -793,7 +793,7 @@ subroutine chemical_equilibrium_light(rho_cgs, T_in, epsC, mu, gamma, abundi)
  err      = 1.
  nit      = 0
 
- do while (err > 1.d-4)
+ do while (err > 1.d-2)
 ! N
     X = 1.+pH**3*Kd(iNH3)+pC*(Kd(iCN)+pH*Kd(iHCN))
     AA = .25*X/Kd(iN2)

@@ -153,7 +153,7 @@ subroutine implicit_cooling (ui, dudt, rho, dt, mu, gamma, Tdust, K2, K3, kappa,
  real(kind=4), intent(in) :: divv
  real, intent(out) :: dudt
 
- real, parameter    :: tol = 1.d-5, Tmin = 1., tolf = 1.e-3
+ real, parameter    :: tol = 1.d-3, Tmin = 1.
  integer, parameter :: iter_max = 50, iter_nr_max = 15
  real               :: u,Q,dlnQ_dlnT,T_on_u,Qi,T,T0,Tmid
  integer            :: iter
@@ -191,7 +191,7 @@ subroutine implicit_cooling (ui, dudt, rho, dt, mu, gamma, Tdust, K2, K3, kappa,
  Tmax_bisect = 1e6
 
  do while (iter < iter_max)
-   if (iter > iter_nr_max) abundi(icoolTi) = -1.0  ! flag to skip abundance calculation after Newton-Raphson iterations
+   if (iter > 0) abundi(icoolTi) = -1.0  ! flag to skip abundance calculation after the first iteration
    call calc_cooling_rate(Qi,dlnQ_dlnT, rho, T, Tdust, mu, gamma, K2, K3, kappa, divv_in=divv, abundi_in=abundi)
 
    f   = T - T0 - Qi*dt*T_on_u
@@ -222,7 +222,7 @@ subroutine implicit_cooling (ui, dudt, rho, dt, mu, gamma, Tdust, K2, K3, kappa,
 
    if (Townsend_test) T = max(T, Tcap)
 
-   if (abs(f) < tolf) then
+   if (abs(f) < tol) then
       converged = .true.
       exit
    endif

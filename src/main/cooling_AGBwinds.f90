@@ -190,24 +190,28 @@ subroutine energ_cooling_AGB(T_in,Tdust,rhoi,divv,gmwvar,abund,dudti,ratesq)
 !
 ! Compute temperature and number density
 !
- T = max(T_in, 10.d0)
- np1     = rhoi*unit_density/mass_per_H  ! n = (5/7)*(rho/mp), gamma=7/5?
+ if (T_in < 1.d1) then
+    dudti = 0.d0
+ else
+    T = T_in
+    np1     = rhoi*unit_density/mass_per_H  ! n = (5/7)*(rho/mp), gamma=7/5?
 !
 ! Call cooling function with all abundances
 !
- divv_cgs = sign(max(abs(divv) / real(utime, kind=4), real(1.e-40, kind=4)) , divv) ! Ensuring that divv is different from 0
- if (present(ratesq)) then
-    call cool_func(T,Tdust,np1,dlq,divv_cgs,abund,ylamq,ratesq)
- else
-    call cool_func(T,Tdust,np1,dlq,divv_cgs,abund,ylamq,dummy_ratesq)
- endif
+    divv_cgs = sign(max(abs(divv) / real(utime, kind=4), real(1.e-40, kind=4)) , divv) ! Ensuring that divv is different from 0
+    if (present(ratesq)) then
+       call cool_func(T,Tdust,np1,dlq,divv_cgs,abund,ylamq,ratesq)
+    else
+       call cool_func(T,Tdust,np1,dlq,divv_cgs,abund,ylamq,dummy_ratesq)
+    endif
 !
 ! Compute change in u from 'ylamq' above.
 !
 
- if (dudti /= dudti) dudti = 0.d0
+   !  if (dudti /= dudti) dudti = 0.d0
 
- dudti = (-1.d0*ylamq/(rhoi*unit_density))   ! Returns dudt in cgs
+   dudti = (-1.d0*ylamq/(rhoi*unit_density))   ! Returns dudt in cgs
+ endif
 
 end subroutine energ_cooling_AGB
 

@@ -431,7 +431,7 @@ subroutine test_speed_AGB_cooling(dumpfile)
   character(len=*), intent(in)  ::   dumpfile
   character(len=120)            ::   infile
   real :: start, finish
-  integer, parameter :: ndt = 1000
+  integer, parameter :: ndt = 10000
   integer :: i,iunit
   real :: dt,T_gas,rho_cgs,rho,ui,dudt,mu,gamma,T_on_u,T_floor
   real :: Tout,K2,K3,tstart
@@ -473,7 +473,7 @@ subroutine test_speed_AGB_cooling(dumpfile)
 
   ! parameters
   tstart = 0.0
-  tlast = 2.d2     ! evolve for this many code time units
+  tlast = 1.d2     ! evolve for this many code time units
   dt     = (tlast - tstart)/ndt   ! uniform linear spacing
 
   ! initialize
