@@ -762,6 +762,7 @@ subroutine reconstruct_logNorm_from_moments()
 
 end subroutine reconstruct_logNorm_from_moments
 
+! Delete particles is not yet used, might be needed for post processing with MCFOST
 subroutine delete_particles(npart_in)
   use part, only:delete_dead_or_accreted_particles,npartoftype
   integer, intent(in) :: npart_in

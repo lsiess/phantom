@@ -180,13 +180,12 @@ subroutine evolve_chem(dt, T, rho_cgs, JKmuS)
  nH_tot = rho_cgs/mass_per_H
  JKmuS(idK3) = min(JKmuS(idK3), eps(iC) - eps(iOx)) ! Same amount of C as O is locked in CO
  epsC   = eps(iC) - JKmuS(idK3)
- if (epsC < 0.-tiny(0.)) then
+ if (epsC < 0. - tiny(0.)) then
     print *,'eps(C) =',eps(iC),', K3=',JKmuS(idK3),', epsC=',epsC,', T=',T,' rho=',rho_cgs
     print *,'JKmuS=',JKmuS
     stop '[S-dust_formation] epsC < 0!'
  endif
 
- abundi = 0.
  if (T > 450.) then
     call chemical_equilibrium_light(rho_cgs, T, epsC, JKmuS(idmu), JKmuS(idgamma), abundi)
     cst = mass_per_H/(JKmuS(idmu)*mass_proton_cgs*kboltz*T)
@@ -211,9 +210,6 @@ subroutine evolve_chem(dt, T, rho_cgs, JKmuS)
           Jstar_new = 0.0
           K_new(0:3) = JKmuS(idK0:idK3)
        endif
-   !  else
-   !     Jstar_new  = JKmuS(idJstar)
-   !     K_new(0:3) = JKmuS(idK0:idK3)
     endif
  else
 ! Simplified low-temperature chemistry: all hydrogen in H2 molecules, all O in CO
