@@ -63,7 +63,7 @@ subroutine do_analysis(dumpfile,num,xyzh,vxyzu,particlemass,npart,time,iunit)
 
 analysis_to_perform = 1
 
-call prompt('Choose analysis type ',analysis_to_perform,1,6)
+call prompt('Choose analysis type ',analysis_to_perform,1,7)
 print *,''
 
 !analysis
@@ -556,7 +556,7 @@ subroutine compute_dust_formation()
   call set_abundances
   eps(iOx) = 9e-4  ! Adjusted O abundance to better match Gauger 1990
   eps(iC) = eps(iOx) * wind_CO_ratio
-  ! eps(iH) = 1.0
+  eps(iH) = 1.0
   epsC = eps(iC)
 
   inquire(file='abundances_output.txt', exist=id_exist)
@@ -761,6 +761,21 @@ subroutine reconstruct_logNorm_from_moments()
 
 
 end subroutine reconstruct_logNorm_from_moments
+
+subroutine delete_particles(npart_in)
+  use part, only:delete_dead_or_accreted_particles,npartoftype
+  integer, intent(in) :: npart_in
+  integer :: npart
+
+  npart = npart_in
+
+  print *, 'Number of particles before deletion: ', npart
+
+  call delete_dead_or_accreted_particles(npart, npartoftype)
+
+  print *, 'Number of particles after deletion: ', npart
+
+end subroutine delete_particles
 
 
 end module analysis

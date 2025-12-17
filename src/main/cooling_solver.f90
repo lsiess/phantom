@@ -161,6 +161,7 @@ subroutine implicit_cooling (ui, dudt, rho, dt, mu, gamma, Tdust, K2, K3, kappa,
  logical            :: converged, bisection
  real               :: deltaT, dfdT, dQdT, f
  real               :: Tnew, Tmin_bisect, Tmax_bisect
+ character(len=256) :: msg
 
  u       = ui
  T_on_u  = (gamma-1.)*mu*unit_ergg/Rg
@@ -191,7 +192,7 @@ subroutine implicit_cooling (ui, dudt, rho, dt, mu, gamma, Tdust, K2, K3, kappa,
  Tmax_bisect = 1e6
 
  do while (iter < iter_max)
-   if (iter > 0) abundi(icoolTi) = -1.0  ! flag to skip abundance calculation after the first iteration
+   if (iter > iter_nr_max) abundi(16) = -1.0  ! flag to skip abundance calculation after first iteration
    call calc_cooling_rate(Qi,dlnQ_dlnT, rho, T, Tdust, mu, gamma, K2, K3, kappa, divv_in=divv, abundi_in=abundi)
 
    f   = T - T0 - Qi*dt*T_on_u
@@ -237,7 +238,10 @@ subroutine implicit_cooling (ui, dudt, rho, dt, mu, gamma, Tdust, K2, K3, kappa,
  Tmid=T
 
  if (.not. converged) then
-    call warning('cooling','iterations did not converge',var='f(T)',val=f) 
+   print *, '[cooling] iterations did not converge. iter=', iter, ' T=', T, ' f=', f, ' dT/T=', deltaT/T
+   ! stop '[implicit_cooling] Newton-Raphson failed'
+ !elseif (iter > iter_nr_max) then
+   !print *, '[cooling] Newton converged after bisection. iter=', iter, ' T=', T
  endif
 
 ! ------ End of Newton-Raphson  -------
