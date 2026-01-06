@@ -164,6 +164,8 @@ end subroutine evolve_dust
 !-----------------------------------------------------------------------
 subroutine evolve_chem(dt, T, rho_cgs, JKmuS)
 !all quantities in cgs
+ use eos, only:ieos
+
  real, intent(in)    :: dt, rho_cgs
  real, intent(inout) :: T, JKmuS(:)
 
@@ -216,7 +218,7 @@ subroutine evolve_chem(dt, T, rho_cgs, JKmuS)
     nH  = 0.
     nH2 = nH_tot/2.
     JKmuS(idmu)    = (1.+4.*eps(iHe))*nH_tot/(nH+nH2+eps(iHe)*nH_tot)
-    JKmuS(idgamma) = (5.*eps(iHe)+3.5)/(3.*eps(iHe)+2.5)
+    if (ieos /= 17) JKmuS(idgamma) = (5.*eps(iHe)+3.5)/(3.*eps(iHe)+2.5)
     pC2H2 = .5*(epsC-eps(iOx))*nH_tot * kboltz * T
     pC2H  = 0.
     pC2   = 0.
@@ -655,10 +657,16 @@ subroutine calc_muGamma(rho_cgs, T, mu, gamma, pH_out, pH_tot_out, ppH2)
     do while (.not. converged .and. i < itermax)
        i = i+1
        pH_tot    = rho_cgs*T*kboltz/(patm*mass_per_H)
-       KH2       = calc_Kd(coefs(:,iH2), T)
-       pH        = solve_q(2.*KH2, 1._16, -pH_tot)
-       pH2       = KH2*pH**2
-       mu        = real((1.+4.*eps(iHe))/(.5+eps(iHe)+0.5*pH/pH_tot))
+       if (T < Tmol) then
+          pH2    = pH_tot/2.
+          pH     = 0.
+          mu     = real((1.+4.*eps(iHe))/(0.5+eps(iHe)))
+       else
+          KH2       = calc_Kd(coefs(:,iH2), T)
+          pH        = solve_q(2.*KH2, 1._16, -pH_tot)
+          pH2       = KH2*pH**2
+          mu        = real((1.+4.*eps(iHe))/(.5+eps(iHe)+0.5*pH/pH_tot))
+       endif
        if (ieos == 17) exit !only update mu, keep gamma constant
        x         = 2.*(1.+4.*eps(iHe))/mu
        gamma     = real((3.*x+4.+4.*eps(iHe))/(x+4.+4.*eps(iHe)))

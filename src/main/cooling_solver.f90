@@ -161,6 +161,7 @@ subroutine implicit_cooling (ui, dudt, rho, dt, mu, gamma, Tdust, K2, K3, kappa,
  logical            :: converged, bisection
  real               :: deltaT, dfdT, dQdT, f
  real               :: Tnew, Tmin_bisect, Tmax_bisect
+ real               :: f0, fi, dx, fmid
 
  u       = ui
  T_on_u  = (gamma-1.)*mu*unit_ergg/Rg
@@ -176,6 +177,7 @@ subroutine implicit_cooling (ui, dudt, rho, dt, mu, gamma, Tdust, K2, K3, kappa,
     return
  endif
 
+ ! ------ Start of Newton-Raphson  -------
  T0   = T
  T = max(T0+Q*dt*T_on_u,Tmin) ! take guess based on explicit step
  if (Townsend_test) then
@@ -241,6 +243,51 @@ subroutine implicit_cooling (ui, dudt, rho, dt, mu, gamma, Tdust, K2, K3, kappa,
  endif
 
 ! ------ End of Newton-Raphson  -------
+
+! ------ Old simple bisection method ------
+
+!  T0   = T
+!  f0   = -Q*dt*T_on_u
+!  fi   = f0
+!  iter = 0
+!  !define bisection interval for function f(T) = T^(n+1)-T^n-Q*dt*T_on_u
+!  do while (((f0 > 0. .and. fi > 0.) .or. (f0 < 0. .and. fi < 0.)) .and. iter < iter_max)
+!     Tmid = max(T+Q*dt*T_on_u,Tmin)
+!     call calc_cooling_rate(Qi,dlnQ_dlnT, rho, Tmid, Tdust, mu, gamma, K2, K3, kappa)
+!     fi = Tmid-T0-Qi*dt*T_on_u
+!     T  = Tmid
+!     iter = iter+1
+!  enddo
+!  !Temperature is between T0 and Tmid
+!  if (iter > iter_max) stop '[implicit_cooling] cannot bracket cooling function'
+!  iter = 0
+!  if (Tmid > T0) then
+!     T = T0
+!  else
+!     if (Townsend_test) then
+!        !special fix for Townsend benchmark
+!        T = max(Tcap,Tmid)
+!     else
+!        T = Tmid
+!     endif
+!  endif
+!  dx = abs(Tmid-T0)
+!  do while (dx/T0 > tol .and. iter < iter_max)
+!     dx = dx*.5
+!     Tmid = T+dx
+!     call calc_cooling_rate(Qi,dlnQ_dlnT, rho, Tmid, Tdust, mu, gamma, K2, K3, kappa)
+!     fmid = Tmid-T0-Qi*dt*T_on_u
+!     if (Townsend_test) then
+!        !special fix for Townsend benchmark
+!        if (fmid <= 0.) Tmid = max(Tcap,Tmid)
+!     else
+!        if (fmid <= 0.) T = Tmid
+!     endif
+!     iter = iter + 1
+!     !print *,iter,fmid,T,Tmid
+!  enddo
+!
+! ------ End of old simple bisection method ------
 
  u = Tmid/T_on_u
  dudt =(u-ui)/dt
