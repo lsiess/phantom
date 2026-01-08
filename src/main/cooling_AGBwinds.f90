@@ -3038,14 +3038,20 @@ real function calc_eps_e(T)
 
  real             :: k1, k2, k3, k8, k9, p, q
 
- k1 = 1.88d-10 / T**6.44e-1
- k2 = 1.83d-18 * T
- k3 = 1.35d-9
- k8 = 5.80d-11 * sqrt(T) * exp(-1.58d5/T)
- k9 = 1.7d-4 * k8
- p  = .5*k8/k9
- q  = k1*(k2+k3)/(k3*k9)
- calc_eps_e = min(1.,(p + sqrt(q+p**2))/q) !must be <= 1
+ if (T > 1.d4) then
+    calc_eps_e = 1.d0
+ else if (T > 250.) then
+    k1 = 1.88d-10 / T**6.44e-1
+    k2 = 1.83d-18 * T
+    k3 = 1.35d-9
+    k8 = 5.80d-11 * sqrt(T) * exp(-1.58d5/T)
+    k9 = 1.7d-4 * k8
+    p  = .5*k8/k9
+    q  = k1*(k2+k3)/(k3*k9)
+    calc_eps_e = min(1.,(p + sqrt(q+p**2))/q) !must be <= 1
+ else
+    calc_eps_e = 1.d-99
+ endif
 
 end function calc_eps_e
 

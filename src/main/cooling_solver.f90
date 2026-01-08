@@ -177,6 +177,8 @@ subroutine implicit_cooling (ui, dudt, rho, dt, mu, gamma, Tdust, K2, K3, kappa,
     return
  endif
 
+  ! ------ Start of Newton-Raphson  -------
+
  T0   = T
  T = max(T0+Q*dt*T_on_u,Tmin) ! take guess based on explicit step
  if (Townsend_test) then
