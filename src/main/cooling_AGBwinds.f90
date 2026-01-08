@@ -137,6 +137,7 @@ module cooling_AGBwinds
 !  simplicity that this scales linearly with metallicity,
 !   but it need not do so]
 !
+! WILL NEED TO BE CHANGED AND COMPUTED FROM K3 MOMENT
  real, public :: dust_to_gas_ratio = 0.5d-2
 !
 ! Visual extinction (A_V) per unit column density (in cm^-2)
@@ -176,7 +177,7 @@ contains
 !+
 !----------------------------------------------------------------
 subroutine energ_cooling_AGB(T_in,Tdust,rhoi,divv,gmwvar,abund,dudti,ratesq)
- use units,     only:utime,udist,unit_density,unit_ergg
+ use units,     only:utime,unit_density
  use physcon,   only:mass_proton_cgs,Rg
  use dust_formation, only:mass_per_H
  real,         intent(in)    :: T_in,Tdust,rhoi,gmwvar
@@ -189,24 +190,28 @@ subroutine energ_cooling_AGB(T_in,Tdust,rhoi,divv,gmwvar,abund,dudti,ratesq)
 !
 ! Compute temperature and number density
 !
- T = max(T_in, 20.d0)
- np1     = rhoi*unit_density/mass_per_H  ! n = (5/7)*(rho/mp), gamma=7/5?
+ if (T_in < 1.d1) then
+    dudti = 0.d0
+ else
+    T = T_in
+    np1     = rhoi*unit_density/mass_per_H  ! n = (5/7)*(rho/mp), gamma=7/5?
 !
 ! Call cooling function with all abundances
 !
- divv_cgs = sign(max(abs(divv) / real(utime, kind=4), real(1.e-40, kind=4)) , divv) ! Ensuring that divv is different from 0
- if (present(ratesq)) then
-    call cool_func(T,Tdust,np1,dlq,divv_cgs,abund,ylamq,ratesq)
- else
-    call cool_func(T,Tdust,np1,dlq,divv_cgs,abund,ylamq,dummy_ratesq)
- endif
+    divv_cgs = sign(max(abs(divv) / real(utime, kind=4), real(1.e-40, kind=4)) , divv) ! Ensuring that divv is different from 0
+    if (present(ratesq)) then
+       call cool_func(T,Tdust,np1,dlq,divv_cgs,abund,ylamq,ratesq)
+    else
+       call cool_func(T,Tdust,np1,dlq,divv_cgs,abund,ylamq,dummy_ratesq)
+    endif
 !
 ! Compute change in u from 'ylamq' above.
 !
 
- if (dudti /= dudti) dudti = 0.d0
+!  if (dudti /= dudti) dudti = 0.d0
 
- dudti = (-1.d0*ylamq/(rhoi*unit_density))   ! Returns dudt in cgs
+    dudti = (-1.d0*ylamq/(rhoi*unit_density))   ! Returns dudt in cgs
+ endif
 
 end subroutine energ_cooling_AGB
 
@@ -224,6 +229,7 @@ subroutine cool_func(temp, Tdust, yn, dl, divv, abundances, ylam, rates)
  use mol_data
  use dim,     only:nElements
  use io, only:fatal
+ use dust_formation, only:icoolH,icoolC,iCoolO,iCoolSi,iCoolH2,iCoolCO,iCoolH2O,iCoolOH,iCoolHe
  real,         intent(in)  :: temp, Tdust
  real,         intent(in)  :: yn
  real(kind=8), intent(in)  :: dl
@@ -235,21 +241,18 @@ subroutine cool_func(temp, Tdust, yn, dl, divv, abundances, ylam, rates)
  integer :: itemp
  real    :: dtemp
 
- real    :: ynh2      , ynh       , yne     , ynhp     , ynhd   , ynhe
+ real    :: ynh2      , ynh       , yne     , ynhp     , ynhe
 
- real    :: abh2      , abo       , aboh    , abh2o    , abhd   , &
-            abcI      , abcII     , absiI   , absiII   , abe    , &
+ real    :: abh2      , abo       , aboh    , abh2o    , &
+            abcI      , absiI     , abe    , &
             abhp      , abhI      , abco    , abheI    , abheII , &
             abheIII
-! Indices for cooling species (same as in dust_formation):
- integer, parameter :: icoolH=1, icoolC=2, icoolO=3, icoolSi=4, icoolH2=5, icoolCO=6, &
-                       icoolH2O=7, icoolOH=8, icoolHe=12
 
  integer, parameter :: iH = 1, iHe=2, iC=3, iOx=4, iN=5, iNe=6, iSi=7, iS=8, iFe=9, iTi=10
 
  real    :: abundo, abundc, abundsi
 
- real    :: h2var0    , h2var1
+ real    :: h2var0
 
  real    :: oxc01, oxc02, oxlam1, oxlam2, oxb10, oxb01, oxc10 , oxb02 , &
             oxb20, oxb21, oxb12,  oxc20,  oxn1,  oxn2,  oxn0  , oxr01 , &
@@ -265,13 +268,6 @@ subroutine cool_func(temp, Tdust, yn, dl, divv, abundances, ylam, rates)
             siIb02, siIb20, siIb21,  siIb12,  siIc20, siIn1  , siIn2 , &
             siIn0,  siIr01, siIr02,  siIr12,  siIr10, siIr20 , siIr21, &
             siIa ,  siIb  , siIc  ,  siIc21 , siIc12
-
- real    :: cIIc10,   cIIc01, cIIn1
-
- real    :: siIIc10, siIIc01, siIIn1
-
- real    :: PEvar0   , PEvar1   , PEvar2, &
-            G_dust    , AV       , fdust    , NH_tot
 
  real    :: cmb_temp
  real, parameter :: redshift = 0.0d0
@@ -353,7 +349,7 @@ subroutine cool_func(temp, Tdust, yn, dl, divv, abundances, ylam, rates)
     itemp = nmd
     dtemp = temp - temptab(itemp)
  else
-    itemp = dlog10(temp) / dtlog + 1
+    itemp = nint(dlog10(temp) / dtlog + 1)
     if (itemp /= itemp .or. itemp <= 0.or. itemp > nmd) then
        print*, 'fatal error in cool_func.f', itemp, temp
        stop
@@ -510,19 +506,20 @@ subroutine cool_func(temp, Tdust, yn, dl, divv, abundances, ylam, rates)
  abh2o  = abundances(icoolH2O)
  abco   = abundances(icoolCO)
  abcI   = abundances(icoolC)
-!  abcIi  = abundances(7)
  absiI  = abundances(icoolSi)
-!  absiII = abundances(9)
 !  abe    = abundances(10)
 !  abhp   = abundances(11)
  abhI   = abundances(icoolH)
-!  abhd   = abundances(13)
  abhei  = abundances(icoolHe)
 !  abheII = abundances(15)
 !  abheIII = abundances(16)
 
- abe  = 1.0d-4  ! To make it consistent with cooling_ism: 
+!  abe  = 1.0d-4  ! To make it consistent with cooling_ism: 
                 ! SHOULD WE USE THE ELECTRON ABUNDANCE FUNCTION AS IN JOLIEN'S (MODIFIED)?
+ abe = calc_eps_e(temp) ! This function gives wrong abundances at very high temperatures: FIX!
+!  if (abe > 1.0d-4) then
+!    print*, 'Electron abundance used in cooling_ism_AGB.f90:', abe, ' temp', temp
+!  endif
  abhp = 1.0d-7
  abheII = 0.0d0
  abheIII = 0.0d0
@@ -533,7 +530,6 @@ subroutine cool_func(temp, Tdust, yn, dl, divv, abundances, ylam, rates)
  ynh  = abhI * yn
  yne  = abe  * yn
  ynhp = abhp * yn
-!  ynhd = abhd * yn
  ynhe = abhei * yn
 
  if (temp < 50) then
@@ -657,9 +653,9 @@ subroutine cool_func(temp, Tdust, yn, dl, divv, abundances, ylam, rates)
        n_h2o18_eff_vib = h2o_vib_colntab(ncdh2o_vib)
     else
        dv = 1d-5 * dabs(divv)
+       N_h2o_eff_vib = dlog10(abh2o * yn / dv)
        N_h2o_eff_para  = N_h2o_eff_vib + log_fp_h2o
        N_h2o_eff_ortho = N_h2o_eff_vib + log_fo_h2o
-       N_h2o_eff_vib = dlog10(abh2o * yn / dv)
        ! isotopic abundance ratio is from nlm95
        n_h2o18_eff_para  = N_h2o_eff_para  - 2.69897d0  ! log10(2d-3)
        n_h2o18_eff_ortho = N_h2o_eff_ortho - 2.69897d0  ! log10(2d-3)
@@ -1490,22 +1486,22 @@ end subroutine compute_stim
 !=======================================================================
 !
 
-subroutine load_H2_table
- use mol_data
+! subroutine load_H2_table
+!  use mol_data
 
-    implicit none
+!     implicit none
 
-    integer i, j
-    open(12, file='H2-cooling-ratios.dat', status='old')
-    do i = 1, nh2op
-       do j = 1, nh2op
-          read(12,*) h2_opac_temp(i), h2_opac_column(j), h2_opac(i,j)
-       enddo
-    enddo
-    close (12, status='keep')
+!     integer i, j
+!     open(12, file='H2-cooling-ratios.dat', status='old')
+!     do i = 1, nh2op
+!        do j = 1, nh2op
+!           read(12,*) h2_opac_temp(i), h2_opac_column(j), h2_opac(i,j)
+!        enddo
+!     enddo
+!     close (12, status='keep')
 
- return
-end subroutine load_H2_table
+!  return
+! end subroutine load_H2_table
 !=======================================================================
 !
 !    \\\\\\\\\\        E N D   S U B R O U T I N E        //////////
@@ -1524,6 +1520,7 @@ end subroutine load_H2_table
 
 subroutine compute_h2_opacity(temp, N_H2_eff, opac)
  use mol_data
+ use h2_opac_table
 
     implicit none
    
@@ -1694,7 +1691,7 @@ subroutine init_cooling_AGB
 !
  real :: temp    , temp2   , f       , gg       , hh      &
        , dtemp   , tinv    , tau     , tsqrt    , opratio &
-       , fortho  , brem    , fpara   , atomic   , tloge   &
+       , fortho  , fpara   , atomic   , tloge   &
        , h2e20   , h2e31   , h2n2    , h2n3     , h2q02   &
        , h2q13   , phi_pah , tinth   , tinq     , tintq   &
        , tisqt   , tfix    , tfintq  , tfinq    , tfinth  &
@@ -3027,5 +3024,29 @@ end subroutine init_cooling_AGB
 !    //////////        I N I T _ H 2 C O O L I N G        \\\\\\\\\\
 !
 !=======================================================================
+
+!-----------------------------------------------------------------------
+!+
+!  compute electron equilibrium abundance per nH atom (Palla et al 1983)
+!  Same as in cooling_functions.f90, but I could not use it from there
+!  because of module circular dependencies.
+!+
+!-----------------------------------------------------------------------
+real function calc_eps_e(T)
+
+ real, intent(in) :: T
+
+ real             :: k1, k2, k3, k8, k9, p, q
+
+ k1 = 1.88d-10 / T**6.44e-1
+ k2 = 1.83d-18 * T
+ k3 = 1.35d-9
+ k8 = 5.80d-11 * sqrt(T) * exp(-1.58d5/T)
+ k9 = 1.7d-4 * k8
+ p  = .5*k8/k9
+ q  = k1*(k2+k3)/(k3*k9)
+ calc_eps_e = min(1.,(p + sqrt(q+p**2))/q) !must be <= 1
+
+end function calc_eps_e
 
 end module cooling_AGBwinds

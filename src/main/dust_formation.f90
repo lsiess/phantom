@@ -175,10 +175,6 @@ subroutine evolve_chem(dt, T, rho_cgs, JKmuS)
  real, parameter :: alpha2 = 0.34
  real :: cst, adot
  real :: abundi(nabn_AGB)
- ! Needed to write output abundances to external file:
-!  integer :: iunit_out, j
-!  character(len=100) :: filename
-!  logical :: file_exists
 
  abundi = 0.
  nH_tot = rho_cgs/mass_per_H
@@ -189,11 +185,8 @@ subroutine evolve_chem(dt, T, rho_cgs, JKmuS)
     print *,'JKmuS=',JKmuS
     stop '[S-dust_formation] epsC < 0!'
  endif
-!  if (T> 3000.) then
-!     K_new = 0.
-!     Jstar_new = 0.
-!     S = 0.
-!     JKmuS(idkappa) = 0.
+
+ abundi = 0.
  if (T > 450.) then
     call chemical_equilibrium_light(rho_cgs, T, epsC, JKmuS(idmu), JKmuS(idgamma), abundi)
     cst = mass_per_H/(JKmuS(idmu)*mass_proton_cgs*kboltz*T)
@@ -203,18 +196,6 @@ subroutine evolve_chem(dt, T, rho_cgs, JKmuS)
     pC2H2  = abundi(icoolC2H2)/cst 
     S = pC/psat_C(T)
 
-   ! Write output abundances to external file
-   ! filename = 'abundances_output.txt'
-   ! inquire(file=filename, exist=file_exists)
-   ! if (.not. file_exists) then
-   !    open(newunit=iunit_out, file=filename, status='unknown', action='write', position='append')
-   ! else
-   !    open(newunit=iunit_out, file=filename, status='old', action='write', position='append')
-   ! endif
-   ! write(iunit_out, '(100(1p,es14.6e3,1x))') (abundi(j)/nH_tot, j=1,nabn_AGB), psat_C(T)*cst/nH_tot
-   ! close(iunit_out)
-
-
     if (S > Scrit) then
        call calc_nucleation(T, pC, pC2, 0.0, pC2H, pC2H2, S, JstarS, taustar, taugr)
        JstarS = JstarS/ nH_tot
@@ -222,7 +203,6 @@ subroutine evolve_chem(dt, T, rho_cgs, JKmuS)
     else
        if (any(JKmuS(idK0:idK3) > 0.0)) then
           call calc_nucleation(T, pC, pC2, 0.0, pC2H, pC2H2, S, JstarS, taustar, taugr)
-          ! JstarS = JstarS / nH_tot
           adot = 1. / 3. / taugr    ! Equation 28 in Gauger 1990
           call evap_shift_remove(JKmuS(idK0:idK3), dt, adot, K_new(0:3))
           Jstar_new = 0.0
@@ -835,7 +815,7 @@ subroutine chemical_equilibrium_light(rho_cgs, T_in, epsC, mu, gamma, abundi)
  err      = 1.
  nit      = 0
 
- do while (err > 1.d-4)
+ do while (err > 1.d-2)
 ! N
     X = 1.+pH**3*Kd(iNH3)+pC*(Kd(iCN)+pH*Kd(iHCN))
     AA = .25*X/Kd(iN2)
@@ -935,8 +915,7 @@ pure real(kind=16) function solve_q(a, b, c)
   real(kind=16) :: delta
 
   if (-4.0_16 * a * c / (b**2) > epsilon(0.0_16)) then
-   !   delta = max(b**2 - 4.0_16 * a * c, 0.0_16)
-     delta = b**2 - 4.0_16 * a * c
+     delta = max(b**2 - 4.0_16 * a * c, 0.0_16)
      solve_q = (-b + sqrt(delta)) / (2.0_16 * a)
   else
      solve_q = -c / b
