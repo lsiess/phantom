@@ -1502,6 +1502,57 @@ end subroutine compute_stim
 
 !  return
 ! end subroutine load_H2_table
+
+subroutine load_H2_table()
+   use mol_data, only : nh2op, h2_opac, h2_opac_temp, h2_opac_column
+   implicit none
+
+   integer :: iu, nfile, ios
+
+   open(newunit=iu, file='/home/ddionese/Desktop/H2-cooling-ratios.dat', &
+        status='old', action='read', iostat=ios)
+
+   if (ios /= 0) then
+      write(*,*) 'ERROR: Cannot open H2-cooling-ratios.dat'
+      stop
+   end if
+
+   ! --- Read and check table size ---
+   read(iu, *, iostat=ios) nfile
+   if (ios /= 0) then
+      write(*,*) 'ERROR: Failed reading nh2op'
+      stop
+   end if
+
+   if (nfile /= nh2op) then
+      write(*,*) 'ERROR: nh2op mismatch'
+      write(*,*) '  File:', nfile, ' Code:', nh2op
+      stop
+   end if
+
+   ! --- Read temperature and column grids ---
+   read(iu, *, iostat=ios) h2_opac_temp
+   if (ios /= 0) then
+      write(*,*) 'ERROR: Failed reading temperature grid'
+      stop
+   end if
+
+   read(iu, *, iostat=ios) h2_opac_column
+   if (ios /= 0) then
+      write(*,*) 'ERROR: Failed reading column grid'
+      stop
+   end if
+
+   ! --- Read opacity table (column-major, Fortran-native) ---
+   read(iu, *, iostat=ios) h2_opac
+   if (ios /= 0) then
+      write(*,*) 'ERROR: Failed reading opacity table'
+      stop
+   end if
+
+   close(iu)
+end subroutine load_H2_table
+
 !=======================================================================
 !
 !    \\\\\\\\\\        E N D   S U B R O U T I N E        //////////
@@ -1520,7 +1571,6 @@ end subroutine compute_stim
 
 subroutine compute_h2_opacity(temp, N_H2_eff, opac)
  use mol_data
- use h2_opac_table
 
     implicit none
    
@@ -1909,6 +1959,8 @@ subroutine init_cooling_AGB
 ! from J = 0 <-> J=1 transitions in cool_func
 !
     cltab(67,itemp) = 9d0 * exp(-170.5d0 / temp)
+
+    call load_H2_table
 !
 !
 ! (cl6) --  the atomic cooling function - this is computed by fitting
