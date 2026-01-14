@@ -345,7 +345,7 @@ subroutine compute_dust_formation()
   a0_radius = 1.28d-8
   P = 2.6d7 ! in s
   Scrit = 1
-  ! wind_CO_ratio = 3
+  wind_CO_ratio = 3
   JKmuS(idgamma) = gamma
   JKmuS(idK0:idK3) = 0.
   

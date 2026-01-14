@@ -182,6 +182,8 @@ subroutine evolve_chem(dt, T, rho_cgs, JKmuS)
  character(len=100) :: filename
  logical :: file_exists
 
+ abundi = 0.
+
  nH_tot = rho_cgs/mass_per_H
  epsC   = eps(iC) - JKmuS(idK3)
  if (epsC < 0.) then
@@ -240,9 +242,10 @@ subroutine evolve_chem(dt, T, rho_cgs, JKmuS)
     JKmuS(idgamma) = (5.*eps(iHe)+3.5)/(3.*eps(iHe)+2.5)
     pC2H2 = .5*(epsC-eps(iOx))*nH_tot * kboltz * T
     pC2H  = 0.
+    pC2   = 0.
     S     = 1.d-3
     v1    = vfactor*sqrt(T)
-    taugr = kboltz*T/(A0*v1*sqrt(2.)*alpha2*(pC2+pC2H+pC2H2))
+    taugr = kboltz*T/(A0*v1*sqrt(2.)*alpha2*max(pC2+pC2H+pC2H2, 1.e-50))
     call evol_K(0., JKmuS(idK0:idK3), 0., 1., taugr, dt, Jstar_new, K_new)
  endif
  JKmuS(idJstar)   = Jstar_new
@@ -433,7 +436,7 @@ subroutine evol_K(Jstar_in, K, JstarS_in, taustar, taugr, dt, Jstar_new, K_new)
  !      'k1=',k(1),'dk1=',dk1,'Kn1=',k_new(1),'k2=',k(2),'dk2=',dk2,'Kn2=',k_new(2),'k3=',k(3),'dk3=',dk3,'Kn3=',k_new(3)
  !  stop
  !endif
-K_new = max(K_new, 0.0)
+ K_new = max(K_new, 0.0)
 
 end subroutine evol_K
 
@@ -622,22 +625,22 @@ subroutine chemical_equilibrium_light(rho_cgs, T_in, epsC, mu, gamma, abundi)
  pH_tot = real(pH_tot_mugamma, kind=16)
  pH2 = real(pH2_mugamma, kind=16)
  if (T > 1.d4) then
-    abundi(icoolC)    = eps(iC)*pH_tot* (patm*mass_per_H)/(mu*mass_proton_cgs*kboltz*T)
+    abundi(icoolC)    = real(eps(iC)*pH_tot* (patm*mass_per_H)/(mu*mass_proton_cgs*kboltz*T))
     abundi(icoolC2)   = 0.
     abundi(icoolC2H)  = 0.
     abundi(icoolC2H2) = 0.
-    abundi(icoolH)   = pH  *(patm*mass_per_H)/(mu*mass_proton_cgs*kboltz*T)
+    abundi(icoolH)   = real(pH  *(patm*mass_per_H)/(mu*mass_proton_cgs*kboltz*T))
     abundi(icoolH2)  = 1.d-50
-    abundi(icoolHe)  = eps(ihe)*pH_tot* (patm*mass_per_H)/(mu*mass_proton_cgs*kboltz*T)
+    abundi(icoolHe)  = real(eps(ihe)*pH_tot* (patm*mass_per_H)/(mu*mass_proton_cgs*kboltz*T))
     abundi(icoolCO)  = 1.d-50
     abundi(icoolH2O) = 1.d-50
     abundi(icoolOH)  = 1.d-50
-    abundi(icoolO)   = eps(iOx)*pH_tot* (patm*mass_per_H)/(mu*mass_proton_cgs*kboltz*T)
-    abundi(icoolSi)  = eps(iSi)*pH_tot* (patm*mass_per_H)/(mu*mass_proton_cgs*kboltz*T)
+    abundi(icoolO)   = real(eps(iOx)*pH_tot* (patm*mass_per_H)/(mu*mass_proton_cgs*kboltz*T))
+    abundi(icoolSi)  = real(eps(iSi)*pH_tot* (patm*mass_per_H)/(mu*mass_proton_cgs*kboltz*T))
     abundi(icoolSiO) = 1.d-50
     abundi(icoolCH4) = 1.d-50
-    abundi(icoolS)   = eps(iS)*pH_tot* (patm*mass_per_H)/(mu*mass_proton_cgs*kboltz*T)
-    abundi(icoolTi)  = eps(iTi)*pH_tot* (patm*mass_per_H)/(mu*mass_proton_cgs*kboltz*T)
+    abundi(icoolS)   = real(eps(iS)*pH_tot* (patm*mass_per_H)/(mu*mass_proton_cgs*kboltz*T))
+    abundi(icoolTi)  = real(eps(iTi)*pH_tot* (patm*mass_per_H)/(mu*mass_proton_cgs*kboltz*T))
     return
  endif
  
@@ -810,23 +813,23 @@ subroutine chemical_equilibrium_light_fixed_mu_gamma(rho_cgs, T_in, epsC, mu, ga
 !  pH_tot = real(pH_tot_mugamma, kind=16)
 !  pH2 = real(pH2_mugamma, kind=16)
  if (T > 1.d4) then
-    abundi(icoolC)    = eps(iC)*pH_tot* (patm*mass_per_H)/(mu*mass_proton_cgs*kboltz*T)
+    abundi(icoolC)    = real(eps(iC)*pH_tot* (patm*mass_per_H)/(mu*mass_proton_cgs*kboltz*T))
     abundi(icoolC2)   = 0.
     abundi(icoolC2H)  = 0.
     abundi(icoolC2H2) = 0.
 
-    abundi(icoolH)   = pH  *(patm*mass_per_H)/(mu*mass_proton_cgs*kboltz*T)
+    abundi(icoolH)   = real(pH  *(patm*mass_per_H)/(mu*mass_proton_cgs*kboltz*T))
     abundi(icoolH2)  = 1.d-50
-    abundi(icoolHe)  = eps(ihe)*pH_tot* (patm*mass_per_H)/(mu*mass_proton_cgs*kboltz*T)
+    abundi(icoolHe)  = real(eps(ihe)*pH_tot* (patm*mass_per_H)/(mu*mass_proton_cgs*kboltz*T))
     abundi(icoolCO)  = 1.d-50
     abundi(icoolH2O) = 1.d-50
     abundi(icoolOH)  = 1.d-50
-    abundi(icoolO)   = eps(iOx)*pH_tot* (patm*mass_per_H)/(mu*mass_proton_cgs*kboltz*T)
-    abundi(icoolSi)  = eps(iSi)*pH_tot* (patm*mass_per_H)/(mu*mass_proton_cgs*kboltz*T)
+    abundi(icoolO)   = real(eps(iOx)*pH_tot* (patm*mass_per_H)/(mu*mass_proton_cgs*kboltz*T))
+    abundi(icoolSi)  = real(eps(iSi)*pH_tot* (patm*mass_per_H)/(mu*mass_proton_cgs*kboltz*T))
     abundi(icoolSiO) = 1.d-50
     abundi(icoolCH4) = 1.d-50
-    abundi(icoolS)   = eps(iS)*pH_tot* (patm*mass_per_H)/(mu*mass_proton_cgs*kboltz*T)
-    abundi(icoolTi)  = eps(iTi)*pH_tot* (patm*mass_per_H)/(mu*mass_proton_cgs*kboltz*T)
+    abundi(icoolS)   = real(eps(iS)*pH_tot* (patm*mass_per_H)/(mu*mass_proton_cgs*kboltz*T))
+    abundi(icoolTi)  = real(eps(iTi)*pH_tot* (patm*mass_per_H)/(mu*mass_proton_cgs*kboltz*T))
     return
  endif
 

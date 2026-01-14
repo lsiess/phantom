@@ -657,9 +657,9 @@ subroutine cool_func(temp, Tdust, yn, dl, divv, abundances, ylam, rates)
        n_h2o18_eff_vib = h2o_vib_colntab(ncdh2o_vib)
     else
        dv = 1d-5 * dabs(divv)
+       N_h2o_eff_vib = dlog10(abh2o * yn / dv)
        N_h2o_eff_para  = N_h2o_eff_vib + log_fp_h2o
        N_h2o_eff_ortho = N_h2o_eff_vib + log_fo_h2o
-       N_h2o_eff_vib = dlog10(abh2o * yn / dv)
        ! isotopic abundance ratio is from nlm95
        n_h2o18_eff_para  = N_h2o_eff_para  - 2.69897d0  ! log10(2d-3)
        n_h2o18_eff_ortho = N_h2o_eff_ortho - 2.69897d0  ! log10(2d-3)
