@@ -1509,7 +1509,7 @@ subroutine load_H2_table()
 
    integer :: iu, nfile, ios
 
-   open(newunit=iu, file='/home/ddionese/Desktop/H2-cooling-ratios.dat', &
+   open(newunit=iu, file='H2-cooling-ratios.dat', &
         status='old', action='read', iostat=ios)
 
    if (ios /= 0) then
