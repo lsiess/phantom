@@ -1486,22 +1486,22 @@ end subroutine compute_stim
 !=======================================================================
 !
 
-! subroutine load_H2_table
-!  use mol_data
+subroutine load_H2_table
+ use mol_data
 
-!     implicit none
+    implicit none
 
-!     integer i, j
-!     open(12, file='H2-cooling-ratios.dat', status='old')
-!     do i = 1, nh2op
-!        do j = 1, nh2op
-!           read(12,*) h2_opac_temp(i), h2_opac_column(j), h2_opac(i,j)
-!        enddo
-!     enddo
-!     close (12, status='keep')
+    integer i, j
+    open(12, file='H2-cooling-ratios.dat', status='old')
+    do i = 1, nh2op
+       do j = 1, nh2op
+          read(12,*) h2_opac_temp(i), h2_opac_column(j), h2_opac(i,j)
+       enddo
+    enddo
+    close (12, status='keep')
 
-!  return
-! end subroutine load_H2_table
+ return
+end subroutine load_H2_table
 !=======================================================================
 !
 !    \\\\\\\\\\        E N D   S U B R O U T I N E        //////////
@@ -1520,7 +1520,6 @@ end subroutine compute_stim
 
 subroutine compute_h2_opacity(temp, N_H2_eff, opac)
  use mol_data
- use h2_opac_table
 
     implicit none
    
@@ -1909,6 +1908,8 @@ subroutine init_cooling_AGB
 ! from J = 0 <-> J=1 transitions in cool_func
 !
     cltab(67,itemp) = 9d0 * exp(-170.5d0 / temp)
+
+    call load_H2_table
 !
 !
 ! (cl6) --  the atomic cooling function - this is computed by fitting

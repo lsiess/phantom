@@ -425,36 +425,36 @@ end subroutine evol_K
 !
 !---------------------------------------------
 subroutine fit_lognormal_from_m012(M0, M1, M2, mu, sigma, info)
-  implicit none
-  real(8), intent(in) :: M0, M1, M2
-  real(8), intent(out) :: mu, sigma
-  integer, intent(out) :: info
+ implicit none
+ real(8), intent(in) :: M0, M1, M2
+ real(8), intent(out) :: mu, sigma
+ integer, intent(out) :: info
 
-  real(8) :: ratio, sigma2
+ real(8) :: ratio, sigma2
 
-  if (M0 <= 0.0d0 .or. M1 <= 0.0d0 .or. M2 <= 0.0d0) then
-     mu = 0.0d0
-     sigma = 0.0d0
-     info = 0   ! no grains
-     return
-  end if
+ if (M0 <= 0.0d0 .or. M1 <= 0.0d0 .or. M2 <= 0.0d0) then
+    mu = 0.0d0
+    sigma = 0.0d0
+    info = 0   ! no grains
+    return
+ end if
 
-  ratio = (M2 * M0) / (M1 * M1)
-  if (ratio <= 0.0d0) then
-     sigma2 = 1.0d-14
-     info = 2
-  else
-     sigma2 = log(ratio)
-     if (sigma2 < 1.0d-14) then
-        sigma2 = 1.0d-14
-        info = 2   ! regularized
-     else
-        info = 1   ! normal fit
-     end if
-  end if
+ ratio = (M2 * M0) / (M1 * M1)
+ if (ratio <= 0.0d0) then
+    sigma2 = 1.0d-14
+    info = 2
+ else
+    sigma2 = log(ratio)
+    if (sigma2 < 1.0d-14) then
+       sigma2 = 1.0d-14
+       info = 2   ! regularized
+    else
+       info = 1   ! normal fit
+    end if
+ end if
 
-  sigma = sqrt(sigma2)
-  mu = log(M1 / M0) - 0.5d0 * sigma2
+ sigma = sqrt(sigma2)
+ mu = log(M1 / M0) - 0.5d0 * sigma2
 
 end subroutine fit_lognormal_from_m012
 
@@ -462,22 +462,22 @@ end subroutine fit_lognormal_from_m012
 !  Standard normal cumulative distribution
 !----------------------------------------
 pure elemental function phi(z) result(cdf)
-  implicit none
-  real(8), intent(in) :: z
-  real(8) :: cdf
-  real(8) :: s2, sqrtpi, erc
-  real(8), parameter :: thresh = 1.0d-300  ! adjust as needed
+ implicit none
+ real(8), intent(in) :: z
+ real(8) :: cdf
+ real(8) :: s2, sqrtpi, erc
+ real(8), parameter :: thresh = 1.0d-300  ! adjust as needed
 
-  s2 = sqrt(2.0d0)
-  sqrtpi = sqrt(4.0d0*atan(1.0d0))  ! sqrt(pi)
+ s2 = sqrt(2.0d0)
+ sqrtpi = sqrt(4.0d0*atan(1.0d0))  ! sqrt(pi)
 
-  if (z >= 0.0d0) then
+ if (z >= 0.0d0) then
     erc = erfc(z / s2)
     cdf = 1.0d0 - 0.5d0 * erc
-  else
+ else
     erc = erfc(-z / s2)
     cdf = 0.5d0 * erc
-  end if
+ end if
 
   ! fallback using asymptotic series if erfc underflowed to zero
 !   if (cdf <= 0.0d0 .or. cdf < thresh) then
@@ -497,121 +497,127 @@ end function phi
 !
 !------------------------------------------------------------
 subroutine evap_shift_remove(M, dt, adot, Mf)
-  use physcon, only:pi
+ use physcon, only:pi
 
-  implicit none
+ implicit none
 
-  real, intent(in) :: M(0:3)
-  real, intent(in) :: dt, adot
-  real, intent(out) :: Mf(0:3)
+ real, intent(in) :: M(0:3)
+ real, intent(in) :: dt, adot
+ real, intent(out) :: Mf(0:3)
 
-  real :: M0, M1, M2, M3
-  real :: M0i, M1i, M2i, M3i
-  real :: M0f, M1f, M2f, M3f
-  real :: mu, sigma
-  integer :: fit_info, info
-  real :: delta_a, abs_da, a_cross, ln_ac
-  real :: z0, z1, z2, z3
-  real :: f0, f1, f2, f3
-  real :: M0_less, M1_less, M2_less, M3_less
-  real :: M0_surv, M1_surv, M2_surv, M3_surv
-  real :: a_min
+ real :: M0, M1, M2, M3
+ real :: M0i, M1i, M2i, M3i
+ real :: M0f, M1f, M2f, M3f
+ real :: mu, sigma
+ integer :: fit_info, info
+ real :: delta_a, abs_da, a_cross, ln_ac
+ real :: z0, z1, z2, z3
+ real :: f0, f1, f2, f3
+ real :: M0_less, M1_less, M2_less, M3_less
+ real :: M0_surv, M1_surv, M2_surv, M3_surv
+ real :: a_min
 
-  a_min = 10.d0     !(lower grain size limit)**1/3, as in evol_K
+ a_min = 10.d0     !(lower grain size limit)**1/3, as in evol_K
 
-  ! Save initial
-  M0 = M(0); M1 = M(1); M2 = M(2); M3 = M(3)
-  M0i = M0; M1i = M1; M2i = M2; M3i = M3
+ ! Save initial
+ M0 = M(0); M1 = M(1); M2 = M(2); M3 = M(3)
+ M0i = M0; M1i = M1; M2i = M2; M3i = M3
 
-  ! Quick exit: no grains
-  if (M0 <= 0.0d0 .or. M1 <= 0.0d0 .or. M2 <= 0.0d0) then
-     M0f = M0i; M1f = M1i; M2f = M2i; M3f = M3i
-     Mf(0) = M0f; Mf(1) = M1f; Mf(2) = M2f; Mf(3) = M3f
-     info = 0
-     return
-  end if
+ ! Quick exit: no grains
+ if (M0 <= 0.0d0 .or. M1 <= 0.0d0 .or. M2 <= 0.0d0) then
+    M0f = M0i; M1f = M1i; M2f = M2i; M3f = M3i
+    Mf(0) = M0f; Mf(1) = M1f; Mf(2) = M2f; Mf(3) = M3f
+    info = 0
+    return
+ end if
 
-  ! Compute shift
-  delta_a = adot * dt
-  abs_da = abs(delta_a)
-  a_cross = a_min + abs_da
+ ! Compute shift
+ delta_a = adot * dt
+ abs_da = abs(delta_a)
+ a_cross = a_min + abs_da
 
-  ! Fit lognormal
-  call fit_lognormal_from_m012(M0i, M1i, M2i, mu, sigma, fit_info)
-  if (fit_info == 0) then
-     M0f = M0i; M1f = M1i; M2f = M2i; M3f = M3i
-     Mf(0) = M0f; Mf(1) = M1f; Mf(2) = M2f; Mf(3) = M3f
-     info = 0
-     return
-  end if
+ ! Fit lognormal
+ call fit_lognormal_from_m012(M0i, M1i, M2i, mu, sigma, fit_info)
+ if (fit_info == 0) then
+    M0f = M0i; M1f = M1i; M2f = M2i; M3f = M3i
+    Mf(0) = M0f; Mf(1) = M1f; Mf(2) = M2f; Mf(3) = M3f
+    info = 0
+    return
+ end if
 
-  ! Small sigma -> delta-like distribution
-  if (sigma <= 1.0d-3) then
-     if (M1i/M0i <= a_cross) then
-        ! all vanish
-        M0f = 0.0d0; M1f = 0.0d0; M2f = 0.0d0; M3f = 0.0d0
-        Mf(0) = M0f; Mf(1) = M1f; Mf(2) = M2f; Mf(3) = M3f
-        info = fit_info
-        return
-     else
-        ! no vanishing, just shift
-        M0f = M0i
-        M1f = M1i + delta_a*M0i
-        M2f = M2i + 2.0d0*delta_a*M1i + delta_a*delta_a*M0i
-        M3f = M3i + 3.0d0*delta_a*M2i + 3.0d0*(delta_a**2)*M1i + (delta_a**3)*M0i
+ ! Small sigma -> delta-like distribution
+ if (sigma <= 1.0d-3) then
+    if (M1i/M0i <= a_cross) then
+       ! all vanish
+       M0f = 0.0d0; M1f = 0.0d0; M2f = 0.0d0; M3f = 0.0d0
+       Mf(0) = M0f; Mf(1) = M1f; Mf(2) = M2f; Mf(3) = M3f
+       info = fit_info
+       return
+    else
+       ! no vanishing, just shift
+       M0f = M0i
+       M1f = M1i + delta_a*M0i
+       M2f = M2i + 2.0d0*delta_a*M1i + delta_a*delta_a*M0i
+       M3f = M3i + 3.0d0*delta_a*M2i + 3.0d0*(delta_a**2)*M1i + (delta_a**3)*M0i
 
-        Mf(0) = M0f; Mf(1) = M1f; Mf(2) = M2f; Mf(3) = M3f
-        info = fit_info
-        return
-     end if
-  end if
+       Mf(0) = M0f; Mf(1) = M1f; Mf(2) = M2f; Mf(3) = M3f
+       info = fit_info
+       return
+    end if
+ end if
 
-  ! General lognormal case: compute fractions below a_cross
-  ln_ac = log(a_cross)
-  z0 = (ln_ac - mu - 0.0d0 * sigma*sigma) / sigma
-  z1 = (ln_ac - mu - 1.0d0 * sigma*sigma) / sigma
-  z2 = (ln_ac - mu - 2.0d0 * sigma*sigma) / sigma
-  z3 = (ln_ac - mu - 3.0d0 * sigma*sigma) / sigma
+ ! General lognormal case: compute fractions below a_cross
+ ln_ac = log(a_cross)
+ z0 = (ln_ac - mu - 0.0d0 * sigma*sigma) / sigma
+ z1 = (ln_ac - mu - 1.0d0 * sigma*sigma) / sigma
+ z2 = (ln_ac - mu - 2.0d0 * sigma*sigma) / sigma
+ z3 = (ln_ac - mu - 3.0d0 * sigma*sigma) / sigma
 
-  f0 = phi(z0)
-  f1 = phi(z1)
-  f2 = phi(z2)
-  f3 = phi(z3)
+ f0 = phi(z0)
+ f1 = phi(z1)
+ f2 = phi(z2)
+ f3 = phi(z3)
 
-  M0_less = M0i * f0
-  M1_less = M1i * f1
-  M2_less = M2i * f2
-  M3_less = M3i * f3
+ M0_less = M0i * f0
+ M1_less = M1i * f1
+ M2_less = M2i * f2
+ M3_less = M3i * f3
 
-  M0_surv = M0i - M0_less
-  M1_surv = M1i - M1_less
-  M2_surv = M2i - M2_less
-  M3_surv = M3i - M3_less
+ M0_surv = M0i - M0_less
+ M1_surv = M1i - M1_less
+ M2_surv = M2i - M2_less
+ M3_surv = M3i - M3_less
 
-  if (M0_surv <= 0.0d0) then
-     M0f = 0.0d0; M1f = 0.0d0; M2f = 0.0d0; M3f = 0.0d0
-     Mf(0) = M0f; Mf(1) = M1f; Mf(2) = M2f; Mf(3) = M3f
-     info = fit_info
-     return
-  end if
+ if (M0_surv <= 0.0d0) then
+    M0f = 0.0d0; M1f = 0.0d0; M2f = 0.0d0; M3f = 0.0d0
+    Mf(0) = M0f; Mf(1) = M1f; Mf(2) = M2f; Mf(3) = M3f
+    info = fit_info
+    return
+ end if
 
-  ! Shift survivors exactly by delta_a
-  M0f = M0_surv
-  M1f = M1_surv + delta_a*M0_surv
-  M2f = M2_surv + 2.0d0*delta_a*M1_surv + (delta_a**2)*M0_surv
-  M3f = M3_surv + 3.0d0*delta_a*M2_surv + 3.0d0*(delta_a**2)*M1_surv + (delta_a**3)*M0_surv
+ ! Shift survivors exactly by delta_a
+ M0f = M0_surv
+ M1f = M1_surv + delta_a*M0_surv
+ M2f = M2_surv + 2.0d0*delta_a*M1_surv + (delta_a**2)*M0_surv
+ M3f = M3_surv + 3.0d0*delta_a*M2_surv + 3.0d0*(delta_a**2)*M1_surv + (delta_a**3)*M0_surv
 
-  info = fit_info
+ info = fit_info
 
-  M0f = max(M0f, 0.0)
-  M1f = max(M1f, 0.0)
-  M2f = max(M2f, 0.0)
-  M3f = max(M3f, 0.0)
+ M0f = max(M0f, 0.0)
+ M1f = max(M1f, 0.0)
+ M2f = max(M2f, 0.0)
+ M3f = max(M3f, 0.0)
 
-  Mf(0) = M0f
-  Mf(1) = M1f
-  Mf(2) = M2f
-  Mf(3) = M3f
+ Mf(0) = M0f
+ Mf(1) = M1f
+ Mf(2) = M2f
+ Mf(3) = M3f
+
+ if (any(Mf(:) < 0.0d0)) then
+    print*, '[S-dust_formation] Negative moments in evap_shift_remove: M0i=',M0i,' M1i=',M1i,' M2i=',M2i,' M3i=',M3i,&
+          ' delta_a=',delta_a,' M0f=',M0f,' M1f=',M1f,' M2f=',M2f,' M3f=',M3f
+    Mf(:) = 0.0d0
+ endif
 
 end subroutine evap_shift_remove
 
@@ -766,10 +772,9 @@ subroutine chemical_equilibrium_light(rho_cgs, T_in, epsC, mu, gamma, abundi)
  real             :: pH_mugamma, pH_tot_mugamma, pH2_mugamma
 
  T = max(T_in, 20.d0)
- cst = mass_per_H/(mu*mass_proton_cgs*kboltz*T)
-
 
  call calc_muGamma(rho_cgs, T, mu, gamma, pH_mugamma, pH_tot_mugamma, pH2_mugamma)
+ cst = mass_per_H/(mu*mass_proton_cgs*kboltz*T)
  pH = real(pH_mugamma, kind=16)
  pH_tot = real(pH_tot_mugamma, kind=16)
  pH2 = real(pH2_mugamma, kind=16)
