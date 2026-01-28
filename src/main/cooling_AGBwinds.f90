@@ -1486,21 +1486,71 @@ end subroutine compute_stim
 !=======================================================================
 !
 
-subroutine load_H2_table
- use mol_data
+! subroutine load_H2_table
+!  use mol_data
 
-    implicit none
+!     implicit none
 
-    integer i, j
-    open(12, file='H2-cooling-ratios.dat', status='old')
-    do i = 1, nh2op
-       do j = 1, nh2op
-          read(12,*) h2_opac_temp(i), h2_opac_column(j), h2_opac(i,j)
-       enddo
-    enddo
-    close (12, status='keep')
+!     integer i, j
+!     open(12, file='H2-cooling-ratios.dat', status='old')
+!     do i = 1, nh2op
+!        do j = 1, nh2op
+!           read(12,*) h2_opac_temp(i), h2_opac_column(j), h2_opac(i,j)
+!        enddo
+!     enddo
+!     close (12, status='keep')
 
- return
+!  return
+! end subroutine load_H2_table
+
+subroutine load_H2_table()
+   use mol_data, only : nh2op, h2_opac, h2_opac_temp, h2_opac_column
+   implicit none
+
+   integer :: iu, nfile, ios
+
+   open(newunit=iu, file='H2-cooling-ratios.dat', &
+        status='old', action='read', iostat=ios)
+
+   if (ios /= 0) then
+      write(*,*) 'ERROR: Cannot open H2-cooling-ratios.dat'
+      stop
+   end if
+
+   ! --- Read and check table size ---
+   read(iu, *, iostat=ios) nfile
+   if (ios /= 0) then
+      write(*,*) 'ERROR: Failed reading nh2op'
+      stop
+   end if
+
+   if (nfile /= nh2op) then
+      write(*,*) 'ERROR: nh2op mismatch'
+      write(*,*) '  File:', nfile, ' Code:', nh2op
+      stop
+   end if
+
+   ! --- Read temperature and column grids ---
+   read(iu, *, iostat=ios) h2_opac_temp
+   if (ios /= 0) then
+      write(*,*) 'ERROR: Failed reading temperature grid'
+      stop
+   end if
+
+   read(iu, *, iostat=ios) h2_opac_column
+   if (ios /= 0) then
+      write(*,*) 'ERROR: Failed reading column grid'
+      stop
+   end if
+
+   ! --- Read opacity table (column-major, Fortran-native) ---
+   read(iu, *, iostat=ios) h2_opac
+   if (ios /= 0) then
+      write(*,*) 'ERROR: Failed reading opacity table'
+      stop
+   end if
+
+   close(iu)
 end subroutine load_H2_table
 !=======================================================================
 !

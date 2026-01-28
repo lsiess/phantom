@@ -212,6 +212,10 @@ subroutine evolve_chem(dt, T, rho_cgs, JKmuS)
           Jstar_new = 0.0
           K_new(0:3) = JKmuS(idK0:idK3)
        endif
+! Uncomment this and comment previous block to exclude evaporation
+   !  else
+   !     Jstar_new  = JKmuS(idJstar)
+   !     K_new(0:3) = JKmuS(idK0:idK3)
     endif
  else
 ! Simplified low-temperature chemistry: all hydrogen in H2 molecules, all O in CO
