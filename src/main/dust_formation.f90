@@ -180,7 +180,7 @@ subroutine evolve_chem(dt, T, rho_cgs, JKmuS)
 
  abundi = 0.
  nH_tot = rho_cgs/mass_per_H
- JKmuS(idK3) = min(JKmuS(idK3), eps(iC) - eps(iOx)) ! Same amount of C as O is locked in CO
+!  JKmuS(idK3) = min(JKmuS(idK3), eps(iC) - eps(iOx)) ! Same amount of C as O is locked in CO
  epsC   = eps(iC) - JKmuS(idK3)
  if (epsC < 0. - tiny(0.)) then
     print *,'eps(C) =',eps(iC),', K3=',JKmuS(idK3),', epsC=',epsC,', T=',T,' rho=',rho_cgs
@@ -201,24 +201,28 @@ subroutine evolve_chem(dt, T, rho_cgs, JKmuS)
        call calc_nucleation(T, pC, pC2, 0.0, pC2H, pC2H2, S, JstarS, taustar, taugr)
        JstarS = JstarS/ nH_tot
        call evol_K(JKmuS(idJstar), JKmuS(idK0:idK3), JstarS, taustar, taugr, dt, Jstar_new, K_new)
-    else
-       if (any(JKmuS(idK0:idK3) > 0.0)) then
-          call calc_nucleation(T, pC, pC2, 0.0, pC2H, pC2H2, S, JstarS, taustar, taugr)
-          ! JstarS = JstarS / nH_tot
-          adot = 1. / 3. / taugr    ! Equation 28 in Gauger 1990
-          call evap_shift_remove(JKmuS(idK0:idK3), dt, adot, K_new(0:3))
-          Jstar_new = 0.0
-       else
-          Jstar_new = 0.0
-          K_new(0:3) = JKmuS(idK0:idK3)
-       endif
-! Uncomment this and comment previous block to exclude evaporation
+! Comment this and uncomment next block to exclude evaporation
    !  else
-   !     Jstar_new  = JKmuS(idJstar)
-   !     K_new(0:3) = JKmuS(idK0:idK3)
+   !     if (any(JKmuS(idK0:idK3) > 0.0)) then
+   !        call calc_nucleation(T, pC, pC2, 0.0, pC2H, pC2H2, S, JstarS, taustar, taugr)
+   !        ! JstarS = JstarS / nH_tot
+   !        adot = 1. / 3. / taugr    ! Equation 28 in Gauger 1990
+   !        call evap_shift_remove(JKmuS(idK0:idK3), dt, adot, K_new(0:3))
+   !        Jstar_new = 0.0
+   !     else
+   !        Jstar_new = 0.0
+   !        K_new(0:3) = JKmuS(idK0:idK3)
+   !     endif
+! Uncomment this and comment previous block to exclude evaporation
+    else
+       Jstar_new  = JKmuS(idJstar)
+       K_new(0:3) = JKmuS(idK0:idK3)
     endif
+! ---------------------------------
  else
 ! Simplified low-temperature chemistry: all hydrogen in H2 molecules, all O in CO
+
+! Comment this and uncomment next block to exclude dust formation at low T
     nH  = 0.
     nH2 = nH_tot/2.
     JKmuS(idmu)    = (1.+4.*eps(iHe))*nH_tot/(nH+nH2+eps(iHe)*nH_tot)
@@ -230,6 +234,10 @@ subroutine evolve_chem(dt, T, rho_cgs, JKmuS)
     v1    = vfactor*sqrt(T)
     taugr = kboltz*T/(A0*v1*sqrt(2.)*alpha2*max(pC2+pC2H+pC2H2, 1.e-50))
     call evol_K(0., JKmuS(idK0:idK3), 0., 1., taugr, dt, Jstar_new, K_new)
+! Uncomment this and comment previous block to exclude dust formation at low T
+   !  Jstar_new  = JKmuS(idJstar)
+   !  K_new(0:3) = JKmuS(idK0:idK3)
+   !  S = 1.d-3
  endif
  JKmuS(idJstar)   = Jstar_new
  JKmuS(idK0:idK3) = K_new(0:3)
@@ -566,6 +574,11 @@ subroutine evap_shift_remove(M, dt, adot, Mf)
 
        Mf(0) = M0f; Mf(1) = M1f; Mf(2) = M2f; Mf(3) = M3f
        info = fit_info
+       if (any(Mf(:) <= 0.0d0)) then
+          print*, '[S-dust_formation] Negative moments in evap_shift_remove: M0i=',M0i,' M1i=',M1i,' M2i=',M2i,' M3i=',M3i,&
+                ' delta_a=',delta_a,' M0f=',M0f,' M1f=',M1f,' M2f=',M2f,' M3f=',M3f
+          Mf(:) = 0.0d0
+       endif
        return
     end if
  end if
@@ -617,7 +630,7 @@ subroutine evap_shift_remove(M, dt, adot, Mf)
  Mf(2) = M2f
  Mf(3) = M3f
 
- if (any(Mf(:) < 0.0d0)) then
+ if (any(Mf(:) <= 0.0d0)) then
     print*, '[S-dust_formation] Negative moments in evap_shift_remove: M0i=',M0i,' M1i=',M1i,' M2i=',M2i,' M3i=',M3i,&
           ' delta_a=',delta_a,' M0f=',M0f,' M1f=',M1f,' M2f=',M2f,' M3f=',M3f
     Mf(:) = 0.0d0
