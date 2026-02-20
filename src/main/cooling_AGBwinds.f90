@@ -1508,7 +1508,15 @@ subroutine load_H2_table()
    implicit none
 
    integer :: iu, nfile, ios
+   logical :: iexist
 
+   inquire(file='H2-cooling-ratios.dat', exist=iexist)
+   if (iexist) then
+      write(*,*) 'Loading H2 opacity table...'
+   else
+      write(*,*) 'ERROR: H2-cooling-ratios.dat does not exist'
+      stop
+   end if      
    open(newunit=iu, file='H2-cooling-ratios.dat', &
         status='old', action='read', iostat=ios)
 

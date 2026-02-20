@@ -178,114 +178,114 @@ subroutine implicit_cooling (ui, dudt, rho, dt, mu, gamma, Tdust, K2, K3, kappa,
  endif
 
  ! ------ Start of Newton-Raphson  -------
- T0   = T
- T = max(T0+Q*dt*T_on_u,Tmin) ! take guess based on explicit step
- if (Townsend_test) then
-    !special fix for Townsend benchmark
-    T = max(Tcap,T)
- endif
+!  T0   = T
+!  T = max(T0+Q*dt*T_on_u,Tmin) ! take guess based on explicit step
+!  if (Townsend_test) then
+!     !special fix for Townsend benchmark
+!     T = max(Tcap,T)
+!  endif
 
- iter = 0
- deltaT = 0.
- converged = .false.
- bisection = .false.
- Tmin_bisect = Tmin
- Tmax_bisect = 1e6
+!  iter = 0
+!  deltaT = 0.
+!  converged = .false.
+!  bisection = .false.
+!  Tmin_bisect = Tmin
+!  Tmax_bisect = 1e6
 
- do while (iter < iter_max)
-   if (iter > 0) abundi(icoolTi) = -1.0  ! flag to skip abundance calculation after first iteration
-   call calc_cooling_rate(Qi,dlnQ_dlnT, rho, T, Tdust, mu, gamma, K2, K3, kappa, divv_in=divv, abundi_in=abundi)
+!  do while (iter < iter_max)
+!    if (iter > 0) abundi(icoolTi) = -1.0  ! flag to skip abundance calculation after first iteration
+!    call calc_cooling_rate(Qi,dlnQ_dlnT, rho, T, Tdust, mu, gamma, K2, K3, kappa, divv_in=divv, abundi_in=abundi)
 
-   f   = T - T0 - Qi*dt*T_on_u
-   dQdT = Qi * dlnQ_dlnT / T
-   dfdT = 1. - dQdT * dt * T_on_u
+!    f   = T - T0 - Qi*dt*T_on_u
+!    dQdT = Qi * dlnQ_dlnT / T
+!    dfdT = 1. - dQdT * dt * T_on_u
 
-   if (abs(dfdT) < 1e-12) exit  ! avoid division by tiny number
+!    if (abs(dfdT) < 1e-12) exit  ! avoid division by tiny number
 
-   if (bisection) then
-      if (f > 0.) then
-         Tmax_bisect = T
-      else
-         Tmin_bisect = T
-      endif
-      Tnew = 0.5*(Tmin_bisect + Tmax_bisect) ! bisection
-      deltaT = Tnew - T
-      T = Tnew
-   else
-      deltaT = -f / dfdT
-      Tnew = T + deltaT
-      if (Tnew > 1.5*T) then
-         Tnew = 1.5*T
-      elseif (Tnew < 0.5*T) then
-         Tnew = 0.5*T
-      endif
-      T = Tnew
-   endif
+!    if (bisection) then
+!       if (f > 0.) then
+!          Tmax_bisect = T
+!       else
+!          Tmin_bisect = T
+!       endif
+!       Tnew = 0.5*(Tmin_bisect + Tmax_bisect) ! bisection
+!       deltaT = Tnew - T
+!       T = Tnew
+!    else
+!       deltaT = -f / dfdT
+!       Tnew = T + deltaT
+!       if (Tnew > 1.5*T) then
+!          Tnew = 1.5*T
+!       elseif (Tnew < 0.5*T) then
+!          Tnew = 0.5*T
+!       endif
+!       T = Tnew
+!    endif
 
-   if (Townsend_test) T = max(T, Tcap)
+!    if (Townsend_test) T = max(T, Tcap)
 
-   if (abs(f) < tol) then
-      converged = .true.
-      exit
-   endif
+!    if (abs(f) < tol) then
+!       converged = .true.
+!       exit
+!    endif
 
-   iter = iter + 1
-   if (iter > iter_nr_max .and. .not.bisection) then
-      bisection = .true.
-      T = 0.5*(Tmin_bisect + Tmax_bisect)
-   endif
- enddo
+!    iter = iter + 1
+!    if (iter > iter_nr_max .and. .not.bisection) then
+!       bisection = .true.
+!       T = 0.5*(Tmin_bisect + Tmax_bisect)
+!    endif
+!  enddo
 
- Tmid=T
+!  Tmid=T
 
- if (.not. converged) then
-   print *, '[cooling] iterations did not converge. iter=', iter, ' T=', T, ' f=', f, ' dT/T=', deltaT/T
- endif
+!  if (.not. converged) then
+!    print *, '[cooling] iterations did not converge. iter=', iter, ' T=', T, ' f=', f, ' dT/T=', deltaT/T
+!  endif
 
 ! ------ End of Newton-Raphson  -------
 
 ! ------ Old simple bisection method ------
 
-!  T0   = T
-!  f0   = -Q*dt*T_on_u
-!  fi   = f0
-!  iter = 0
-!  !define bisection interval for function f(T) = T^(n+1)-T^n-Q*dt*T_on_u
-!  do while (((f0 > 0. .and. fi > 0.) .or. (f0 < 0. .and. fi < 0.)) .and. iter < iter_max)
-!     Tmid = max(T+Q*dt*T_on_u,Tmin)
-!     call calc_cooling_rate(Qi,dlnQ_dlnT, rho, Tmid, Tdust, mu, gamma, K2, K3, kappa)
-!     fi = Tmid-T0-Qi*dt*T_on_u
-!     T  = Tmid
-!     iter = iter+1
-!  enddo
-!  !Temperature is between T0 and Tmid
-!  if (iter > iter_max) stop '[implicit_cooling] cannot bracket cooling function'
-!  iter = 0
-!  if (Tmid > T0) then
-!     T = T0
-!  else
-!     if (Townsend_test) then
-!        !special fix for Townsend benchmark
-!        T = max(Tcap,Tmid)
-!     else
-!        T = Tmid
-!     endif
-!  endif
-!  dx = abs(Tmid-T0)
-!  do while (dx/T0 > tol .and. iter < iter_max)
-!     dx = dx*.5
-!     Tmid = T+dx
-!     call calc_cooling_rate(Qi,dlnQ_dlnT, rho, Tmid, Tdust, mu, gamma, K2, K3, kappa)
-!     fmid = Tmid-T0-Qi*dt*T_on_u
-!     if (Townsend_test) then
-!        !special fix for Townsend benchmark
-!        if (fmid <= 0.) Tmid = max(Tcap,Tmid)
-!     else
-!        if (fmid <= 0.) T = Tmid
-!     endif
-!     iter = iter + 1
-!     !print *,iter,fmid,T,Tmid
-!  enddo
+ T0   = T
+ f0   = -Q*dt*T_on_u
+ fi   = f0
+ iter = 0
+ !define bisection interval for function f(T) = T^(n+1)-T^n-Q*dt*T_on_u
+ do while (((f0 > 0. .and. fi > 0.) .or. (f0 < 0. .and. fi < 0.)) .and. iter < iter_max)
+    Tmid = max(T+Q*dt*T_on_u,Tmin)
+    call calc_cooling_rate(Qi,dlnQ_dlnT, rho, Tmid, Tdust, mu, gamma, K2, K3, kappa)
+    fi = Tmid-T0-Qi*dt*T_on_u
+    T  = Tmid
+    iter = iter+1
+ enddo
+ !Temperature is between T0 and Tmid
+ if (iter > iter_max) stop '[implicit_cooling] cannot bracket cooling function'
+ iter = 0
+ if (Tmid > T0) then
+    T = T0
+ else
+    if (Townsend_test) then
+       !special fix for Townsend benchmark
+       T = max(Tcap,Tmid)
+    else
+       T = Tmid
+    endif
+ endif
+ dx = abs(Tmid-T0)
+ do while (dx/T0 > tol .and. iter < iter_max)
+    dx = dx*.5
+    Tmid = T+dx
+    call calc_cooling_rate(Qi,dlnQ_dlnT, rho, Tmid, Tdust, mu, gamma, K2, K3, kappa)
+    fmid = Tmid-T0-Qi*dt*T_on_u
+    if (Townsend_test) then
+       !special fix for Townsend benchmark
+       if (fmid <= 0.) Tmid = max(Tcap,Tmid)
+    else
+       if (fmid <= 0.) T = Tmid
+    endif
+    iter = iter + 1
+    !print *,iter,fmid,T,Tmid
+ enddo
 !
 ! ------ End of old simple bisection method ------
 

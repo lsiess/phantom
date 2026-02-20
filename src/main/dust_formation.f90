@@ -44,7 +44,7 @@ module dust_formation
  real, public :: kappa_gas   = 2.d-4
  real, public :: wind_CO_ratio = 1.7 
  real, public :: Tmol = 450.
- real, public, parameter :: Scrit = 1. ! Critical saturation ratio
+ real, public, parameter :: Scrit = 2. ! Critical saturation ratio
  real, public :: mass_per_H, eps(nElements)
  real, public :: Aw(nElements) = [1.0079, 4.0026, 12.011, 15.9994, 14.0067, 20.17, 28.0855, 32.06, 55.847, 47.867]
  integer, public :: icoolH=1, icoolC=2, icoolO=3, icoolSi=4, icoolH2=5, icoolCO=6, &
@@ -192,6 +192,7 @@ subroutine evolve_chem(dt, T, rho_cgs, JKmuS)
     call chemical_equilibrium_light(rho_cgs, T, epsC, JKmuS(idmu), JKmuS(idgamma), abundi)
     cst = mass_per_H/(JKmuS(idmu)*mass_proton_cgs*kboltz*T)
     pC = abundi(icoolC)/cst    ! pressures in cgs here
+    pC = max(pC,1.d-30)    ! avoid problems with 0 pressure and S=0
     pC2 = abundi(icoolC2)/cst 
     pC2H  = abundi(icoolC2H)/cst 
     pC2H2  = abundi(icoolC2H2)/cst 
@@ -202,27 +203,38 @@ subroutine evolve_chem(dt, T, rho_cgs, JKmuS)
        JstarS = JstarS/ nH_tot
        call evol_K(JKmuS(idJstar), JKmuS(idK0:idK3), JstarS, taustar, taugr, dt, Jstar_new, K_new)
 ! Comment this and uncomment next block to exclude evaporation
-   !  else
-   !     if (any(JKmuS(idK0:idK3) > 0.0)) then
-   !        call calc_nucleation(T, pC, pC2, 0.0, pC2H, pC2H2, S, JstarS, taustar, taugr)
-   !        ! JstarS = JstarS / nH_tot
-   !        adot = 1. / 3. / taugr    ! Equation 28 in Gauger 1990
-   !        call evap_shift_remove(JKmuS(idK0:idK3), dt, adot, K_new(0:3))
-   !        Jstar_new = 0.0
-   !     else
-   !        Jstar_new = 0.0
-   !        K_new(0:3) = JKmuS(idK0:idK3)
-   !     endif
-! Uncomment this and comment previous block to exclude evaporation
     else
-       Jstar_new  = JKmuS(idJstar)
-       K_new(0:3) = JKmuS(idK0:idK3)
-    endif
+       if (any(JKmuS(idK0:idK3) > 0.0)) then
+          call calc_nucleation(T, pC, pC2, 0.0, pC2H, pC2H2, S, JstarS, taustar, taugr)
+          ! JstarS = JstarS / nH_tot
+          adot = 1. / 3. / taugr    ! Equation 28 in Gauger 1990
+          call evap_shift_remove(JKmuS(idK0:idK3), dt, adot, K_new(0:3))
+          Jstar_new = 0.0
+       else
+          Jstar_new = 0.0
+          K_new(0:3) = JKmuS(idK0:idK3)
+       endif
+! Uncomment this and comment previous block to exclude evaporation
+   !  else
+   !     Jstar_new  = JKmuS(idJstar)
+   !     K_new(0:3) = JKmuS(idK0:idK3)
 ! ---------------------------------
+    endif
+
+ if (K_new(3) > eps(iC)) then
+      print *,'Warning: K3 =',K_new(3),'> eps(C) =',eps(iC),', T=',T,' rho=',rho_cgs
+ endif
+
  else
 ! Simplified low-temperature chemistry: all hydrogen in H2 molecules, all O in CO
 
 ! Comment this and uncomment next block to exclude dust formation at low T
+    if (epsC == eps(iOx)) then
+! All the carbon is locked in CO or in dust, no dust formation possible
+       JKmuS(idJstar)  = 0.0
+       S = 1.d-3
+       return
+    endif
     nH  = 0.
     nH2 = nH_tot/2.
     JKmuS(idmu)    = (1.+4.*eps(iHe))*nH_tot/(nH+nH2+eps(iHe)*nH_tot)
@@ -232,12 +244,17 @@ subroutine evolve_chem(dt, T, rho_cgs, JKmuS)
     pC2   = 0.
     S     = 1.d-3
     v1    = vfactor*sqrt(T)
-    taugr = kboltz*T/(A0*v1*sqrt(2.)*alpha2*max(pC2+pC2H+pC2H2, 1.e-50))
+    taugr = kboltz*T/(A0*v1*sqrt(2.)*alpha2*(pC2+pC2H+pC2H2))
     call evol_K(0., JKmuS(idK0:idK3), 0., 1., taugr, dt, Jstar_new, K_new)
 ! Uncomment this and comment previous block to exclude dust formation at low T
    !  Jstar_new  = JKmuS(idJstar)
    !  K_new(0:3) = JKmuS(idK0:idK3)
    !  S = 1.d-3
+
+ if (K_new(3) > eps(iC)) then
+      print *,'Warning: K3 =',K_new(3),'> eps(C) =',eps(iC),', T=',T,' rho=',rho_cgs
+ endif
+
  endif
  JKmuS(idJstar)   = Jstar_new
  JKmuS(idK0:idK3) = K_new(0:3)

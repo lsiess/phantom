@@ -59,11 +59,12 @@ subroutine do_analysis(dumpfile,num,xyzh,vxyzu,particlemass,npart,time,iunit)
  ' 4) test speed of AGB cooling', &
  ' 5) check dust formation and destruction', &
  ' 6) total dust mass', &
- ' 7) reconstruct logNormal from moments'
+ ' 7) reconstruct logNormal from moments', &
+ ' 8) radial abundance profiles'
 
 analysis_to_perform = 1
 
-call prompt('Choose analysis type ',analysis_to_perform,1,7)
+call prompt('Choose analysis type ',analysis_to_perform,1,8)
 print *,''
 
 !analysis
@@ -82,6 +83,8 @@ case(6)
   call total_dust_mass(time,npart,particlemass,xyzh)
 case(7)
   call reconstruct_logNorm_from_moments()
+case(8)
+  call radial_abundance_profile(npart, particlemass, xyzh, vxyzu)
 end select
 
 end subroutine do_analysis
@@ -761,6 +764,121 @@ subroutine reconstruct_logNorm_from_moments()
 
 
 end subroutine reconstruct_logNorm_from_moments
+
+! -------------------------------------------------------
+! Subroutine to compute the radial abundance profile of cooling species
+! -------------------------------------------------------
+
+
+subroutine radial_abundance_profile(npart, particlemass, xyzh, vxyzu)
+ use part,      only:hfact
+ use units,     only:unit_ergg,unit_density
+ use physcon,   only:Rg
+ use dust_formation, only:chemical_equilibrium_light,mass_per_H
+
+ real, intent(in)               :: particlemass,xyzh(:,:),vxyzu(:,:)
+ integer, intent(in)            :: npart
+
+ integer, parameter :: nbins = 300
+
+ real :: r, rmin, rmax
+ real, dimension(nbins+1) :: r_edge
+ real, dimension(nbins)   :: r_cent
+
+ real, dimension(nbins, nabn_AGB) :: sum_abund
+ real, dimension(nbins) :: sum_T, sum_rho
+real, dimension(nbins) :: T_profile, rho_profile
+ integer, dimension(nbins)     :: npart_bin
+ real, dimension(nbins, nabn_AGB) :: abund_profile
+ real, dimension(nabn_AGB) :: abundi
+ integer :: i, ibin
+ real :: epsC, mu, gamma
+ real :: dr, hi, rho_cgs, ui, T_on_u, T, n_H
+
+
+ sum_abund  = 0.0
+ sum_T     = 0.0
+ sum_rho   = 0.0
+ npart_bin  = 0
+ mu = 2.3  ! mean molecular weight, can be adjusted based on the composition
+ gamma = 5./3. ! adiabatic index, can also be adjusted
+ epsC = eps(3) ! carbon abundance, ignoring nucleation for this calculation
+ T_on_u = (gamma-1.) * mu * unit_ergg / Rg
+
+ rmin = 1.d0
+ rmax = 30.d0
+ dr = (rmax - rmin)/real(nbins)
+ do i = 1, nbins+1
+    r_edge(i) = rmin + (i-1)*dr
+ enddo
+ do i = 1, nbins
+    r_cent(i) = 0.5*(r_edge(i) + r_edge(i+1))
+ enddo
+
+ do i = 1, npart
+
+  abundi = 0.0
+
+  if (isdead_or_accreted(xyzh(4,i))) cycle
+
+  ! radius
+  r = sqrt(xyzh(1,i)**2 + xyzh(2,i)**2 + xyzh(3,i)**2)
+
+  ibin = int((r - rmin)/dr) + 1
+  if (ibin < 1 .or. ibin > nbins) cycle
+
+  ! density from h
+  hi     = xyzh(4,i)
+  rho_cgs = particlemass * (hfact/abs(hi))**3 *unit_density
+  n_H = rho_cgs / mass_per_H
+
+  ui = vxyzu(4,i)
+  T      = T_on_u * ui
+
+  ! print *, 'Particle ', i, ': r = ', r, ' cm, rho = ', rho_cgs, ' g/cm^3, T = ', T, ' K', ' epsC = ', epsC
+
+  call chemical_equilibrium_light(rho_cgs, T, epsC, mu, gamma, abundi)
+  abundi = abundi / n_H
+
+  ! print *, 'Abundances for particle ', i, ':'
+  ! print *, 'H2: ', abundi(icoolH2)
+  ! print *, 'CO: ', abundi(icoolCO)
+  ! print *, 'SiO: ', abundi(icoolSiO)
+
+  sum_abund(ibin,:) = sum_abund(ibin,:) + abundi(:)
+  sum_T(ibin) = sum_T(ibin) + T
+  sum_rho(ibin) = sum_rho(ibin) + rho_cgs
+  npart_bin(ibin)   = npart_bin(ibin) + 1
+
+enddo
+
+do i = 1, nbins
+  if (npart_bin(i) > 0) then
+     abund_profile(i,:) = sum_abund(i,:) / real(npart_bin(i))
+     T_profile(i) = sum_T(i) / real(npart_bin(i))
+     rho_profile(i) = sum_rho(i) / real(npart_bin(i))
+  else
+     abund_profile(i,:) = -1.0
+     T_profile(i) = -1.0
+     rho_profile(i) = -1.0
+  endif
+enddo
+
+open(unit=10, file='abundance_1Dprofile.dat', status='replace')
+write(10,'(A)') '# r[cm]  T[K]  rho[g/cm^3]  Npart  X_H  X_C  X_O  X_Si  X_H2  X_CO  &
+                X_H2O  X_OH  X_C2  X_C2H  X_C2H2  X_He  X_SiO  X_CH4  X_S  X_Ti  X_N'
+
+do i = 1, nbins
+  if (npart_bin(i) > 0) then
+    write(10,'(E15.7,1X,E12.5,1X,E12.5,1X,I8,1X,*(E12.5,1X))') &
+     r_cent(i), T_profile(i), rho_profile(i), npart_bin(i), abund_profile(i,:)
+  endif
+enddo
+
+close(10)
+
+end subroutine radial_abundance_profile
+
 
 ! Delete particles is not yet used, might be needed for post processing with MCFOST
 subroutine delete_particles(npart_in)
