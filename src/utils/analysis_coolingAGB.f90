@@ -771,10 +771,10 @@ end subroutine reconstruct_logNorm_from_moments
 
 
 subroutine radial_abundance_profile(npart, particlemass, xyzh, vxyzu)
- use part,      only:hfact
+ use part,      only:hfact,nucleation,idK3
  use units,     only:unit_ergg,unit_density
  use physcon,   only:Rg
- use dust_formation, only:chemical_equilibrium_light,mass_per_H
+ use dust_formation, only:chemical_equilibrium_light,mass_per_H,eps
 
  real, intent(in)               :: particlemass,xyzh(:,:),vxyzu(:,:)
  integer, intent(in)            :: npart
@@ -786,23 +786,24 @@ subroutine radial_abundance_profile(npart, particlemass, xyzh, vxyzu)
  real, dimension(nbins)   :: r_cent
 
  real, dimension(nbins, nabn_AGB) :: sum_abund
- real, dimension(nbins) :: sum_T, sum_rho
-real, dimension(nbins) :: T_profile, rho_profile
+ real, dimension(nbins) :: sum_T, sum_rho, sum_K3
+ real, dimension(nbins) :: T_profile, rho_profile, K3_profile
  integer, dimension(nbins)     :: npart_bin
  real, dimension(nbins, nabn_AGB) :: abund_profile
  real, dimension(nabn_AGB) :: abundi
  integer :: i, ibin
  real :: epsC, mu, gamma
  real :: dr, hi, rho_cgs, ui, T_on_u, T, n_H
+ integer, parameter :: iC = 3
 
 
  sum_abund  = 0.0
  sum_T     = 0.0
  sum_rho   = 0.0
+ sum_K3    = 0.0
  npart_bin  = 0
  mu = 2.3  ! mean molecular weight, can be adjusted based on the composition
  gamma = 5./3. ! adiabatic index, can also be adjusted
- epsC = eps(3) ! carbon abundance, ignoring nucleation for this calculation
  T_on_u = (gamma-1.) * mu * unit_ergg / Rg
 
  rmin = 1.d0
@@ -837,6 +838,7 @@ real, dimension(nbins) :: T_profile, rho_profile
 
   ! print *, 'Particle ', i, ': r = ', r, ' cm, rho = ', rho_cgs, ' g/cm^3, T = ', T, ' K', ' epsC = ', epsC
 
+  epsC   = eps(iC) - nucleation(idK3, i)
   call chemical_equilibrium_light(rho_cgs, T, epsC, mu, gamma, abundi)
   abundi = abundi / n_H
 
@@ -848,6 +850,7 @@ real, dimension(nbins) :: T_profile, rho_profile
   sum_abund(ibin,:) = sum_abund(ibin,:) + abundi(:)
   sum_T(ibin) = sum_T(ibin) + T
   sum_rho(ibin) = sum_rho(ibin) + rho_cgs
+  sum_K3(ibin) = sum_K3(ibin) + nucleation(idK3,i)
   npart_bin(ibin)   = npart_bin(ibin) + 1
 
 enddo
@@ -857,21 +860,23 @@ do i = 1, nbins
      abund_profile(i,:) = sum_abund(i,:) / real(npart_bin(i))
      T_profile(i) = sum_T(i) / real(npart_bin(i))
      rho_profile(i) = sum_rho(i) / real(npart_bin(i))
+     K3_profile(i) = sum_K3(i) / real(npart_bin(i))
   else
      abund_profile(i,:) = -1.0
      T_profile(i) = -1.0
      rho_profile(i) = -1.0
+     K3_profile(i) = -1.0
   endif
 enddo
 
 open(unit=10, file='abundance_1Dprofile.dat', status='replace')
-write(10,'(A)') '# r[cm]  T[K]  rho[g/cm^3]  Npart  X_H  X_C  X_O  X_Si  X_H2  X_CO  &
+write(10,'(A)') '# r[cm]  T[K]  rho[g/cm^3]  Npart  K3  X_H  X_C  X_O  X_Si  X_H2  X_CO  &
                 X_H2O  X_OH  X_C2  X_C2H  X_C2H2  X_He  X_SiO  X_CH4  X_S  X_Ti  X_N'
 
 do i = 1, nbins
   if (npart_bin(i) > 0) then
-    write(10,'(E15.7,1X,E12.5,1X,E12.5,1X,I8,1X,*(E12.5,1X))') &
-     r_cent(i), T_profile(i), rho_profile(i), npart_bin(i), abund_profile(i,:)
+    write(10,'(E15.7,1X,E12.5,1X,E12.5,1X,I8,1X,E12.5,1X,*(E12.5,1X))') &
+     r_cent(i), T_profile(i), rho_profile(i), npart_bin(i), K3_profile(i), abund_profile(i,:)
   endif
 enddo
 

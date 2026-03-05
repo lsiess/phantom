@@ -227,7 +227,7 @@ end subroutine energ_cooling_AGB
 subroutine cool_func(temp, Tdust, yn, dl, divv, abundances, ylam, rates)
  use fs_data
  use mol_data
- use h2_opac_table
+!  use h2_opac_table
  use dim,     only:nElements
  use io, only:fatal
  use dust_formation, only:icoolH,icoolC,icoolO,icoolSi,icoolH2,icoolCO,icoolH2O,icoolOH,icoolHe
@@ -1512,7 +1512,7 @@ subroutine load_H2_table()
 
    inquire(file='H2-cooling-ratios.dat', exist=iexist)
    if (iexist) then
-      write(*,*) 'Loading H2 opacity table...'
+      ! write(*,*) 'Loading H2 opacity table...'
    else
       write(*,*) 'ERROR: H2-cooling-ratios.dat does not exist'
       stop

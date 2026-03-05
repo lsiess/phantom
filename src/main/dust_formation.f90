@@ -229,8 +229,8 @@ subroutine evolve_chem(dt, T, rho_cgs, JKmuS)
 ! Simplified low-temperature chemistry: all hydrogen in H2 molecules, all O in CO
 
 ! Comment this and uncomment next block to exclude dust formation at low T
-    if (epsC == eps(iOx)) then
-! All the carbon is locked in CO or in dust, no dust formation possible
+    if (epsC <= eps(iOx)) then
+      ! All the carbon is locked in CO or in dust, no dust formation possible
        JKmuS(idJstar)  = 0.0
        S = 1.d-3
        return
