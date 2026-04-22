@@ -21,10 +21,12 @@ module analysis
  use cooling
  use cooling_functions
  use cooling_solver
- use physcon,          only:mass_proton_cgs,kboltz,atomic_mass_unit,patm
+ use physcon,          only:mass_proton_cgs,kboltz,atomic_mass_unit,patm,au,km
  use dust_formation,   only:init_muGamma,set_abundances,kappa_gas,calc_kappa_bowen,&
                               chemical_equilibrium_light,mass_per_H
  use dim,              only:nElements
+ use prompting,  only:prompt
+ use eos,        only:gmw,gamma,get_temperature_from_u,ieos,init_eos
 
  implicit none
 
@@ -40,23 +42,25 @@ contains
 
 subroutine do_analysis(dumpfile,num,xyzh,vxyzu,particlemass,npart,time,iunit)
 
- use prompting,  only:prompt
-
  character(len=*), intent(in) :: dumpfile
  integer,          intent(in) :: num,npart,iunit
  real(kind=8),     intent(in) :: xyzh(:,:),vxyzu(:,:)
  real(kind=8),     intent(in) :: particlemass,time
+ integer :: dump_number = 0
 
 
- print "(29(a,/))", &
-      ' 1) get rate (for winds)', &
-      ' 2) generate table (for winds)', &
-      ' 3) test integration'
+ !chose analysis type
+ if (dump_number==0) then
+    print "(29(a,/))", &
+         ' 1) print cooling rates (for winds)', &
+         ' 2) generate cooling table (for winds)', &
+         ' 3) test integration', &
+         ' 4) calc average wind profiles'
 
- analysis_to_perform = 1
+    analysis_to_perform = 4
 
- call prompt('Choose analysis type ',analysis_to_perform,1,3)
- print *,''
+    call prompt('Choose analysis type ',analysis_to_perform,1,4)
+ endif
 
  !analysis
  select case(analysis_to_perform)
@@ -66,9 +70,178 @@ subroutine do_analysis(dumpfile,num,xyzh,vxyzu,particlemass,npart,time,iunit)
     call generate_grid()
  case(3)
     call test_cooling_solvers(dumpfile)
+ case(4)
+    call get_wind_features(xyzh,vxyzu,npart,time,particlemass,basename(dumpfile),dump_number)
  end select
 
+ !increase dump number counter
+ dump_number = dump_number + 1
+
 end subroutine do_analysis
+
+
+subroutine get_wind_features(xyzh,vxyzu,npart,time,particlemass,dumpfile,dump_number)
+
+ use units, only : utime,udist,unit_velocity,unit_ergg,unit_density
+ use part, only:rhoh
+ real(kind=8),     intent(in) :: xyzh(:,:),vxyzu(:,:),time,particlemass
+ integer,          intent(in) :: npart,dump_number
+ character(len=*), intent(in) :: dumpfile
+
+ integer :: i,j,iunit,irmin,irmax,ierr
+ real(kind=8) :: rmin,rmax,r(npart),v(npart),vr(npart)
+ real(kind=8) :: vrmax,vrmin,dr_bin,data_cols(4),gammai,mui,rhoi,ui
+ real(kind=8), dimension(:), allocatable :: rbin,vbin,vrbin,ubin,hbin,Tbin,rhobin
+ integer, dimension(:), allocatable :: bin_size
+ integer, parameter :: ncols = 7
+ integer :: nbin = 100
+ character(len=17)   :: columns(ncols),colevol(4)
+
+ !output data
+ columns = (/'           r', &
+             '           v', &
+             '          vr', &
+             '           u', &
+             '           h', &
+             '           T', &
+             '         rho'/)
+ colevol = (/'      r_vmin', &
+             '       vrmin', &
+             '      r_vmax', &
+             '       vrmax'/)
+
+
+ if (dump_number==0) then
+    call prompt('Number of bins for the average profiles',nbin,1)
+    call init_eos(ieos,ierr)
+ endif
+
+ allocate(rbin(nbin),vrbin(nbin),vbin(nbin),ubin(nbin),hbin(nbin),Tbin(nbin),rhobin(nbin),bin_size(nbin))
+
+ rmin = 1e99
+ rmax = 0.
+ do i = 1,npart
+    r(i) = sqrt(sum(xyzh(1:3,i)**2))
+    v(i) = sqrt(sum(vxyzu(1:3,i)**2))
+    vr(i) = sum(xyzh(1:3,i)*vxyzu(1:3,i))/r(i)
+    rmin = min(rmin,r(i))
+    rmax = max(rmax,r(i))
+ enddo
+
+ dr_bin = (rmax-rmin)/(nbin-1)
+ rbin  = 0.
+ vrbin = 0.
+ vbin  = 0.
+ ubin  = 0.
+ hbin  = 0.
+ bin_size = 0
+!binning
+ do i = 1,npart
+    j = int((r(i)-rmin)/dr_bin)+1
+    bin_size(j) = bin_size(j)+1
+    rbin(j)  = rbin(j)+r(i)
+    vbin(j)  = vbin(j)+v(i)
+    vrbin(j) = vrbin(j)+vr(i)
+    ubin(j)  = ubin(j)+vxyzu(4,i)
+    hbin(j)  = hbin(j)+xyzh(4,i)
+ enddo
+!average binned quantities & make conversion
+ do j = 1,nbin
+    rhoi  = rhoh(hbin(j)/bin_size(j), particlemass)
+    ui    = ubin(j)/bin_size(j)
+    rhobin(j) = rhoi*unit_density
+    rbin(j)  = rbin(j)/bin_size(j)*udist/au          !in au
+    vbin(j)  = vbin(j)/bin_size(j)*unit_velocity/km  !in km/s
+    vrbin(j) = vrbin(j)/bin_size(j)*unit_velocity/km !in km/s
+    ubin(j)  = ui*unit_ergg         !in cgs
+    hbin(j)  = hbin(j)/bin_size(j)*udist/au          !in au
+    Tbin(j)  = get_temperature_from_u(ieos,0.,0.,0.,rhoi,ui)
+ enddo
+
+ vrmax = 0.
+ vrmin = 1.e99
+!do analysis on average profile
+ do j = 1,nbin
+!find max radial velocity & corresponding bin number
+    if (vrbin(j)> vrmax) then
+       vrmax = vrbin(j)
+       irmax = j
+    endif
+    if (vrbin(j) < vrmin) then
+       vrmin = vrbin(j)
+       irmin = j
+    endif
+ enddo
+
+
+ open(newunit=iunit,file=trim(dumpfile)//'.av',status='replace')
+ write(iunit,'("nbin",2x,7(a15,3x))') columns
+ do j = 1,nbin
+    write(iunit,'(i6,7(es18.11e2,1x))') j,rbin(j),vbin(j),vrbin(j),ubin(j),hbin(j),Tbin(j),rhobin(j)
+ enddo
+ close(iunit)
+ data_cols = (/rbin(irmin),vrmin,rbin(irmax),vrmax/)
+
+!output quantities (1 line per dump)
+ call write_time_file('wind_evol',colevol,time,data_cols,4,dump_number)
+
+ deallocate(rbin,vrbin,vbin,ubin,hbin,Tbin,rhobin,bin_size)
+
+end subroutine get_wind_features
+
+
+function basename(filename) result(base)
+    implicit none
+    character(len=*), intent(in) :: filename
+    character(len=len(filename)) :: base
+    integer :: p
+
+    p = index(filename, '/', back=.true.)
+    if (p > 0) then
+        base = filename(p+1:)
+    else
+        base = filename
+    end if
+end function basename
+
+subroutine write_time_file(name_in, cols, time, data_in, ncols, num)
+ !outputs a file over a series of dumps
+ character(len=*), intent(in) :: name_in
+ integer, intent(in)          :: ncols, num
+ character(len=*), dimension(ncols), intent(in) :: cols
+ character(len=20), dimension(ncols) :: columns
+ character(len=40)             :: data_formatter, column_formatter
+ character(len(name_in)+9)    :: file_name
+ real, intent(in)             :: time
+ real, dimension(ncols), intent(in) :: data_in
+ integer                      :: i, unitnum
+
+ write(column_formatter, "(a,I2.2,a)") "('#',2x,", ncols+1, "('[',a15,']',3x))"
+ write(data_formatter, "(a,I2.2,a)") "(", ncols+1, "(2x,es18.11e2))"
+ write(file_name,"(2a,i3.3,a)") name_in, '.ev'
+
+ if (num == 0) then
+    unitnum = 1000
+
+    open(unit=unitnum,file=file_name,status='replace')
+    do i=1,ncols
+       write(columns(i), "(I2,a)") i+1, cols(i)
+    enddo
+
+    !set column headings
+    write(unitnum, column_formatter) '1         time', columns(:)
+    close(unit=unitnum)
+ endif
+
+ unitnum=1001+num
+
+ open(unit=unitnum,file=file_name, position='append')
+
+ write(unitnum,data_formatter) time, data_in(:ncols)
+
+ close(unit=unitnum)
+
+end subroutine write_time_file
 
 
 subroutine test_cooling_solvers(dumpfile)
