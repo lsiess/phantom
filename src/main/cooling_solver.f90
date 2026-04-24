@@ -577,7 +577,7 @@ subroutine read_options_cooling_solver(db,nerr)
  call read_inopt(high_temp,'high_temp',db,errcount=nerr,min=0,max=1,default=high_temp)
  call read_inopt(H2_cooling,'H2_cooling',db,errcount=nerr,min=0,max=1,default=H2_cooling)
  call read_inopt(use_fine_grid,'use_fine_grid',db,errcount=nerr,min=0,max=1,default=use_fine_grid)
- call read_inopt(SPEX_DM,'SPEX_DM',db,errcount=nerr,min=0,max=1,default=SPEX_DM)
+ call read_inopt(SPEX_DM,'SPEX_DM',db,errcount=nerr,min=0,max=3,default=SPEX_DM)
  if (shock_problem == 1) then
     call read_inopt(lambda_shock_cgs,'lambda_shock',db,errcount=nerr,min=0.)
     call read_inopt(T1_factor,'T1_factor',db,errcount=nerr,min=0.)
