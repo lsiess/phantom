@@ -517,10 +517,14 @@ subroutine cool_func(temp, Tdust, yn, dl, divv, abundances, ylam, rates)
 
 ! abe  = 1.0d-4  ! To make it consistent with cooling_ism
  abe = calc_eps_e(temp) ! This function gives wrong abundances at very high temperatures: FIX!
-!  if (abe > 1.0d-4) then
-!    print*, 'Electron abundance used in cooling_ism_AGB.f90:', abe, ' temp', temp
-!  endif
  abhp = 1.0d-7
+ if (temp > 1.0d4) then
+   abhp = abhI
+ elseif (temp > 1.0d3) then
+   abhp = 1.d-70
+ else
+   abhp = 0.d0
+ endif
  abheII = 0.0d0
  abheIII = 0.0d0
 !
