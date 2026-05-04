@@ -141,11 +141,24 @@ implicit none
   if (id==master) write(*,"(/,a)") '--> testing cooling_AGB rate'
   
   logtmax = log10(1.5d4)
-  logtmin = log10(5.d0)
+  logtmin = log10(20.d0)
  
 
   call set_abundances
- 
+
+! Set abundances according to Agundez et al. 2020, Table 1, for a C-rich AGB star with C/O = 1.4
+! These are the abundances used in Maes 2023
+
+  ! eps(iH) = 1.0
+  ! eps(iHe) = 0.085d0
+  ! eps(iOx) = 4.90d-4
+  ! eps(iN) = 6.76d-5
+  ! eps(iNe) = 8.51e-5
+  ! eps(iSi) = 3.24d-5
+  ! eps(iS) = 1.32d-5
+  ! eps(iFe) = 3.16d-5
+  ! eps(iTi) = 8.91d-8
+  ! eps(iC) = 6.86d-4
 
   epsC = eps(3) ! ignoring nucleation
 

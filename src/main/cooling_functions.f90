@@ -103,7 +103,8 @@ subroutine AGB_cooling(T, Tdust, rho_cgs, mu, gamma, K3, Q_cgs, dlnQ_cgs, divv, 
 
  use dim,              only:nabn_AGB
  use cooling_AGBwinds, only:energ_cooling_AGB
- use dust_formation,   only:mass_per_H, eps, chemical_equilibrium_light,icoolTi
+ use dust_formation,   only:mass_per_H, eps, chemical_equilibrium_light, &
+                           icoolTi,Tmol
  use physcon,          only:kboltz,mass_proton_cgs
  use units,            only:unit_density
  real, intent(in)  :: mu, gamma, K3
@@ -130,8 +131,13 @@ subroutine AGB_cooling(T, Tdust, rho_cgs, mu, gamma, K3, Q_cgs, dlnQ_cgs, divv, 
  if (abundi(icoolTi) < 0.0) then
     ! skip abundance calculation (flag set in cooling_solver after first iteration of implicit loop)
  else
-    ! compute chemical equilibrium abundances
-    call chemical_equilibrium_light(rho_cgs, T, epsC, mui, gammai, abundi)
+    if (T > Tmol) then
+       ! compute chemical equilibrium abundances
+       call chemical_equilibrium_light(rho_cgs, T, epsC, mui, gammai, abundi)
+    else
+       ! use abundances at T=Tmol
+       call chemical_equilibrium_light(rho_cgs, Tmol, epsC, mui, gammai, abundi)
+    end if
  end if
 
  ndens_H = rho_cgs / mass_per_H

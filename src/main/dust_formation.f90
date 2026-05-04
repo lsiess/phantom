@@ -43,7 +43,7 @@ module dust_formation
 
  real, public :: kappa_gas   = 2.d-4
  real, public :: wind_CO_ratio = 1.7 
- real, public :: Tmol = 450.
+ real, public :: Tmol = 800.
  real, public, parameter :: Scrit = 2. ! Critical saturation ratio
  real, public :: mass_per_H, eps(nElements)
  real, public :: Aw(nElements) = [1.0079, 4.0026, 12.011, 15.9994, 14.0067, 20.17, 28.0855, 32.06, 55.847, 47.867]
@@ -94,6 +94,33 @@ module dust_formation
        2.26786d+05, -1.43775d+05, 2.92429d+01, 1.69434d-04, -1.79867d-08], shape(coefs)) !C2
 !  real, parameter :: vfactor = sqrt(kboltz/(2.*pi*atomic_mass_unit*12.01))
  real, parameter :: vfactor = sqrt(kboltz/(8.*pi*atomic_mass_unit*12.01))
+
+ real(kind=16), parameter :: coefs_woitke(5,nMolecules) = reshape([&
+       5.19096d+04, -1.80117d+00, 8.72246d-02, 2.56139d-04, -5.35403d-09, & !H2
+       5.09586d+04, -1.86657d+00, 1.28296d+00, 3.27612d-04, -1.27895d-08, & !OH
+       1.10336d+05, -4.17836d+00, 3.17447d+00, 9.40647d-04, -4.04825d-08, & !H2O
+       1.28998d+05, -1.75498d+00,-3.16258d+00, 4.13362d-04, -2.35800d-08, & !CO
+       1.92841d+05, -2.77259d+00,-1.43745d+01, 9.55278d-04, -5.32731d-08, & !CO2
+       1.97846d+05, -8.83168d+00, 5.27931d+00, 2.75677d-03, -1.39667d-07, & !CH4
+       1.40482d+05, -3.02583d+00,-7.31209d+00, 9.07164d-04, -4.24041d-08, & !C2H
+       1.96460d+05, -4.51429d+00,-1.24279d+01, 1.51777d-03, -7.45421d-08, & !C2H2
+       1.13210d+05, -1.79949d+00,-2.03355d+00, 4.31303d-04, -2.48433d-08, & !N2
+       1.39343d+05, -6.39532d+00, 4.95981d+00, 1.81530d-03, -8.85794d-08, & !NH3
+       9.02324d+04, -1.75861d+00,-1.56088d+00, 4.20862d-04, -1.59741d-08, & !CN
+       1.52208d+05, -3.20440d+00,-6.26703d+00, 9.84333d-04, -5.17826d-08, & !HCN
+       3.73518d+04, -2.45866d-01,-1.15745d+01, 1.50992d-04, -1.59304d-08, & !Si2
+       8.58689d+04, -3.61657d-01,-2.62701d+01, 3.21839d-05, -1.58542d-09, & !Si3
+       9.58807d+04, -1.26716d+00,-5.98429d+00, 2.61720d-04, -1.67404d-08, & !SiO
+       1.29802d+05, -1.23194d+00,-2.25394d+01, 2.98881d-04, -8.01112d-09, & !Si2C
+       1.53342d+05, -6.67420d+00,-8.19009d+00, 2.30166d-03, -1.23954d-07, & !SiH4
+       5.08019d+04, -1.51882d+00,-3.18934d+00, 4.61697d-04, -2.60901d-08, & !S2
+       4.23352d+04, -1.58869d+00,-1.54130d-02, 2.52514d-04, -9.19992d-09, & !HS
+       8.71685d+04, -4.03150d+00, 3.16992d+00, 1.08827d-03, -5.46714d-08, & !H2S
+       7.44656d+04, -1.05114d+00,-6.74615d+00, 1.80683d-04, -1.29591d-08, & !SiS
+       3.46400d+04, -1.54955d+00,-8.92506d-02, 3.23215d-04, -1.63317d-08, & !SiH
+       8.02469d+04, -8.46602d-01,-7.67141d+00, 1.51196d-04, -2.20473d-08, & !TiO
+       1.53310d+05, -1.71501d+00,-1.83346d+01, 4.42822d-04, -4.38786d-08, & !TiO2
+       7.13486d+04, -7.53302d-01,-8.82633d+00, 8.40914d-05, -8.34907d-10], shape(coefs)) !C2
 
 contains
 
@@ -188,7 +215,7 @@ subroutine evolve_chem(dt, T, rho_cgs, JKmuS)
     stop '[S-dust_formation] epsC < 0!'
  endif
 
- if (T > 450.) then
+ if (T > Tmol) then
     call chemical_equilibrium_light(rho_cgs, T, epsC, JKmuS(idmu), JKmuS(idgamma), abundi)
     cst = mass_per_H/(JKmuS(idmu)*mass_proton_cgs*kboltz*T)
     pC = abundi(icoolC)/cst    ! pressures in cgs here
@@ -837,6 +864,7 @@ subroutine chemical_equilibrium_light(rho_cgs, T_in, epsC, mu, gamma, abundi)
 
 ! Dissociation constants
  do i=1,nMolecules
+   !  Kd(i) = calc_Kd_woitke(coefs_woitke(:,i), T)
     Kd(i) = calc_Kd(coefs(:,i), T)
  enddo
  Kd(iTiS) = calc_Kd_TiS(T)
@@ -1010,6 +1038,18 @@ pure real(16) function calc_Kd(coefs, T)
   d = -G/(R*T)
   calc_Kd = exp(d)
 end function calc_Kd
+
+pure real(16) function calc_Kd_woitke(coefs, T)
+  ! all quantities are in cgs, computed in quad precision
+  implicit none
+  real(16), intent(in) :: coefs(5)
+  real, intent(in) :: T
+  real(16) :: G
+
+  G = coefs(1)/T + coefs(2)*log(T) + coefs(3) + coefs(4)*T + coefs(5)*T**2
+  calc_Kd_woitke = exp(G)
+
+end function calc_Kd_woitke
 
 pure real(16) function calc_Kd_TiS(T)
 ! all quantities are in cgs
