@@ -38,7 +38,8 @@ module cooling_functions
            AGB_cooling, &
            cooling_dust_collision, &
            cooling_radiative_relaxation, &
-           testing_cooling_functions
+           testing_cooling_functions, &
+           set_freeze_out_abundances
 
  private
  real, parameter  :: xH = 0.7, xHe = 0.28 !assumed H and He mass fractions
@@ -136,7 +137,8 @@ subroutine AGB_cooling(T, Tdust, rho_cgs, mu, gamma, K3, Q_cgs, dlnQ_cgs, divv, 
        call chemical_equilibrium_light(rho_cgs, T, epsC, mui, gammai, abundi)
     else
        ! use abundances at T=Tmol
-       call chemical_equilibrium_light(rho_cgs, Tmol, epsC, mui, gammai, abundi)
+      !  call chemical_equilibrium_light(rho_cgs, Tmol, epsC, mui, gammai, abundi)
+       call set_freeze_out_abundances(epsC, abundi, mui, gammai)
     end if
  end if
 
@@ -875,5 +877,35 @@ real function cool_OH_rot(T_gas, rho_gas, mu, nOH)
  cool_OH_rot = n_gas*nfOH*(kboltz*T_gas*sigma*v_th(T_gas, mu)) / (1 + n_gas/n_crit + 1.5*sqrt(n_gas/n_crit))  !McKee et al. 1982 eq. 5.2
 
 end function cool_OH_rot
+
+subroutine set_freeze_out_abundances(epsC, abundi, mu, gamma)
+! Abundances computed from equilibrium chemistry
+! at T = 800 K, rho_cgs = 1e-14 g/cm3
+! To be consistent with dust formation, we assume that all excess carbon is in C2H2
+   use dim, only:nabn_AGB
+   use dust_formation, only:icoolH, icoolO, icoolSi, icoolH2, icoolCO, &
+                            icoolH2O, icoolOH, icoolC2, icoolC2H, icoolC2H2, &
+                            icoolSiO, icoolCH4, icoolS, icoolTi, icoolN, eps
+
+   real, intent(in) :: epsC                         
+   real, intent(inout) :: abundi(nabn_AGB), mu, gamma
+   mu = 2.34437086092715d0
+   gamma = 1.42958748221906
+   abundi(:) = 1.d-70
+   abundi(icoolH)    = 9.083e-08
+   abundi(icoolH2)   = 5.000e-01
+   abundi(icoolO)    = 2.913e-33
+   abundi(icoolSi)   = 4.278e-10
+   abundi(icoolH2O)  = 1.745e-16
+   abundi(icoolCO)   = 5.954e-04
+   abundi(icoolOH)   = 1.092e-26
+   abundi(icoolSiO)  = 4.558e-06
+   abundi(icoolS)    = 2.649e-21
+   abundi(icoolTi)   = 8.599e-08
+   abundi(icoolN)    = 8.779e-26
+   abundi(icoolC2H2) = .5*(epsC-eps(4))
+
+end subroutine set_freeze_out_abundances
+
 
 end module cooling_functions
