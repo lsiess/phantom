@@ -291,7 +291,7 @@ subroutine cool_func(temp, Tdust, yn, dl, divv, abundances, ylam, rates)
             c13o_rot_L0, c13o_rot_LTE, c13o_rot_n05, c13o_rot_alpha, c13o_vib_LTE_rate, &
             co18_rot_L0, co18_rot_LTE, co18_rot_n05, co18_rot_alpha, co18_vib_LTE_rate, &
             co_vib_L0_rate, co_vib_inv, co_rot_inv, h2o_rot_inv, &
-            neff, dv 
+            neff, dv, sigma_h2
 
  real    :: h2o_rot_L0_ortho,  h2o_rot_LTE_ortho, h2o_rot_n05_ortho, h2o_rot_alpha_ortho
  real    :: h2o_rot_L0_para,   h2o_rot_LTE_para,  h2o_rot_n05_para,  h2o_rot_alpha_para
@@ -783,7 +783,7 @@ subroutine cool_func(temp, Tdust, yn, dl, divv, abundances, ylam, rates)
 ! (r4)  -- cooling through coll. h20 (r) w. h, h2 and he
 ! (r23) -- cooling through coll. h2018 (r) w. h, h2 and he
 !
- neff = ynh2 + dsqrt(2d0) * ynh + 0.5d0 * ynhe
+ neff = ynh2 + 10 * ynh
  if (abh2o <= 1d-5 * abundo .or. neff == 0d0) then
     rates(4)  = 0d0
     rates(23) = 0d0
@@ -820,7 +820,7 @@ subroutine cool_func(temp, Tdust, yn, dl, divv, abundances, ylam, rates)
 ! (r5) -- h2o vibrational cooling   (coll. with h, h2)
 ! (r6) -- h2o18 vibrational cooling (coll. with h, h2)
 !
- neff = ynh2 + ynh
+ neff = ynh2 + 10 * ynh
  if (abh2o <= 1d-5 * abundo .or. neff == 0d0) then
     rates(5) = 0d0
     rates(6) = 0d0
@@ -838,7 +838,8 @@ subroutine cool_func(temp, Tdust, yn, dl, divv, abundances, ylam, rates)
 ! (r21) -- cooling from c13o (r) with h, h2 and he
 ! (r22) -- cooling from co18 (r) with h, h2 and he
 !
- neff = ynh2 + dsqrt(2d0) * ynh + 0.5d0 * ynhe
+ sigma_h2 = 3.3d-16 * (temp / 1d3)**(-0.25d0)
+ neff = ynh2 + dsqrt(2d0) * (2.3d-15 / sigma_h2) * ynh
  if (abco <= 1d-5 * abundo .or. neff == 0d0) then
     rates(7)  = 0d0
     rates(21) = 0d0
@@ -867,7 +868,7 @@ subroutine cool_func(temp, Tdust, yn, dl, divv, abundances, ylam, rates)
 ! (r9) -- c13o vibrational cooling (coll. with h, h2)
 ! (r24) -- co18 vibrational cooling (coll. with h, h2)
 !
- neff = ynh2 + ynh
+ neff = ynh2 + 50 * ynh
  if (abco <= 1d-5 * abundo .or. neff == 0d0) then
     rates(8)  = 0d0
     rates(9)  = 0d0

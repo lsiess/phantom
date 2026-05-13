@@ -882,6 +882,8 @@ subroutine set_freeze_out_abundances(epsC, abundi, mu, gamma)
 ! Abundances computed from equilibrium chemistry
 ! at T = 800 K, rho_cgs = 1e-14 g/cm3
 ! To be consistent with dust formation, we assume that all excess carbon is in C2H2
+! Since we are only interested in cooling, we could actually set just the abundances of CO and H2.
+! C2H2 is in this context actually superflouous
    use dim, only:nabn_AGB
    use dust_formation, only:icoolH, icoolO, icoolSi, icoolH2, icoolCO, &
                             icoolH2O, icoolOH, icoolC2, icoolC2H, icoolC2H2, &
