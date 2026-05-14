@@ -81,11 +81,11 @@ module setup
  real :: secondary_lum_lsun,secondary_mass_msun,secondary_Reff_au,secondary_racc_au
  real :: secondary_lum,secondary_mass,secondary_Reff,secondary_racc,secondary_Teff
  real :: primary_veq,primary_veq_km_s,secondary_veq,secondary_veq_km_s,spin(2,3)
- real :: lum2a_lsun,lum2b_lsun,Teff2a,Teff2b,Reff2a_au,Reff2b_au
- real :: binary2_a_au,racc2a_au,racc2b_au,binary2_i,q2
  real :: primary_mdot_msun_yr,primary_vwind_km_s,secondary_mdot_msun_yr,secondary_vwind_km_s
  real :: primary_mdot,primary_vwind,primary_wind_temp,secondary_mdot,secondary_vwind,secondary_wind_temp
  real :: primary_alpha,secondary_alpha
+ real :: lum2a_lsun,lum2b_lsun,Teff2a,Teff2b,Reff2a_au,Reff2b_au
+ real :: binary2_a_au,racc2a_au,racc2b_au,binary2_i,q2
  real :: Reff2a,Reff2b
  real :: racc2a,racc2b
  real :: lum2a,lum2b
@@ -103,61 +103,61 @@ subroutine set_default_parameters_wind()
 
  wind_gamma    = 5./3.
  if (isothermal) then
-    T_wind                = 100000.
-    temp_exponent         = 0.5
-    ! primary_racc_au       = 0.465
-    ! primary_mass_msun     = 1.5
-    ! primary_lum_lsun      = 0.
-    ! primary_Reff_au       = 0.465240177008 !100 Rsun
+    T_wind              = 100000.
+    temp_exponent       = 0.5
+    ! primary_racc_au     = 0.465
+    ! primary_mass_msun   = 1.5
+    ! primary_lum_lsun    = 0.
+    ! primary_Reff_au     = 0.465240177008 !100 Rsun
  else
     T_wind = 3000.
-    !primary_racc_au       = 1.
-    !primary_mass_msun     = 1.5
-    !primary_lum_lsun      = 20000.
-    !primary_Reff_au       = 0.
+    !primary_racc_au     = 1.
+    !primary_mass_msun   = 1.5
+    !primary_lum_lsun    = 20000.
+    !primary_Reff_au     = 0.
  endif
- spin     = 0.
- spin(:,3) = 1.  !spin along z-axis
- icompanion_star = 0
- semi_major_axis       = 4.0
- eccentricity          = 0.
- primary_Teff          = 3000.
+ spin                   = 0.
+ spin(:,3)              = 1.  !spin along z-axis
+ icompanion_star        = 0
+ semi_major_axis        = 4.0
+ eccentricity           = 0.
+ primary_Teff           = 3000.
  ! placeholder default value
- secondary_Teff        = 1000.
- semi_major_axis_au    = 4.0
- f                     = 180.
- default_particle_mass = 1.e-11
- primary_lum_lsun      = 5315.
- primary_mass_msun     = 1.5
- primary_Reff_au       = 1.
- primary_racc_au       = 1.
- primary_mdot_msun_yr  = 0.
- primary_vwind_km_s    = 0.
- primary_wind_temp     = 0.
- primary_alpha         = 0.
- primary_veq = 0.
- primary_veq_km_s = 0.
+ secondary_Teff         = 1000.
+ semi_major_axis_au     = 4.0
+ f                      = 180.
+ default_particle_mass  = 1.e-11
+ primary_lum_lsun       = 5315.
+ primary_mass_msun      = 1.5
+ primary_Reff_au        = 1.
+ primary_racc_au        = 1.
+ primary_mdot_msun_yr   = 0.
+ primary_vwind_km_s     = 0.
+ primary_wind_temp      = 0.
+ primary_alpha          = 0.
+ primary_veq            = 0.
+ primary_veq_km_s       = 0.
  ! placeholder default value
- secondary_lum_lsun    = 1000.
- secondary_mass_msun   = 1.0
- secondary_Reff_au     = 0.8
- secondary_racc_au     = 0.1
+ secondary_lum_lsun     = 1000.
+ secondary_mass_msun    = 1.0
+ secondary_Reff_au      = 0.8
+ secondary_racc_au      = 0.1
  secondary_mdot_msun_yr = .0
- secondary_vwind_km_s  = 0.
- secondary_wind_temp   = 0.
- secondary_alpha       = 0.
- secondary_veq         = 0.
- secondary_veq_km_s    = 0.
- lum2a_lsun            = 0.
- lum2b_lsun            = 0.
- Teff2a                = 0.
- Teff2b                = 0.
- Reff2a_au             = 0.
- Reff2b_au             = 0.
- binary2_a_au          = 0.3
- racc2a_au             = 0.1
- racc2b_au             = 0.1
- binary2_i             = 0.
+ secondary_vwind_km_s   = 0.
+ secondary_wind_temp    = 0.
+ secondary_alpha        = 0.
+ secondary_veq          = 0.
+ secondary_veq_km_s     = 0.
+ lum2a_lsun             = 0.
+ lum2b_lsun             = 0.
+ Teff2a                 = 0.
+ Teff2b                 = 0.
+ Reff2a_au              = 0.
+ Reff2b_au              = 0.
+ binary2_a_au           = 0.3
+ racc2a_au              = 0.1
+ racc2b_au              = 0.1
+ binary2_i              = 0.
 
 end subroutine set_default_parameters_wind
 

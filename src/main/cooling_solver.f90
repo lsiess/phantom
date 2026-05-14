@@ -34,7 +34,8 @@ module cooling_solver
  use cooling_functions, only:bowen_Cprime,lambda_shock_cgs,T0_value,T1_factor
  implicit none
  character(len=*), parameter :: label = 'cooling_library'
- integer, public :: excitation_HI = 0, relax_Bowen = 0, dust_collision = 0, relax_Stefan = 0, shock_problem = 0
+ integer, public :: excitation_HI = 0, relax_Bowen = 0, dust_collision = 0, &
+      relax_Stefan = 0, shock_problem = 0, H2_cooling = 0
  integer, public :: icool_method  = 0, high_temp = 0
  integer, parameter :: nTg  = 64
  real :: Tref = 1.d7 !higher value of the temperature grid (for exact cooling)
@@ -324,7 +325,7 @@ subroutine calc_cooling_rate(Q, dlnQ_dlnT, rho, T, Teq, mu, gamma, K2, kappa)
  use cooling_functions, only:cooling_neutral_hydrogen,&
      cooling_Bowen_relaxation,cooling_dust_collision,&
      cooling_radiative_relaxation,piecewise_law, &
-     cooling_high_temp,testing_cooling_functions
+     cooling_high_temp,cooling_H2,testing_cooling_functions
  !use cooling_molecular, only:do_molecular_cooling,calc_cool_molecular
 
  real, intent(in)  :: rho, T, Teq     !rho in code units
@@ -332,8 +333,9 @@ subroutine calc_cooling_rate(Q, dlnQ_dlnT, rho, T, Teq, mu, gamma, K2, kappa)
  real, intent(in)  :: K2, kappa       !cgs
  real, intent(out) :: Q, dlnQ_dlnT    !code units
 
- real :: Q_cgs,Q_H0, Q_relax_Bowen, Q_col_dust, Q_relax_Stefan, Q_molec, Q_shock
- real :: dlnQ_H0, dlnQ_relax_Bowen, dlnQ_col_dust, dlnQ_relax_Stefan, dlnQ_molec, dlnQ_shock
+ real :: Q_cgs,Q_H0,Q_relax_Bowen,Q_col_dust,Q_relax_Stefan,Q_molec,Q_shock,Q_H2
+ real :: dlnQ_H0,dlnQ_relax_Bowen,dlnQ_col_dust,dlnQ_relax_Stefan,dlnQ_molec, &
+      dlnQ_shock,dlnQ_H2
  real :: Q_hightemp, dlnQ_hightemp
  real :: rho_cgs, ndens
 
@@ -347,6 +349,7 @@ subroutine calc_cooling_rate(Q, dlnQ_dlnT, rho, T, Teq, mu, gamma, K2, kappa)
  Q_shock           = 0.
  Q_molec           = 0.
  Q_hightemp        = 0.
+ Q_H2              = 0.
 
  dlnQ_H0           = 0.
  dlnQ_relax_Bowen  = 0.
@@ -355,8 +358,11 @@ subroutine calc_cooling_rate(Q, dlnQ_dlnT, rho, T, Teq, mu, gamma, K2, kappa)
  dlnQ_shock        = 0.
  dlnQ_molec        = 0.
  dlnQ_hightemp     = 0.
+ dlnQ_H2           = 0.
+
 
  if (excitation_HI  == 1) call cooling_neutral_hydrogen(T, rho_cgs, Q_H0, dlnQ_H0)
+ if (H2_cooling     == 1) call cooling_H2(T, rho_cgs, Q_H2, dlnQ_H2)
  if (relax_Bowen    == 1) call cooling_Bowen_relaxation(T, Teq, rho_cgs, mu, gamma, &
                                                         Q_relax_Bowen, dlnQ_relax_Bowen)
  if (dust_collision == 1 .and. K2 > 0.) call cooling_dust_collision(T, Teq, rho_cgs, K2,&
@@ -369,13 +375,13 @@ subroutine calc_cooling_rate(Q, dlnQ_dlnT, rho, T, Teq, mu, gamma, K2, kappa)
  if (excitation_HI  == 99) call testing_cooling_functions(int(K2), T, Q_H0, dlnQ_H0)
  !if (do_molecular_cooling) call calc_cool_molecular(T, r, rho_cgs, Q_molec, dlnQ_molec)
 
- Q_cgs = Q_H0 + Q_relax_Bowen + Q_col_dust + Q_relax_Stefan + Q_molec + Q_shock + Q_hightemp
+ Q_cgs = Q_H0+Q_relax_Bowen+Q_col_dust+Q_relax_Stefan+Q_molec+Q_shock+Q_hightemp+Q_H2
  if (Q_cgs == 0.) then
     dlnQ_dlnT = 0.
  else
     dlnQ_dlnT = (Q_H0*dlnQ_H0 + Q_relax_Bowen*dlnQ_relax_Bowen + Q_col_dust*dlnQ_col_dust&
    + Q_relax_Stefan*dlnQ_relax_Stefan + Q_molec*dlnQ_molec + Q_shock*dlnQ_shock&
-   + Q_hightemp*dlnQ_hightemp)/Q_cgs
+   + Q_hightemp*dlnQ_hightemp + Q_H2*dlnQ_H2)/Q_cgs
  endif
  !limit exponent to prevent overflow
  dlnQ_dlnT = sign(min(50.,abs(dlnQ_dlnT)),dlnQ_dlnT)
@@ -522,6 +528,7 @@ subroutine write_options_cooling_solver(iunit)
  call write_inopt(icool_method,'icool_method',&
                  'integration method (0=implicit, 1=explicit, 2=exact solution)',iunit)
  call write_inopt(excitation_HI,'excitation_HI','cooling via electron excitation of HI (1=on/0=off)',iunit)
+ call write_inopt(H2_cooling,'H2_cooling','cooling by H2 (1=on/0=off)',iunit)
  call write_inopt(relax_bowen,'relax_bowen','Bowen (diffusive) relaxation (1=on/0=off)',iunit)
  call write_inopt(relax_stefan,'relax_stefan','radiative relaxation (1=on/0=off)',iunit)
  call write_inopt(dust_collision,'dust_collision','dust collision (1=on/0=off)',iunit)
@@ -548,6 +555,7 @@ subroutine read_options_cooling_solver(db,nerr)
 
  call read_inopt(icool_method,'icool_method',db,errcount=nerr,min=0,max=2)
  call read_inopt(excitation_HI,'excitation_HI',db,errcount=nerr,min=0,max=1)
+ call read_inopt(H2_cooling,'H2_cooling',db,errcount=nerr,min=0,max=1)
  call read_inopt(relax_bowen,'relax_bowen',db,errcount=nerr,min=0,max=1)
  call read_inopt(relax_stefan,'relax_stefan',db,errcount=nerr,min=0,max=1)
  call read_inopt(dust_collision,'dust_collision',db,errcount=nerr,min=0,max=1)

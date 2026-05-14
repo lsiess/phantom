@@ -14,7 +14,7 @@ module injectutils
 !
 ! :Runtime parameters: None
 !
-! :Dependencies: geometry, icosahedron, part, partinject, physcon, random,
+! :Dependencies: geometry, part, partinject, physcon, random,
 !   units, vectorutils
 !
  use physcon, only:pi

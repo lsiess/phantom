@@ -47,6 +47,7 @@ module cooling
  !--Minimum temperature (failsafe to prevent u < 0); optional for ALL cooling options
  real,    public :: Tfloor = 0.                     ! [K]; set in .in file.  On if Tfloor > 0.
  real,    public :: ufloor = 0.                     ! [code units]; set in init_cooling
+ integer, public :: use_bound = 0                   ! if = 1, only cool if e_tot > 0
  public :: T0_value,lambda_shock_cgs ! expose to public
 
  private
@@ -223,7 +224,10 @@ subroutine write_options_cooling(iunit)
  case default
     call write_options_cooling_solver(iunit)
  end select
- if (icooling > 0) call write_inopt(Tfloor,'Tfloor','temperature floor (K); on if > 0',iunit)
+ if (icooling > 0) then
+    call write_inopt(Tfloor,'Tfloor','temperature floor (K); on if > 0',iunit)
+    call write_inopt(use_bound,'use_bound','cooling only activated in unbound particles (0=off, 1=on)',iunit)
+ endif
 
 end subroutine write_options_cooling
 
@@ -253,6 +257,7 @@ subroutine read_options_cooling(db,nerr)
     call error(label,'cooling requires shock and work contributions')
  call read_inopt(C_cool,'C_cool',db,errcount=nerr,min=0.,default=C_cool)
  call read_inopt(Tfloor,'Tfloor',db,errcount=nerr,min=0.,default=Tfloor)
+ call read_inopt(use_bound,'use_bound',db,errcount=nerr,min=0,max=1,default=use_bound)
 
  select case(icooling)
  case(0,5,6)
