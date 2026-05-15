@@ -39,7 +39,7 @@ module inject
 !
  use io, only:fatal
  implicit none
- character(len=*), parameter, public :: inject_type = 'atmosphere'
+ character(len=*), parameter, public :: inject_type = 'pulsation'
 
  public :: init_inject, inject_particles, write_options_inject, read_options_inject, &
            set_default_options_inject, update_injected_par
@@ -282,7 +282,7 @@ subroutine init_inject(ierr)
           n_shell = n_particles_first
        else
           print *,'@5 - fixed an error in the expressionof n_shell'
-          n_shell = max(1,nint(real(tmp_n(shell_index-1))*(current_radius/tmp_r(shell_index-1))**(2.*(1.-rho_power/3.)))
+          n_shell = max(1,nint(real(tmp_n(shell_index-1))*(current_radius/tmp_r(shell_index-1))**(2.*(1.-rho_power/3.))))
        endif
 
        dr = 0.
@@ -492,21 +492,28 @@ subroutine take_periodic_mass_measurements(time,xyzh,npart,xyzmh_ptmass,npartoft
  integer, intent(in) :: npartoftype(:)
 
  real    :: current_mass_within_radius, mass_lost, rate_this_interval
- real    :: sink_mass, x0(3), dx, dy, dz, r
+ real    :: sink_mass, x0(3), dx, dy, dz, r2, rcheck2
  real    :: sum_rates
  integer :: i
 
+ rcheck2 = mass_loss_check_radius**2
  if (.not. measurement_active .and. time >= mass_loss_start_time) then
     measurement_active = .true.
     x0        = xyzmh_ptmass(1:3, wind_emitting_sink)
     sink_mass = xyzmh_ptmass(4,   wind_emitting_sink)
     mass_previous_measurement = sink_mass
+    print *,'@10 - in our setup could the gas and boundary particles have a differnet ? If not remove test in do loop'
+    !$omp parallel do default(none) &
+    !$omp shared(npart,x0,xyzh,rcheck2,iphase) &
+    !$omp shared(mass_of_gas_particle,mass_of_boundary_particle) &
+    !$omp private(i,r2,dx,dy,dz) &
+    !$omp reduction(+:mass_previous_measurement)
     do i = 1, npart
        dx = xyzh(1,i) - x0(1)
        dy = xyzh(2,i) - x0(2)
        dz = xyzh(3,i) - x0(3)
-       r  = sqrt(dx**2 + dy**2 + dz**2)
-       if (r <= mass_loss_check_radius) then
+       r2  = dx**2 + dy**2 + dz**2
+       if (r2 <= rcheck2) then
           if (iamtype(iphase(i)) == iboundary) then
              mass_previous_measurement = mass_previous_measurement + mass_of_boundary_particle
           else
@@ -514,19 +521,26 @@ subroutine take_periodic_mass_measurements(time,xyzh,npart,xyzmh_ptmass,npartoft
           endif
        endif
     enddo
+    !$omp end parallel do
     time_next_measurement = time + measurement_interval
  endif
 
  if (measurement_active .and. time >= time_next_measurement .and. time < mass_loss_end_time) then
+    print *,'@10 - in our setup could the gas and boundary particles have a differnet ? If not remove test in do loop'
     x0        = xyzmh_ptmass(1:3, wind_emitting_sink)
     sink_mass = xyzmh_ptmass(4,   wind_emitting_sink)
     current_mass_within_radius = sink_mass
+    !$omp parallel do default(none) &
+    !$omp shared(npart,x0,xyzh,rcheck2,iphase) &
+    !$omp shared(mass_of_gas_particle,mass_of_boundary_particle) &
+    !$omp private(i,r2,dx,dy,dz) &
+    !$omp reduction(+:current_mass_within_radius)
     do i = 1, npart
        dx = xyzh(1,i) - x0(1)
        dy = xyzh(2,i) - x0(2)
        dz = xyzh(3,i) - x0(3)
-       r  = sqrt(dx**2 + dy**2 + dz**2)
-       if (r <= mass_loss_check_radius) then
+       r2  = dx**2 + dy**2 + dz**2
+       if (r2 <= rcheck2) then
           if (iamtype(iphase(i)) == iboundary) then
              current_mass_within_radius = current_mass_within_radius + mass_of_boundary_particle
           else
@@ -534,6 +548,7 @@ subroutine take_periodic_mass_measurements(time,xyzh,npart,xyzmh_ptmass,npartoft
           endif
        endif
     enddo
+    !$omp end parallel do
     mass_lost          = mass_previous_measurement - current_mass_within_radius
     rate_this_interval = mass_lost / measurement_interval
     n_measurements     = n_measurements + 1
@@ -544,10 +559,7 @@ subroutine take_periodic_mass_measurements(time,xyzh,npart,xyzmh_ptmass,npartoft
 
  if (measurement_active .and. .not. mass_loss_rate_calculated .and. time >= mass_loss_end_time) then
     if (n_measurements > 0) then
-       sum_rates = 0.0
-       do i = 1, n_measurements
-          sum_rates = sum_rates + mass_loss_rates(i)
-       enddo
+       sum_rates = sum(mass_loss_rates(1:n_measurements))
        mean_mass_loss_rate = sum_rates / real(n_measurements)
        particles_to_inject = nint((mean_mass_loss_rate * reinject_period) / mass_of_gas_particle)
        if (particles_to_inject < 1) particles_to_inject = 1
@@ -571,6 +583,8 @@ subroutine check_continuous_reinject(time,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,np
  real,    intent(inout) :: xyzh(:,:),vxyzu(:,:),xyzmh_ptmass(:,:),vxyz_ptmass(:,:)
  integer, intent(inout) :: npart
  integer, intent(inout) :: npartoftype(:)
+
+ print *,'@11 - clean up arguments, almost none are used, should be a function that returns reinjection_needed '
 
  if ((time - time_last_reinject) < reinject_period .and. time >= mass_loss_start_time) return
 
@@ -672,6 +686,10 @@ subroutine setup_initial_atmosphere(xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,npart,np
 
  npart = 0
 
+!+
+! setup boundary shells
+!+
+ print *,'@12 - r_cur never used ?  '
  r_cur = shell_radii_bnd(1) ! - 0.5*delta_r_boundary(1)
  do i = 1, n_shells_bnd
     r     = shell_radii_bnd(i)
@@ -683,6 +701,9 @@ subroutine setup_initial_atmosphere(xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,npart,np
                                  npart, npartoftype, xyzh, vxyzu, iboundary, x0, v0, wind_emitting_sink)
  enddo
 
+!+
+! setup atmosphere
+!+
  do i = 1, n_shells_total
     r = shell_radii_gas(i)
     call interp_stellar_profile(r, rho, P, u, T)
@@ -702,6 +723,8 @@ subroutine setup_initial_atmosphere(xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,npart,np
     allocate(r_boundary_equilibrium(nboundary))
     allocate(boundary_particle_ids(nboundary))
 
+    print *,'@13 - this loop could be simplified/speed up. You know where the boundary particles are stored in the memory: ',&
+         'between 1 and  sum(npart_per_boundary_shell(1:n_shells_bnd)), so just iterate over this range and remnove if '
     j = 0
     do i = 1, npart
        if (j >= nboundary) exit
@@ -737,6 +760,7 @@ subroutine reconstruct_boundary_info(time,xyzh,npart,xyzmh_ptmass)
  phase = omega_pulsation * time + phi0
 
  n_boundary_particles = 0
+ print *,'@14 - isnt the number of each particle type stored in the dumnp and  n_boundary_particles=npartoftype(iboundary) ?'
  do i = 1, npart
     if (iamtype(iphase(i)) == iboundary) n_boundary_particles = n_boundary_particles + 1
  enddo
@@ -746,6 +770,7 @@ subroutine reconstruct_boundary_info(time,xyzh,npart,xyzmh_ptmass)
     allocate(boundary_particle_ids(n_boundary_particles))
 
     j = 0
+ print *,'@15 - again, here we can take advantage of the fact that we know where boundary particles are stored inthe memory ?'
     do i = 1, npart
        if (iamtype(iphase(i)) == iboundary) then
           j = j + 1
@@ -765,11 +790,11 @@ end subroutine reconstruct_boundary_info
 
 !----------------------------------------------------------------
 !+
-!  Applies the pulsation to the boundary layers
+!  Applies pulsation motion to the boundary layers
 !+
 !----------------------------------------------------------------
 subroutine apply_pulsation(time,xyzh,vxyzu,npart,xyzmh_ptmass,vxyz_ptmass)
-  use physcon,        only:pi,solarl
+ use physcon,        only:pi,solarl
  use wind_pulsating, only:interp_stellar_profile
  use part,           only:iTeff,iLum,iReff
 
@@ -799,6 +824,7 @@ subroutine apply_pulsation(time,xyzh,vxyzu,npart,xyzmh_ptmass,vxyz_ptmass)
  endif
 
  r_dot = alpha * piston_velocity * cos(phase)
+ print *,'@16 - I dont really understand this expression of r_new with this alpha  ?'
 
  do i = 1, n_boundary_particles
     ipart = boundary_particle_ids(i)
@@ -957,6 +983,8 @@ subroutine calculate_period(M, R, pulsation_period_days)
  real, intent(in)  :: M, R
  real, intent(out) :: pulsation_period_days
  real :: logP, logM, logR
+
+ print *,'@17 - add a reference to that formula in the header'
 
  logM = log10(M)
  logR = log10(R * 215.032)
