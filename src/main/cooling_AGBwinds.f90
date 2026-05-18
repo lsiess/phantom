@@ -263,6 +263,7 @@ subroutine cool_func(temp, Tdust, yn, dl, divv, abundances, ylam, rates)
  real, parameter :: log_fo_h2o  = -0.1249387d0
  real, parameter :: f_para_h2o  =  0.25d0
  real, parameter :: log_fp_h2o  = -0.602060d0
+ real, parameter :: min_abundance = 1.d-8
 
  real    :: maximum_CO_column_rot, maximum_CO_column_vib, &
             N_co_eff, n_c13o_eff, n_co18_eff, N_co_eff_vib, &
@@ -334,7 +335,7 @@ subroutine cool_func(temp, Tdust, yn, dl, divv, abundances, ylam, rates)
  else
     itemp = nint(dlog10(temp) / dtlog + 1)
     if (itemp /= itemp .or. itemp <= 0.or. itemp > nmd) then
-       print*, 'fatal error in cool_func.f', itemp, temp
+       print*, 'fatal error in cool_func', itemp, temp
        stop
     endif
     dtemp = temp - temptab(itemp)
@@ -524,7 +525,7 @@ subroutine cool_func(temp, Tdust, yn, dl, divv, abundances, ylam, rates)
 ! If divv is very small (or zero), then we set the effective column
 ! density to the largest tabulated value
 
- if (abco  >  1d-5 * abundo) then
+ if (abco  >  min_abundance * abundo) then
 ! Don't bother to compute CO cooling rate when CO abundance very small
     maximum_co_column_rot = co_colntab(ncdco)
     maximum_co_column_vib = co_vib_colntab(ncdco_vib)
@@ -621,7 +622,7 @@ subroutine cool_func(temp, Tdust, yn, dl, divv, abundances, ylam, rates)
 !
 ! H2O -- standard isotope, plus h2o18
 !
- if (abh2o > 1d-5 * abundo) then
+ if (abh2o > min_abundance * abundo) then
     if (abs(divv) < 1d0) then
        N_h2o_eff_para  = h2o_colntab(ncdh2o)
        N_h2o_eff_ortho = h2o_colntab(ncdh2o)
@@ -699,9 +700,6 @@ subroutine cool_func(temp, Tdust, yn, dl, divv, abundances, ylam, rates)
 !         into rate coefficient in init_cooling_ism
 !
  rates(1) = cl14 * (temp - Tdust) * yn**2
-
-!  print*, 'Tdust in cool func: ', Tdust
-!
 !
 ! (r2) -- H2 (vr) cooling  ars: here's where the h2 cooling is!
 !
@@ -756,7 +754,7 @@ subroutine cool_func(temp, Tdust, yn, dl, divv, abundances, ylam, rates)
 ! (r23) -- cooling through coll. h2018 (r) w. h, h2 and he
 !
  neff = ynh2 + 10 * ynh
- if (abh2o <= 1d-5 * abundo .or. neff == 0d0) then
+ if (abh2o <= min_abundance * abundo .or. neff == 0d0) then
     rates(4)  = 0d0
     rates(23) = 0d0
  else
@@ -793,7 +791,7 @@ subroutine cool_func(temp, Tdust, yn, dl, divv, abundances, ylam, rates)
 ! (r6) -- h2o18 vibrational cooling (coll. with h, h2)
 !
  neff = ynh2 + 10 * ynh
- if (abh2o <= 1d-5 * abundo .or. neff == 0d0) then
+ if (abh2o <= min_abundance * abundo .or. neff == 0d0) then
     rates(5) = 0d0
     rates(6) = 0d0
  else
@@ -812,7 +810,7 @@ subroutine cool_func(temp, Tdust, yn, dl, divv, abundances, ylam, rates)
 !
  sigma_h2 = 3.3d-16 * (temp / 1d3)**(-0.25d0)
  neff = ynh2 + dsqrt(2d0) * (2.3d-15 / sigma_h2) * ynh
- if (abco <= 1d-5 * abundo .or. neff == 0d0) then
+ if (abco <= min_abundance * abundo .or. neff == 0d0) then
     rates(7)  = 0d0
     rates(21) = 0d0
     rates(22) = 0d0
@@ -841,7 +839,7 @@ subroutine cool_func(temp, Tdust, yn, dl, divv, abundances, ylam, rates)
 ! (r24) -- co18 vibrational cooling (coll. with h, h2)
 !
  neff = ynh2 + 50 * ynh
- if (abco <= 1d-5 * abundo .or. neff == 0d0) then
+ if (abco <= min_abundance * abundo .or. neff == 0d0) then
     rates(8)  = 0d0
     rates(9)  = 0d0
     rates(24) = 0d0
@@ -869,7 +867,7 @@ subroutine cool_func(temp, Tdust, yn, dl, divv, abundances, ylam, rates)
  oxc10  = cl18 * ynh + cl21 * ynh2 + cl24 * yne + cl27 * ynhp
  oxc20  = cl19 * ynh + cl22 * ynh2 + cl25 * yne + cl28 * ynhp
  oxc21  = cl20 * ynh + cl23 * ynh2 + cl26 * yne + cl29 * ynhp
- if (abo <= 1d-5 * abundo) then
+ if (abo <= min_abundance * abundo) then
     rates(13) = 0d0
  elseif (oxc10 == 0d0 .and. oxc20 == 0d0 .and. oxc21 == 0d0) then
     rates(13) = 0d0
@@ -922,7 +920,7 @@ subroutine cool_func(temp, Tdust, yn, dl, divv, abundances, ylam, rates)
  cic10  = cl30 * ynh + cl33 * ynh2 + cl36 * yne + cl39 * ynhp
  cic20  = cl31 * ynh + cl34 * ynh2 + cl37 * yne + cl40 * ynhp
  cic21  = cl32 * ynh + cl35 * ynh2 + cl38 * yne + cl41 * ynhp
- if (abcI <= 1d-5 * abundc) then
+ if (abcI <= min_abundance * abundc) then
     rates(14) = 0d0
  elseif (cic10 == 0d0 .and. cic20 == 0d0 .and. cic21 == 0d0) then
     rates(14) = 0d0
@@ -975,7 +973,7 @@ subroutine cool_func(temp, Tdust, yn, dl, divv, abundances, ylam, rates)
  siIc10 = cl42 * ynh + 7.2d-9 * ynhp
  siIc20 = cl43 * ynh + 7.2d-9 * ynhp
  siIc21 = cl44 * ynh + 2.2d-8 * ynhp
- if (absiI <= 1d-5 * abundsi) then
+ if (absiI <= min_abundance * abundsi) then
     rates(15) = 0d0
  elseif (siIc10 == 0d0 .and. siIc20 == 0d0 .and.siIc21 == 0d0) then
     rates(15) = 0d0

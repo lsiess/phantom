@@ -35,7 +35,8 @@ module dust_formation
       calc_kappa_bowen,chemical_equilibrium_light,psat_C,calc_nucleation,&
       read_options_dust_formation,write_options_dust_formation,&
       calc_Eddington_factor,calc_muGamma,init_muGamma,init_nucleation,&
-      write_headeropts_dust_formation,read_headeropts_dust_formation
+      write_headeropts_dust_formation,read_headeropts_dust_formation,&
+      evap_shift_remove, fit_lognormal_from_m012
 !
 !--runtime settings for this module
 !
@@ -196,25 +197,48 @@ subroutine evolve_chem(dt, T, rho_cgs, JKmuS)
     pC2H2  = abundi(icoolC2H2)/cst 
     S = pC/psat_C(T)
     if (S > Scrit) then
-       call calc_nucleation(T, pC, pC2, 0., pC2H, pC2H2, S, JstarS, taustar, taugr)
+       call calc_nucleation(T, pC, pC2, 0.0, pC2H, pC2H2, S, JstarS, taustar, taugr)
        JstarS = JstarS/ nH_tot
        call evol_K(JKmuS(idJstar), JKmuS(idK0:idK3), JstarS, taustar, taugr, dt, Jstar_new, K_new)
     else
-       Jstar_new  = JKmuS(idJstar)
-       K_new(0:3) = JKmuS(idK0:idK3)
+       if (any(JKmuS(idK0:idK3) > 0.0)) then
+          call calc_nucleation(T, pC, pC2, 0.0, pC2H, pC2H2, S, JstarS, taustar, taugr)
+          adot = 1. / 3. / taugr    ! Equation 28 in Gauger 1990
+          call evap_shift_remove(JKmuS(idK0:idK3), dt, adot, K_new(0:3))
+          Jstar_new = 0.0
+       else
+          Jstar_new = 0.0
+          K_new(0:3) = JKmuS(idK0:idK3)
+       endif
+! Uncomment this and comment previous block to exclude evaporation
+   !  else
+   !     Jstar_new  = JKmuS(idJstar)
+   !     K_new(0:3) = JKmuS(idK0:idK3)
+! ---------------------------------
     endif
  else
 ! Simplified low-temperature chemistry: all hydrogen in H2 molecules, all O in CO
+
+! Comment this and uncomment next block to exclude dust formation at low T
+    if (epsC <= eps(iOx)) then
+      ! All the carbon is locked in CO or in dust, no dust formation possible
+       JKmuS(idJstar)  = 0.0
+       S = 1.d-3
+       return
+    endif
     nH  = 0.
     nH2 = nH_tot/2.
     JKmuS(idmu)    = (1.+4.*eps(iHe))*nH_tot/(nH+nH2+eps(iHe)*nH_tot)
-    JKmuS(idgamma) = (5.*eps(iHe)+3.5)/(3.*eps(iHe)+2.5)
+    if (ieos /= 17) JKmuS(idgamma) = (5.*eps(iHe)+3.5)/(3.*eps(iHe)+2.5)
     pC2H2 = .5*(epsC-eps(iOx))*nH_tot * kboltz * T
-    pC2H  = 0.
     S     = 1.d-3
     v1    = vfactor*sqrt(T)
-    taugr = kboltz*T/(A0*v1*sqrt(2.)*alpha2*(pC2H+pC2H2))
+    taugr = kboltz*T/(A0*v1*sqrt(2.)*alpha2*(pC2H2))
     call evol_K(0., JKmuS(idK0:idK3), 0., 1., taugr, dt, Jstar_new, K_new)
+! Uncomment this and comment previous block to exclude dust formation at low T
+   !  Jstar_new  = JKmuS(idJstar)
+   !  K_new(0:3) = JKmuS(idK0:idK3)
+   !  S = 1.d-3
  endif
  JKmuS(idJstar)   = Jstar_new
  JKmuS(idK0:idK3) = K_new(0:3)
@@ -327,11 +351,6 @@ subroutine calc_nucleation(T, pC, pC2, pC3, pC2H, pC2H2, S, JstarS, taustar, tau
     endif
     JstarS  = beta * A_Nstar * Z * c_star
     taustar = 1./(d2lnc_dN2star*beta*A_Nstar)
-    ! if (isnan(JstarS)) then
-    !   print*,i,'(N-1)^1/3=',Nstar_m1_13,'exp=',expon,'T=',T,'theta_N=',theta_Nstar,'d2lnc/dN2=',d2lnc_dN2star,ddd,&
-    !        'beta=',beta,'Z=',Z,'c_star=',c_star,'JstarS=',JstarS,'tau*=',taustar
-    !   if (isnan(JstarS)) stop
-    ! endif
  else
     JstarS  = 0.d0
     taustar = 1.d-30
@@ -344,13 +363,14 @@ end subroutine calc_nucleation
 !  Compute evolution of the moments
 !
 !------------------------------------
-subroutine evol_K(Jstar, K, JstarS, taustar, taugr, dt, Jstar_new, K_new)
+subroutine evol_K(Jstar_in, K, JstarS_in, taustar, taugr, dt, Jstar_new, K_new)
 ! all quantities are in cgs, K and K_new are the *normalized* moments (K/n<H>)
- real, intent(in) :: Jstar, K(0:3), JstarS, taustar, taugr, dt
+ real, intent(in) :: Jstar_in, K(0:3), JstarS_in, taustar, taugr, dt
  real, intent(out) :: Jstar_new, K_new(0:3)
 
  real, parameter :: Nl_13 = 10. !(lower grain size limit)**1/3
- real :: d, i0, i1, i2, i3, i4, i5, dK0, dK1, dK2, DK3
+ real :: d, i0, i1, i2, i3, i4, i5, dK0, dK1, dK2, dK3
+ real :: Jstar, JstarS
 
  d = dt/taustar
  if (d > 500.) then
@@ -363,7 +383,20 @@ subroutine evol_K(Jstar, K, JstarS, taustar, taugr, dt, Jstar_new, K_new)
  i3 = d**2/2. - i2
  i4 = d**3/6. - i3
  i5 = d**4/24. - i4
- Jstar_new = Jstar*i0 + JstarS*i1
+ Jstar_new = Jstar_in*i0 + JstarS_in*i1
+ ! When Jstar or JstarS are < 1.d-50 (around 1d-70), they make the moments grow in an unrealistic way,
+ ! for example we are unable to reproduce the average radius.
+ ! The correct values to be considered (to reproduce Gauger 1990) are only larger than 1d-50
+ if (Jstar_in < 1.d-50) then
+    Jstar = 0.0
+ else
+    Jstar = Jstar_in
+ endif
+ if (JstarS_in < 1.d-50) then
+    JstarS = 0.0
+ else
+    JstarS = JstarS_in
+ endif
  dK0 = taustar*(Jstar*i1 + JstarS*i2)
  K_new(0) = K(0) + dK0
  dK1 = taustar**2/(3.*taugr)*(Jstar*i2 + JstarS*i3)
@@ -373,14 +406,213 @@ subroutine evol_K(Jstar, K, JstarS, taustar, taugr, dt, Jstar_new, K_new)
  dK3 = 3.*dt/(3.*taugr)*K(2) + 3.*(dt/(3.*taugr))**2*K(1) + (dt/(3.*taugr))**3*K(0)  &
      + (6.*taustar**4)/(3.*taugr)**3*(Jstar*i4+JstarS*i5)
  K_new(3) = K(3) + dK3 + Nl_13**3*dK0 + 3.*Nl_13**2*dK1 + 3.*Nl_13*dK2
- !if (any(isnan(K_new))) then
- !  print*,'NaNs in K_new for particle #',i
- !  print *,'dt=',dt,'tau*=',taustar,'taug=',taugr,'d=',d,'i0=',i0,'i1=',i1,'Jstar=',Jstar,'JstarS=',JstarS,&
- !      'k1=',k(1),'dk1=',dk1,'Kn1=',k_new(1),'k2=',k(2),'dk2=',dk2,'Kn2=',k_new(2),'k3=',k(3),'dk3=',dk3,'Kn3=',k_new(3)
- !  stop
- !endif
+ K_new = max(K_new, 0.0)
 
 end subroutine evol_K
+
+!---------------------------------------------
+!
+!  Compute lognormal distribution from moments
+!
+!---------------------------------------------
+subroutine fit_lognormal_from_m012(M0, M1, M2, mu, sigma, info)
+ implicit none
+ real(8), intent(in) :: M0, M1, M2
+ real(8), intent(out) :: mu, sigma
+ integer, intent(out) :: info
+
+ real(8) :: ratio, sigma2
+
+ if (M0 <= 0.0d0 .or. M1 <= 0.0d0 .or. M2 <= 0.0d0) then
+    mu = 0.0d0
+    sigma = 0.0d0
+    info = 0   ! no grains
+    return
+ end if
+
+ ratio = (M2 * M0) / (M1 * M1)
+ if (ratio <= 0.0d0) then
+    sigma2 = 1.0d-14
+    info = 2
+ else
+    sigma2 = log(ratio)
+    if (sigma2 < 1.0d-14) then
+       sigma2 = 1.0d-14
+       info = 2   ! regularized
+    else
+       info = 1   ! normal fit
+    end if
+ end if
+
+ sigma = sqrt(sigma2)
+ mu = log(M1 / M0) - 0.5d0 * sigma2
+
+end subroutine fit_lognormal_from_m012
+
+!----------------------------------------
+!  Standard normal cumulative distribution
+!----------------------------------------
+pure elemental function phi(z) result(cdf)
+ implicit none
+ real(8), intent(in) :: z
+ real(8) :: cdf
+ real(8) :: s2, sqrtpi, erc
+ real(8), parameter :: thresh = 1.0d-300  ! adjust as needed
+
+ s2 = sqrt(2.0d0)
+ sqrtpi = sqrt(4.0d0*atan(1.0d0))  ! sqrt(pi)
+
+ if (z >= 0.0d0) then
+    erc = erfc(z / s2)
+    cdf = 1.0d0 - 0.5d0 * erc
+ else
+    erc = erfc(-z / s2)
+    cdf = 0.5d0 * erc
+ end if
+
+  ! fallback using asymptotic series if erfc underflowed to zero
+!   if (cdf <= 0.0d0 .or. cdf < thresh) then
+!     if (z < 0.0d0) then
+!       t = -z / s2
+!       ! first few terms of asymptotic expansion for erfc(t)
+!       erc = exp(-t*t)/(t*sqrtpi) * (1.0d0 - 1.0d0/(2.0d0*t*t) + 3.0d0/(4.0d0*t**4))
+!       cdf = 0.5d0 * erc
+!     end if
+!     ! for extremely large positive z, cdf ~ 1.0 (no need special handling)
+!   end if
+end function phi
+
+!------------------------------------------------------------
+!
+!  Compute evaporation with shift and removal of small grains
+!
+!------------------------------------------------------------
+subroutine evap_shift_remove(M, dt, adot, Mf)
+ use physcon, only:pi
+
+ implicit none
+
+ real, intent(in) :: M(0:3)
+ real, intent(in) :: dt, adot
+ real, intent(out) :: Mf(0:3)
+
+ real :: M0, M1, M2, M3
+ real :: M0i, M1i, M2i, M3i
+ real :: M0f, M1f, M2f, M3f
+ real :: mu, sigma
+ integer :: fit_info, info
+ real :: delta_a, abs_da, a_cross, ln_ac
+ real :: z0, z1, z2, z3
+ real :: f0, f1, f2, f3
+ real :: M0_less, M1_less, M2_less, M3_less
+ real :: M0_surv, M1_surv, M2_surv, M3_surv
+ real :: a_min
+
+ a_min = 10.d0     !(lower grain size limit)**1/3, as in evol_K
+
+ ! Save initial
+ M0 = M(0); M1 = M(1); M2 = M(2); M3 = M(3)
+ M0i = M0; M1i = M1; M2i = M2; M3i = M3
+
+ ! Quick exit: no grains
+ if (M0 <= 0.0d0 .or. M1 <= 0.0d0 .or. M2 <= 0.0d0) then
+    M0f = M0i; M1f = M1i; M2f = M2i; M3f = M3i
+    Mf(0) = M0f; Mf(1) = M1f; Mf(2) = M2f; Mf(3) = M3f
+    info = 0
+    return
+ end if
+
+ ! Compute shift
+ delta_a = adot * dt
+ abs_da = abs(delta_a)
+ a_cross = a_min + abs_da
+
+ ! Fit lognormal
+ call fit_lognormal_from_m012(M0i, M1i, M2i, mu, sigma, fit_info)
+ if (fit_info == 0) then
+    M0f = M0i; M1f = M1i; M2f = M2i; M3f = M3i
+    Mf(0) = M0f; Mf(1) = M1f; Mf(2) = M2f; Mf(3) = M3f
+    info = 0
+    return
+ end if
+
+ ! Small sigma -> delta-like distribution
+ if (sigma <= 1.0d-3) then
+    if (M1i/M0i <= a_cross) then
+       ! all vanish
+       M0f = 0.0d0; M1f = 0.0d0; M2f = 0.0d0; M3f = 0.0d0
+       Mf(0) = M0f; Mf(1) = M1f; Mf(2) = M2f; Mf(3) = M3f
+       info = fit_info
+       return
+    else
+       ! no vanishing, just shift
+       M0f = M0i
+       M1f = M1i + delta_a*M0i
+       M2f = M2i + 2.0d0*delta_a*M1i + delta_a*delta_a*M0i
+       M3f = M3i + 3.0d0*delta_a*M2i + 3.0d0*(delta_a**2)*M1i + (delta_a**3)*M0i
+
+       Mf(0) = M0f; Mf(1) = M1f; Mf(2) = M2f; Mf(3) = M3f
+       info = fit_info
+       if (any(Mf(:) <= 0.0d0)) then
+          Mf(:) = 0.0d0
+       endif
+       return
+    end if
+ end if
+
+ ! General lognormal case: compute fractions below a_cross
+ ln_ac = log(a_cross)
+ z0 = (ln_ac - mu - 0.0d0 * sigma*sigma) / sigma
+ z1 = (ln_ac - mu - 1.0d0 * sigma*sigma) / sigma
+ z2 = (ln_ac - mu - 2.0d0 * sigma*sigma) / sigma
+ z3 = (ln_ac - mu - 3.0d0 * sigma*sigma) / sigma
+
+ f0 = phi(z0)
+ f1 = phi(z1)
+ f2 = phi(z2)
+ f3 = phi(z3)
+
+ M0_less = M0i * f0
+ M1_less = M1i * f1
+ M2_less = M2i * f2
+ M3_less = M3i * f3
+
+ M0_surv = M0i - M0_less
+ M1_surv = M1i - M1_less
+ M2_surv = M2i - M2_less
+ M3_surv = M3i - M3_less
+
+ if (M0_surv <= 0.0d0) then
+    M0f = 0.0d0; M1f = 0.0d0; M2f = 0.0d0; M3f = 0.0d0
+    Mf(0) = M0f; Mf(1) = M1f; Mf(2) = M2f; Mf(3) = M3f
+    info = fit_info
+    return
+ end if
+
+ ! Shift survivors exactly by delta_a
+ M0f = M0_surv
+ M1f = M1_surv + delta_a*M0_surv
+ M2f = M2_surv + 2.0d0*delta_a*M1_surv + (delta_a**2)*M0_surv
+ M3f = M3_surv + 3.0d0*delta_a*M2_surv + 3.0d0*(delta_a**2)*M1_surv + (delta_a**3)*M0_surv
+
+ info = fit_info
+
+ M0f = max(M0f, 0.0)
+ M1f = max(M1f, 0.0)
+ M2f = max(M2f, 0.0)
+ M3f = max(M3f, 0.0)
+
+ Mf(0) = M0f
+ Mf(1) = M1f
+ Mf(2) = M2f
+ Mf(3) = M3f
+
+ if (any(Mf(:) <= 0.0d0)) then
+    Mf(:) = 0.0d0
+ endif
+
+end subroutine evap_shift_remove
+
 
 !----------------------------------------
 !

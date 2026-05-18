@@ -934,7 +934,7 @@ subroutine save_windprofile(r0, v0, T0, rout, tend, tcross, filename)
  real, intent(in) :: r0, v0, T0, tend, rout
  real, intent(out) :: tcross          !time to cross the entire integration domain
  character(*), intent(in) :: filename
- real, parameter :: Tdust_stop = 600.   ! Temperature at outer boundary of wind simulation
+ real, parameter :: Tdust_stop = 1.   ! Temperature at outer boundary of wind simulation
  integer, parameter :: nlmax = 8192   ! maxium number of steps store in the 1D profile
  real :: time_end, tau_lucy_init
  real :: r_incr,v_incr,T_incr,mu_incr,gamma_incr,r_base,v_base,T_base,mu_base,gamma_base,eps
