@@ -44,7 +44,7 @@ module wind
     real :: dt, time, r, r0, Rstar, v, a, time_end, Tg, Tdust
     real :: alpha, rho, p, u, c, dalpha_dr, r_old, Q, dQ_dr
     real :: kappa, mu, gamma, tau_lucy, alpha_Edd, tau
-    real :: JKmuS(n_nucleation),K2
+    real :: JKmuS(n_nucleation),K2,K3
     integer :: spcode, nsteps
     logical :: dt_force, error, find_sonic_solution
  end type wind_state
@@ -169,6 +169,7 @@ subroutine init_wind(r0, v0, T0, time_end, state, tau_lucy_init)
 
  state%alpha_Edd = 0.
  state%K2        = 0.
+ state%K3        = 0.
  state%mu        = gmw
  state%gamma     = wind_gamma
  state%JKmuS     = 0.
@@ -238,6 +239,7 @@ subroutine wind_step(state)
     !state%Tg   = state%u*(state%gamma-1.)/Rg*state%mu
     call evolve_chem(state%dt,state%Tg,state%rho,state%JKmuS)
     state%K2             = state%JKmuS(idK2)
+    state%K3             = state%JKmuS(idK3)
     state%mu             = state%JKmuS(idmu)
     state%gamma          = state%JKmuS(idgamma)
     state%kappa          = calc_kappa_dust(state%JKmuS(idK3), state%Tdust, state%rho)
@@ -314,7 +316,7 @@ subroutine wind_step(state)
  if (icooling > 0) then
     Q_old = state%Q
     call calc_cooling_rate(Q_code,dlnQ_dlnT,state%rho/unit_density,state%Tg,state%Tdust,&
-         state%mu,state%gamma,state%K2,state%kappa)
+         state%mu,state%gamma,state%K2,state%K3,state%kappa)
     state%Q = Q_code*unit_ergg/utime
     state%dQ_dr = (state%Q-Q_old)/(1.e-10+state%r-state%r_old)
  endif
@@ -362,6 +364,7 @@ subroutine wind_step(state)
  if (idust_opacity == 2) then
     call evolve_chem(state%dt,state%Tg,state%rho,state%JKmuS)
     state%K2        = state%JKmuS(idK2)
+    state%K3        = state%JKmuS(idK3)
     state%mu        = state%JKmuS(idmu)
     state%gamma     = state%JKmuS(idgamma)
     state%kappa     = calc_kappa_dust(state%JKmuS(idK3), state%Tdust, state%rho)
@@ -447,7 +450,7 @@ subroutine wind_step(state)
  if (icooling > 0) then
     Q_old = state%Q
     call calc_cooling_rate(Q_code,dlnQ_dlnT,real(state%rho/unit_density),state%Tg,state%Tdust,&
-         state%mu,state%gamma,state%K2,state%kappa)
+         state%mu,state%gamma,state%K2,state%K3,state%kappa)
     state%Q = Q_code*unit_ergg/utime
     state%dQ_dr = (state%Q-Q_old)/(1.e-10+state%r-state%r_old)
  endif
@@ -931,7 +934,7 @@ subroutine save_windprofile(r0, v0, T0, rout, tend, tcross, filename)
  real, intent(in) :: r0, v0, T0, tend, rout
  real, intent(out) :: tcross          !time to cross the entire integration domain
  character(*), intent(in) :: filename
- real, parameter :: Tdust_stop = 1.   ! Temperature at outer boundary of wind simulation
+ real, parameter :: Tdust_stop = 600.   ! Temperature at outer boundary of wind simulation
  integer, parameter :: nlmax = 8192   ! maxium number of steps store in the 1D profile
  real :: time_end, tau_lucy_init
  real :: r_incr,v_incr,T_incr,mu_incr,gamma_incr,r_base,v_base,T_base,mu_base,gamma_base,eps
@@ -971,6 +974,7 @@ subroutine save_windprofile(r0, v0, T0, rout, tend, tcross, filename)
 
  do while(state%time < time_end .and. iter < itermax .and. state%Tg > Tdust_stop .and. writeline < nlmax)
     iter = iter+1
+    print*, '1D wind temp: ', state%Tg
     call wind_step(state)
 
     r_incr     = state%r
@@ -1029,7 +1033,7 @@ subroutine filewrite_header(iunit,nwrite)
 
  nwrite = 23
  write(fmt,*) nwrite
- write(iunit,'('// adjustl(fmt) //'(a12))') 't','r','v','T','c','p','u','rho','alpha','a',&
+ write(iunit,'('// adjustl(fmt) //'(a17))') 't','r','v','T','c','p','u','rho','alpha','a',&
        'mu','S','Jstar','K0','K1','K2','K3','tau_lucy','kappa','tau','Tdust','gamma','Q'
 end subroutine filewrite_header
 
@@ -1080,7 +1084,7 @@ subroutine filewrite_state(iunit,nwrite, state)
 
  call state_to_array(state, array)
  write(fmt,*) nwrite
- write(iunit,'('// adjustl(fmt) //'(1x,es11.3E3:))') array(1:nwrite)
+ write(iunit,'('// adjustl(fmt) //'(1x,es16.8E3:))') array(1:nwrite)
 !  write(iunit, '(22(1x,es11.3E3:))') array(1:nwrite)
 
 end subroutine filewrite_state

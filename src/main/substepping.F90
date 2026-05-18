@@ -970,14 +970,16 @@ end subroutine get_force
 !------------------------------------------------------------------------------------
 subroutine cooling_abundances_update(i,pmassi,xyzh,vxyzu,eos_vars,abundance,nucleation,dust_temp, &
                                      divcurlv,abundc,abunde,abundo,abundsi,dt,dphot0,isionisedi)
- use dim,             only:h2chemistry,do_nucleation,use_krome,update_muGamma,store_dust_temperature
- use part,            only:idK2,idmu,idkappa,idgamma,imu,igamma,nabundances
+ use dim,             only:h2chemistry,do_nucleation,use_krome,update_muGamma,store_dust_temperature, &
+                           nabn_AGB
+ use part,            only:idK2,idK3,idmu,idkappa,idgamma,imu,igamma,nabundances
  use cooling_ism,     only:nabn,dphotflag
  use options,         only:icooling
  use chem,            only:update_abundances,get_dphot
- use dust_formation,  only:evolve_dust,calc_muGamma
+ use dust_formation,  only:evolve_dust,calc_muGamma,chemical_equilibrium_light
  use cooling,         only:energ_cooling,cooling_in_step
  use part,            only:rhoh
+ use physcon,         only:Rg
 #ifdef KROME
  use part,            only: T_gas_cool
  use krome_interface, only: update_krome
@@ -994,7 +996,7 @@ subroutine cooling_abundances_update(i,pmassi,xyzh,vxyzu,eos_vars,abundance,nucl
  integer,      intent(in)    :: i
 
  real :: dudtcool,rhoi,dphot,pH,pH_tot
- real :: abundi(nabn)
+ real, allocatable :: abundi(:)
 
  dudtcool = 0.
  rhoi = rhoh(xyzh(4,i),pmassi)
@@ -1002,6 +1004,7 @@ subroutine cooling_abundances_update(i,pmassi,xyzh,vxyzu,eos_vars,abundance,nucl
  ! CHEMISTRY
  !
  if (h2chemistry) then
+   allocate(abundi(nabn))
     !
     ! Get updated abundances of all species, updates 'chemarrays',
     !
@@ -1039,7 +1042,8 @@ subroutine cooling_abundances_update(i,pmassi,xyzh,vxyzu,eos_vars,abundance,nucl
        ! cooling with stored dust temperature
        if (do_nucleation) then
           call energ_cooling(xyzh(1,i),xyzh(2,i),xyzh(3,i),vxyzu(4,i),rhoi,dt,divcurlv(1,i),dudtcool,&
-                    dust_temp(i),nucleation(idmu,i),nucleation(idgamma,i),nucleation(idK2,i),nucleation(idkappa,i))
+                    dust_temp(i),nucleation(idmu,i),nucleation(idgamma,i),nucleation(idK2,i),nucleation(idkappa,i),&
+                    nucleation(idk3,i))
        elseif (update_muGamma) then
           call energ_cooling(xyzh(1,i),xyzh(2,i),xyzh(3,i),vxyzu(4,i),rhoi,dt,divcurlv(1,i),dudtcool,&
                     dust_temp(i),eos_vars(imu,i), eos_vars(igamma,i))
@@ -1052,6 +1056,7 @@ subroutine cooling_abundances_update(i,pmassi,xyzh,vxyzu,eos_vars,abundance,nucl
     endif
  endif
 #endif
+ if (allocated(abundi)) deallocate(abundi)
  ! update internal energy
  if (isionisedi .or. icooling == 9) dudtcool = 0.
  if (cooling_in_step .or. use_krome) vxyzu(4,i) = vxyzu(4,i) + dt * dudtcool

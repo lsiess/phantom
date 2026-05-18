@@ -69,6 +69,7 @@ subroutine init_cooling(id,master,iprint,ierr)
  use cooling_ism,       only:init_cooling_ism,abund_default
  use cooling_koyamainutsuka, only:init_cooling_KI02
  use cooling_solver,         only:init_cooling_solver
+ use cooling_AGBwinds,  only:init_cooling_AGB
  use cooling_radapprox, only:init_star
  use viscosity,         only:irealvisc
 
@@ -128,36 +129,41 @@ end subroutine init_cooling
 !
 !-----------------------------------------------------------------------
 
-subroutine energ_cooling(xi,yi,zi,ui,rho,dt,divv,dudt,Tdust_in,mu_in,gamma_in,K2_in,kappa_in,abund_in,duhydro,ipart)
+subroutine energ_cooling(xi,yi,zi,ui,rho,dt,divv,dudt,Tdust_in,mu_in,gamma_in,K2_in,kappa_in,K3_in,abund_in,duhydro,ipart)
  use io,      only:fatal
- use dim,     only:nabundances
+ use dim,     only:nabundances,nabn_AGB
  use eos,     only:gmw,gamma,ieos,get_temperature_from_u
  use chem,    only:get_extra_abundances
  use cooling_ism,            only:nabn,energ_cooling_ism,abund_default,abundc,abunde,abundo,abundsi
+ use cooling_AGBwinds,       only:energ_cooling_AGB
+ use dust_formation,         only:chemical_equilibrium_light
  use cooling_gammie,         only:cooling_Gammie_explicit
  use cooling_gammie_PL,      only:cooling_Gammie_PL_explicit
  use cooling_solver,         only:energ_cooling_solver
  use cooling_koyamainutsuka, only:cooling_KoyamaInutsuka_explicit,&
                                   cooling_KoyamaInutsuka_implicit
  use cooling_radapprox,      only:radcool_update_du
+ use physcon,                only:Rg
 
  real(kind=4), intent(in)   :: divv               ! in code units
  real, intent(in)           :: xi,yi,zi,ui,rho,dt                      ! in code units
- real, intent(in), optional :: Tdust_in,mu_in,gamma_in,K2_in,kappa_in   ! in cgs
+ real, intent(in), optional :: Tdust_in,mu_in,gamma_in,K2_in,kappa_in,K3_in   ! in cgs
  real, intent(in), optional :: abund_in(nabn),duhydro
  integer,intent(in),optional:: ipart
  real, intent(out)          :: dudt                                ! in code units
- real                       :: mui,gammai,Tgas,Tdust,K2,kappa
- real :: abundi(nabn)
+ real                       :: mui,gammai,Tgas,Tdust,K2,K3,kappa
+ real                       :: abundi(nabn)
 
  dudt   = 0.
  mui    = gmw
  gammai = gamma
  kappa  = 0.
  K2     = 0.
+ K3     = 0.
  if (present(gamma_in)) gammai = gamma_in
  if (present(mu_in))    mui        = mu_in
  if (present(K2_in))    K2        = K2_in
+ if (present(K3_in))    K3        = K3_in
  if (present(kappa_in)) kappa     = kappa_in
  if (gammai < 1.) call fatal('energ_cooling','gamma < 1')
  if (present(abund_in)) then
@@ -185,7 +191,7 @@ subroutine energ_cooling(xi,yi,zi,ui,rho,dt,divv,dudt,Tdust_in,mu_in,gamma_in,K2
  case (9)
     call radcool_update_du(ipart,xi,yi,zi,rho,ui,duhydro,Tfloor)
  case default
-    call energ_cooling_solver(ui,dudt,rho,dt,mui,gammai,Tdust,K2,kappa)
+    call energ_cooling_solver(ui,dudt,rho,dt,mui,gammai,Tdust,K2,K3,kappa,divv)
  end select
 
 end subroutine energ_cooling
