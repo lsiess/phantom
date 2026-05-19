@@ -45,7 +45,7 @@ module wind
     real :: dt,time,r,r0,Rstar,v,a,time_end,Tg,Tdust,vwind,vinfty
     real :: alpha,rho,p,u,c,dalpha_dr,r_old,Q,dQ_dr
     real :: kappa,mu,gamma,tau_lucy,alpha_Edd,tau
-    real :: JKmuS(n_nucleation),K2
+    real :: JKmuS(n_nucleation),K2,K3
     integer :: spcode, nsteps
     logical :: dt_force, error, find_sonic_solution
  end type wind_state
@@ -167,6 +167,7 @@ subroutine init_wind(params,time_end,state,tau_lucy_init)
 
  state%alpha_Edd = 0.
  state%K2        = 0.
+ state%K3        = 0.
  state%mu        = gmw
  state%gamma     = wind_gamma
  state%JKmuS     = 0.
@@ -237,6 +238,7 @@ subroutine wind_step(params,state)
     !state%Tg   = state%u*(state%gamma-1.)/Rg*state%mu
     call evolve_chem(state%dt,state%Tg,state%rho,state%JKmuS)
     state%K2             = state%JKmuS(idK2)
+    state%K3             = state%JKmuS(idK3)
     state%mu             = state%JKmuS(idmu)
     state%gamma          = state%JKmuS(idgamma)
     state%kappa          = calc_kappa_dust(state%JKmuS(idK3),state%Tdust,state%rho)
@@ -366,6 +368,7 @@ subroutine wind_step(params,state)
  if (idust_opacity == 2) then
     call evolve_chem(state%dt,state%Tg,state%rho,state%JKmuS)
     state%K2        = state%JKmuS(idK2)
+    state%K3        = state%JKmuS(idK3)
     state%mu        = state%JKmuS(idmu)
     state%gamma     = state%JKmuS(idgamma)
     state%kappa     = calc_kappa_dust(state%JKmuS(idK3),state%Tdust,state%rho)
@@ -455,7 +458,7 @@ subroutine wind_step(params,state)
  if (icooling > 0) then
     Q_old = state%Q
     call calc_cooling_rate(Q_code,dlnQ_dlnT,real(state%rho/unit_density),state%Tg,state%Tdust,&
-         state%mu,state%gamma,state%K2,state%kappa)
+         state%mu,state%gamma,state%K2,state%K3,state%kappa)
     state%Q = Q_code*unit_ergg/utime
     state%dQ_dr = (state%Q-Q_old)/(1.e-10+state%r-state%r_old)
  endif
