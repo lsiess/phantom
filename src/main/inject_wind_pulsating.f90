@@ -14,7 +14,6 @@ module inject
 !
 ! :Runtime parameters:
 !   - iboundary_spheres   : *number of boundary spheres (integer)*
-!   - n_profile_points    : *number of points in stellar profile calculation (integer)*
 !   - n_shells            : *total number of shells (integer, if <0 determined automatically from n_particles)*
 !   - n_particles_first   : *particles on first shell (0=disabled, >0 builds shells until <100 particles/shell)*
 !   - rho_power           : *density profile exponent: rho ~ r^(-rho_power)*
@@ -24,7 +23,6 @@ module inject
 !   - piston_velocity     : *piston velocity amplitude (km/s)*
 !   - rho_inner           : *density at inner boundary r_min (cgs)*
 !   - wind_type           : *wind type: 1=prescribed, 2=period from mass-radius relation*
-!   - pulsation_timestep  : *pulsation timestep as fraction of pulsation period*
 !   - phi0                : *initial phase offset (radians)*
 !   - wind_shell_spacing  : *fraction of tangential and radial distance between particles*
 !   - reinject_enabled    : *enable dynamic reinjection (logical)*
@@ -32,12 +30,12 @@ module inject
 !   - mass_loss_start     : *start time for mass-loss calculation in years*
 !   - mass_loss_end       : *end time for mass-loss calculation in years*
 !   - check_radius_au     : *radius within which to count mass (AU)*
-!   - meas_int_days       : *interval for mass measurements in days*
 !
 ! :Dependencies: dim, eos, icosahedron, infile_utils, injectutils, io,
 !   part, partinject, physcon, units, set_star
 !
  use io, only:fatal
+ use physcon,only:piontwo
  implicit none
  character(len=*), parameter, public :: inject_type = 'pulsation'
 
@@ -52,26 +50,22 @@ module inject
  real    :: min_particles_shell   = 100.
  real    :: rho_power             = 4.0
  real    :: r_min_on_rstar        = 0.9
- real    :: r_max_on_rstar        = 1.4
+ real    :: r_max_on_rstar        = 1.4 !@LS potentially go aways
  real    :: dtpulsation           = huge(0.)
  real    :: pulsation_period_days = 300.0
  real    :: piston_velocity_km_s  = 4.0
- real    :: time_puls             = -1.0
  real    :: rho_inner             = 1.0e-12
  integer :: wind_type             = 1
- real    :: pulsation_timestep    = 0.02
- real    :: phi0                  = -3.1415926536d0/2.0
+ real    :: phi0                  = -piontwo
  real    :: wind_shell_spacing    = 1.0
- integer :: var_boundary          = 0
  integer :: save_period           = 0
- integer :: dumps_p_period        = 10
+ integer :: dumps_p_period        = 10 !@ should go away
 
  integer :: reinject_enabled      = 1
- real    :: reinject_period_d     = 0.025
- real    :: meas_int_d            = 0.025
- real    :: mass_loss_start       = 1.0
- real    :: mass_loss_end         = 3.0
- real    :: check_radius_au       = 3.0
+ integer :: ninject_period        = 40
+ real    :: mass_loss_start       = 2.0
+ real    :: mass_loss_end         = 4.0
+ real    :: check_radius_au       = 3.0 !@LS sholuld be defined based on the envelope mass
  integer :: update_L              = 0
  integer :: verbose               = 1
 
@@ -100,8 +94,7 @@ module inject
  integer :: n_shells_bnd
 
  real, allocatable    :: r_boundary_equilibrium(:)
- integer, allocatable :: boundary_particle_ids(:)
- integer              :: n_boundary_particles
+ integer              :: n_boundary_particles !@LS could potentially be removed ?
  integer              :: active_boundary_spheres
 
  logical :: reinjection_needed = .false.
@@ -132,7 +125,7 @@ subroutine set_default_options_inject(flag)
  integer, optional, intent(in) :: flag
 
  iboundary_spheres     = 5
- n_profile_points      = 10000
+ n_profile_points      = 10000 !@LS quite large
  n_shells              = 15
  n_particles_first     = 0
  min_particles_shell   = 100.
@@ -144,16 +137,12 @@ subroutine set_default_options_inject(flag)
  wind_type             = 1
  pulsation_period_days = 300.0
  piston_velocity_km_s  = 4.0
- time_puls             = -1.0
- pulsation_timestep    = 0.02
  phi0                  = -3.1415926536d0/2.0
  wind_shell_spacing    = 1.0
- var_boundary          = 0
  save_period           = 0
  dumps_p_period        = 10
  reinject_enabled      = 1
- reinject_period_d     = 0.025
- meas_int_d            = 0.025
+ ninject_period        = 40
  mass_loss_start       = 1.0
  mass_loss_end         = 3.0
  check_radius_au       = 3.0
@@ -214,11 +203,6 @@ subroutine init_inject(ierr)
        close(iunit, status='delete')
  endif
 
- if (.not. file_exists) then
-    print *,'@1 - dont see the need for redefining xyazhm_ptmass(4,1) ?'
-    xyzmh_ptmass(4, wind_emitting_sink) = Msink
- endif
-
  active_boundary_spheres = iboundary_spheres
 
  if (wind_type == 2 .and. .not. file_exists) call calculate_period(Mtotal, Rstar, pulsation_period_days)
@@ -238,8 +222,8 @@ subroutine init_inject(ierr)
     print *, 'dtmax: ', dtmax
  endif
 
- reinject_period        = reinject_period_d * pulsation_period
- measurement_interval   = meas_int_d        * pulsation_period
+ reinject_period        = pulsation_period/real(ninject_period)
+ measurement_interval   = reinject_period
  mass_loss_start_time   = mass_loss_start   * pulsation_period
  mass_loss_end_time     = mass_loss_end     * pulsation_period
  mass_loss_check_radius = check_radius_au
@@ -262,6 +246,8 @@ subroutine init_inject(ierr)
     max_shells = 200
  endif
  print *,'@3 - can we get rid of n_shells and n_particles_first ?'
+ print *,'@solution : remove max_shells, rmin and rmax. sert rmax based on drop in particle number a few % of  n_particles_first --&
+      &> rename npart_in and radius ": a fraction of Rstar'
 
  !+
  ! determine the number of particles per shell and their radial distribution
@@ -274,27 +260,24 @@ subroutine init_inject(ierr)
     do
        shell_index = shell_index + 1
        if (shell_index > max_shells_tmp) then
-          print *,'@4 - this cannot be done automatically, needs file edition, can we get rid of it ?'
+          print *,'@4 - this can be done automatically, needs file edition, can we get rid of it ?'
           call fatal(label,'max_shells_tmp exceeded; increase max_shells_tmp')
        endif
 
        if (shell_index == 1) then
           n_shell = n_particles_first
        else
-          print *,'@5 - fixed an error in the expressionof n_shell'
-          n_shell = max(1,nint(real(tmp_n(shell_index-1))*(current_radius/tmp_r(shell_index-1))**(2.*(1.-rho_power/3.))))
-       endif
-
-       dr = 0.
-
-       if (shell_index > 1 .and. n_shell < int_particles_outer) then
-          shell_index = shell_index - 1
-          print *,'@6 - why do you remove dr, it has just been set to zero ?'
-          r_max = current_radius - dr
-          exit
+          n_shell = max(1,nint(real(tmp_n(shell_index-1))*(current_radius/tmp_r(shell_index-1))**(2.*(3.-rho_power)/3.)))
        endif
 
        dr = wind_shell_spacing * current_radius * get_neighb_distance(n_shell)
+
+       if (shell_index > 1 .and. n_shell < int_particles_outer) then
+          shell_index = shell_index - 1
+          r_max = current_radius - dr
+          print *,'@5 r_max should be defined based on the mass increment'
+          exit
+       endif
 
        tmp_dr(shell_index) = dr
        tmp_r(shell_index)  = current_radius
@@ -339,19 +322,12 @@ subroutine init_inject(ierr)
     enddo
  endif
 
- print *,'@7 - same call ? no need to test n_particles_first ?'
- if (n_particles_first > 0 ) then
-    call setup_star(Msink * umass, Tstar, r_max * au, r_min  *au, &
+ call setup_star(Msink * umass, Tstar, r_max * au, r_min  *au, &
                gmw, gamma, rho_inner, rho_power)
- else
-    call setup_star(Msink * umass, Tstar, r_max * au, r_min  *au, &
-               gmw, gamma, rho_inner, rho_power)
- endif
 
  !+
  ! determine hydrostatic profile
  !+
- print *,'@9 - we can easily remove n_profile_points'
  call calc_stellar_profile(n_profile_points)
 
  mass_of_gas_particle = region_mass(r_min, r_max) / real(sum(tmp_n(1:shell_index)))
@@ -438,6 +414,7 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,npar
  integer, intent(inout) :: npart,npart_old
  integer, intent(inout) :: npartoftype(:)
  real,    intent(out)   :: dtinject
+ real, parameter :: pulsation_timestep = 0.02
 
  dtinject = pulsation_timestep * pulsation_period
 
@@ -454,7 +431,7 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,npar
     return
  endif
 
- if (atmosphere_setup_complete .and. .not. allocated(boundary_particle_ids)) then
+ if (atmosphere_setup_complete) then
     call reconstruct_boundary_info(time,xyzh,npart,xyzmh_ptmass)
     time_last_reinject = time - mod(time, reinject_period)
     call read_mass_loss_data()
@@ -465,8 +442,7 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,npar
  endif
 
  if (reinject_enabled == 1 .and. mass_loss_rate_calculated) then
-    call check_continuous_reinject(time,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,npart,npartoftype)
-    if (reinjection_needed) then
+    if ((time - time_last_reinject) < reinject_period .and. time >= mass_loss_start_time) then
        call perform_reinjection(time,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,npart,npartoftype)
        time_last_reinject = time
        reinjection_needed = .false.
@@ -494,7 +470,7 @@ subroutine take_periodic_mass_measurements(time,xyzh,npart,xyzmh_ptmass,npartoft
  real    :: current_mass_within_radius, mass_lost, rate_this_interval
  real    :: sink_mass, x0(3), dx, dy, dz, r2, rcheck2
  real    :: sum_rates
- integer :: i
+ integer :: i,ncount
 
  rcheck2 = mass_loss_check_radius**2
  if (.not. measurement_active .and. time >= mass_loss_start_time) then
@@ -502,53 +478,41 @@ subroutine take_periodic_mass_measurements(time,xyzh,npart,xyzmh_ptmass,npartoft
     x0        = xyzmh_ptmass(1:3, wind_emitting_sink)
     sink_mass = xyzmh_ptmass(4,   wind_emitting_sink)
     mass_previous_measurement = sink_mass
-    print *,'@10 - in our setup could the gas and boundary particles have a differnet ? If not remove test in do loop'
+    ncount = 0
     !$omp parallel do default(none) &
-    !$omp shared(npart,x0,xyzh,rcheck2,iphase) &
-    !$omp shared(mass_of_gas_particle,mass_of_boundary_particle) &
+    !$omp shared(npart,x0,xyzh,rcheck2) &
     !$omp private(i,r2,dx,dy,dz) &
-    !$omp reduction(+:mass_previous_measurement)
+    !$omp reduction(+:ncount)
     do i = 1, npart
        dx = xyzh(1,i) - x0(1)
        dy = xyzh(2,i) - x0(2)
        dz = xyzh(3,i) - x0(3)
        r2  = dx**2 + dy**2 + dz**2
-       if (r2 <= rcheck2) then
-          if (iamtype(iphase(i)) == iboundary) then
-             mass_previous_measurement = mass_previous_measurement + mass_of_boundary_particle
-          else
-             mass_previous_measurement = mass_previous_measurement + mass_of_gas_particle
-          endif
-       endif
+       if (r2 <= rcheck2) ncount = ncount+1
     enddo
     !$omp end parallel do
+    mass_previous_measurement = ncount*mass_of_gas_particle
     time_next_measurement = time + measurement_interval
  endif
 
  if (measurement_active .and. time >= time_next_measurement .and. time < mass_loss_end_time) then
-    print *,'@10 - in our setup could the gas and boundary particles have a differnet ? If not remove test in do loop'
     x0        = xyzmh_ptmass(1:3, wind_emitting_sink)
     sink_mass = xyzmh_ptmass(4,   wind_emitting_sink)
     current_mass_within_radius = sink_mass
+    ncount = 0
     !$omp parallel do default(none) &
-    !$omp shared(npart,x0,xyzh,rcheck2,iphase) &
-    !$omp shared(mass_of_gas_particle,mass_of_boundary_particle) &
+    !$omp shared(npart,x0,xyzh,rcheck2) &
     !$omp private(i,r2,dx,dy,dz) &
-    !$omp reduction(+:current_mass_within_radius)
+    !$omp reduction(+:ncount)
     do i = 1, npart
        dx = xyzh(1,i) - x0(1)
        dy = xyzh(2,i) - x0(2)
        dz = xyzh(3,i) - x0(3)
        r2  = dx**2 + dy**2 + dz**2
-       if (r2 <= rcheck2) then
-          if (iamtype(iphase(i)) == iboundary) then
-             current_mass_within_radius = current_mass_within_radius + mass_of_boundary_particle
-          else
-             current_mass_within_radius = current_mass_within_radius + mass_of_gas_particle
-          endif
-       endif
+       if (r2 <= rcheck2) ncount =- ncount+1
     enddo
     !$omp end parallel do
+    current_mass_within_radius = ncount*mass_of_gas_particle
     mass_lost          = mass_previous_measurement - current_mass_within_radius
     rate_this_interval = mass_lost / measurement_interval
     n_measurements     = n_measurements + 1
@@ -569,37 +533,6 @@ subroutine take_periodic_mass_measurements(time,xyzh,npart,xyzmh_ptmass,npartoft
  endif
 
 end subroutine take_periodic_mass_measurements
-
-!----------------------------------------------------------------
-!+
-!  Checks when to reinject
-!+
-!----------------------------------------------------------------
-subroutine check_continuous_reinject(time,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,npart,npartoftype)
- use units,  only:utime
- use physcon,only:days
-
- real,    intent(in)    :: time
- real,    intent(inout) :: xyzh(:,:),vxyzu(:,:),xyzmh_ptmass(:,:),vxyz_ptmass(:,:)
- integer, intent(inout) :: npart
- integer, intent(inout) :: npartoftype(:)
-
- print *,'@11 - clean up arguments, almost none are used, should be a function that returns reinjection_needed '
-
- if ((time - time_last_reinject) < reinject_period .and. time >= mass_loss_start_time) return
-
- if (verbose == 1) then
-    print *, ''
-    print *, '-----------------------------------------'
-    print *, 'Reinjection triggered at time: ', time * (utime / days), ' days'
-    print *, 'Time since last reinject: ', (time - time_last_reinject)*utime/days, ' days'
-    print *, '-----------------------------------------'
-    print *, ''
- endif
-
- reinjection_needed = .true.
-
-end subroutine check_continuous_reinject
 
 !----------------------------------------------------------------
 !+
@@ -677,8 +610,8 @@ subroutine setup_initial_atmosphere(xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,npart,np
  integer, intent(inout) :: npart
  integer, intent(inout) :: npartoftype(:)
 
- integer :: i, j, first_particle, nboundary
- real    :: r, r_cur, rho, u, T, P, x0(3), v0(3), v_radial
+ integer :: i, first_particle, nboundary
+ real    :: r, rho, u, T, P, x0(3), v0(3), v_radial
 
 
  x0 = xyzmh_ptmass(1:3, wind_emitting_sink)
@@ -689,11 +622,8 @@ subroutine setup_initial_atmosphere(xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,npart,np
 !+
 ! setup boundary shells
 !+
- print *,'@12 - r_cur never used ?  '
- r_cur = shell_radii_bnd(1) ! - 0.5*delta_r_boundary(1)
  do i = 1, n_shells_bnd
     r     = shell_radii_bnd(i)
-    r_cur = r_cur + delta_r_boundary(i)
     call interp_stellar_profile(r, rho, P, u, T)
     v_radial       = 0.0
     first_particle = npart + 1
@@ -714,28 +644,17 @@ subroutine setup_initial_atmosphere(xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,npart,np
  enddo
 
  nboundary            = npartoftype(iboundary)
- n_boundary_particles = nboundary
 
  print *, 'Boundary particles : ', nboundary
  print *, 'Gas particles      : ', npartoftype(igas)
 
  if (nboundary > 0) then
     allocate(r_boundary_equilibrium(nboundary))
-    allocate(boundary_particle_ids(nboundary))
-
-    print *,'@13 - this loop could be simplified/speed up. You know where the boundary particles are stored in the memory: ',&
-         'between 1 and  sum(npart_per_boundary_shell(1:n_shells_bnd)), so just iterate over this range and remnove if '
-    j = 0
-    do i = 1, npart
-       if (j >= nboundary) exit
-       if (iamtype(iphase(i)) == iboundary) then
-          j = j + 1
-          boundary_particle_ids(j) = i
-          r_boundary_equilibrium(j) = sqrt( (xyzh(1,i)-x0(1))**2 + &
-                                            (xyzh(2,i)-x0(2))**2 + &
-                                            (xyzh(3,i)-x0(3))**2 ) &
-                                      - deltaR_osc * sin(phi0)
-       endif
+    do i = 1, nboundary
+       r_boundary_equilibrium(i) = sqrt( (xyzh(1,i)-x0(1))**2 + &
+                                         (xyzh(2,i)-x0(2))**2 + &
+                                         (xyzh(3,i)-x0(3))**2 ) &
+                                        - deltaR_osc * sin(phi0)
     enddo
  endif
 
@@ -747,7 +666,7 @@ end subroutine setup_initial_atmosphere
 !+
 !----------------------------------------------------------------
 subroutine reconstruct_boundary_info(time,xyzh,npart,xyzmh_ptmass)
- use part,   only:iboundary,iphase,iamtype
+ use part,   only:iboundary,iphase,iamtype,npartoftype
  use physcon,only:pi
 
  real,    intent(in) :: time
@@ -759,27 +678,16 @@ subroutine reconstruct_boundary_info(time,xyzh,npart,xyzmh_ptmass)
  x0    = xyzmh_ptmass(1:3, wind_emitting_sink)
  phase = omega_pulsation * time + phi0
 
- n_boundary_particles = 0
- print *,'@14 - isnt the number of each particle type stored in the dumnp and  n_boundary_particles=npartoftype(iboundary) ?'
- do i = 1, npart
-    if (iamtype(iphase(i)) == iboundary) n_boundary_particles = n_boundary_particles + 1
- enddo
+ n_boundary_particles = npartoftype(3)
 
  if (n_boundary_particles > 0) then
     allocate(r_boundary_equilibrium(n_boundary_particles))
-    allocate(boundary_particle_ids(n_boundary_particles))
 
-    j = 0
- print *,'@15 - again, here we can take advantage of the fact that we know where boundary particles are stored inthe memory ?'
-    do i = 1, npart
-       if (iamtype(iphase(i)) == iboundary) then
-          j = j + 1
-          boundary_particle_ids(j) = i
+    do i = 1, n_boundary_particles
           r_current = sqrt((xyzh(1,i)-x0(1))**2 + &
                            (xyzh(2,i)-x0(2))**2 + &
                            (xyzh(3,i)-x0(3))**2)
-          r_boundary_equilibrium(j) = r_current - deltaR_osc * sin(phase)
-       endif
+          r_boundary_equilibrium(i) = r_current - deltaR_osc * sin(phase)
     enddo
 
     print *, 'Reconstructed boundary particle info:'
@@ -808,7 +716,6 @@ subroutine apply_pulsation(time,xyzh,vxyzu,npart,xyzmh_ptmass,vxyz_ptmass)
  real    :: x, y, z, rho, u, T, P
  real    :: Reff, Teff, Lum
 
- if (.not. allocated(boundary_particle_ids)) return
  if (n_boundary_particles == 0) return
 
  x0 = xyzmh_ptmass(1:3, wind_emitting_sink)
@@ -817,43 +724,28 @@ subroutine apply_pulsation(time,xyzh,vxyzu,npart,xyzmh_ptmass,vxyz_ptmass)
  phase      = omega_pulsation * time + phi0
  deltaR_osc = pulsation_period * piston_velocity / (2.0 * pi)
 
- if (time < pulsation_period * time_puls .and. time_puls > 0) then
-    alpha = time / (pulsation_period * time_puls)
- else
-    alpha = 1.0
- endif
-
- r_dot = alpha * piston_velocity * cos(phase)
- print *,'@16 - I dont really understand this expression of r_new with this alpha  ?'
+ r_dot = piston_velocity * cos(phase)
 
  do i = 1, n_boundary_particles
-    ipart = boundary_particle_ids(i)
     r_eq  = r_boundary_equilibrium(i)
+    r_new = r_eq + deltaR_osc * sin(phase)
 
-    r_new = r_eq + deltaR_osc * (sin(phi0) * (1.0 - alpha) + alpha * sin(phase))
-
-    x = xyzh(1,ipart) - x0(1)
-    y = xyzh(2,ipart) - x0(2)
-    z = xyzh(3,ipart) - x0(3)
+    x = xyzh(1,i) - x0(1)
+    y = xyzh(2,i) - x0(2)
+    z = xyzh(3,i) - x0(3)
     r_current = sqrt(x**2 + y**2 + z**2)
 
     x_hat(1) = x / r_current
     x_hat(2) = y / r_current
     x_hat(3) = z / r_current
 
-    xyzh(1,ipart) = r_new * x_hat(1) + x0(1)
-    xyzh(2,ipart) = r_new * x_hat(2) + x0(2)
-    xyzh(3,ipart) = r_new * x_hat(3) + x0(3)
+    xyzh(1,i) = r_new * x_hat(1) + x0(1)
+    xyzh(2,i) = r_new * x_hat(2) + x0(2)
+    xyzh(3,i) = r_new * x_hat(3) + x0(3)
 
-    vxyzu(1,ipart) = r_dot * x_hat(1) + v0(1)
-    vxyzu(2,ipart) = r_dot * x_hat(2) + v0(2)
-    vxyzu(3,ipart) = r_dot * x_hat(3) + v0(3)
-
-    if (var_boundary == 1) then
-       call interp_stellar_profile(r_new, rho, P, u, T)
-       vxyzu(4,ipart) = u
-       xyzh(4,ipart)  = (mass_of_boundary_particle / rho)**(1./3.)
-    endif
+    vxyzu(1,i) = r_dot * x_hat(1) + v0(1)
+    vxyzu(2,i) = r_dot * x_hat(2) + v0(2)
+    vxyzu(3,i) = r_dot * x_hat(3) + v0(3)
 
     if (update_L == 1) then
        Reff = xyzmh_ptmass(iReff,1) + deltaR_osc * (sin(phi0) * (1.0 - alpha) + alpha * sin(phase))
@@ -984,8 +876,7 @@ subroutine calculate_period(M, R, pulsation_period_days)
  real, intent(out) :: pulsation_period_days
  real :: logP, logM, logR
 
- print *,'@17 - add a reference to that formula in the header'
-
+ !from Ostlie, D. A., and Cox, A. N. 1986, Ap. J., 311,864.
  logM = log10(M)
  logR = log10(R * 215.032)
  logP = -1.92 - 0.73*logM + 1.86*logR
@@ -1008,25 +899,20 @@ subroutine write_options_inject(iunit)
  call write_inopt(wind_shell_spacing,   'wind_shell_spacing',  'radial/tangential spacing ratio',iunit)
  call write_inopt(iboundary_spheres,    'iboundary_spheres',   'number of boundary spheres (piston layers)',iunit)
  call write_inopt(pulsation_period_days,'pulsation_period',    'pulsation period (days)',iunit)
- call write_inopt(pulsation_timestep,   'pulsation_timestep',  'pulsation timestep as fraction of period',iunit)
  call write_inopt(piston_velocity_km_s, 'piston_velocity',     'piston velocity amplitude (km/s)',iunit)
  call write_inopt(phi0,                 'phi0',                'initial phase offset (radians)',iunit)
  call write_inopt(rho_inner,            'rho_inner',           'inner boundary density at r_min (cgs)',iunit)
  call write_inopt(rho_power,            'rho_power',           'density profile exponent: rho ~ r^(-rho_power)',iunit)
  call write_inopt(reinject_enabled,     'reinject_enabled',    'enable dynamic reinjection (0=off, 1=on)',iunit)
- call write_inopt(reinject_period_d,    'reinject_period_d',   'period between reinjections (periods)',iunit)
+ call write_inopt(ninject_period,       'ninject_period',      'number of injection per period',iunit)
 
- call write_inopt(n_profile_points,     'n_profile_points',    'number of points in stellar profile',iunit)
  call write_inopt(n_shells,             'n_shells',            'number of gas shells (if <0 determined from n_particles)',iunit)
  call write_inopt(n_particles_first,    'n_particles_first',   'particles on first shell (0=disabled)',iunit)
  call write_inopt(min_particles_shell,  'min_particles_shell', 'minimum particles per shell when using n_particles_first',iunit)
  call write_inopt(r_min_on_rstar,       'r_min_on_rstar',      'gas atmosphere inner radius as fraction of R_star',iunit)
  call write_inopt(r_max_on_rstar,       'r_max_on_rstar',      'gas atmosphere outer radius as fraction of R_star',iunit)
- call write_inopt(time_puls,            'time_puls',           'time for piston to ramp up (in periods, -1=instant)',iunit)
- call write_inopt(var_boundary,         'var_boundary',        'update boundary thermo with pulsation (0=off, 1=on)',iunit)
  call write_inopt(save_period,          'save_period',         'wether to save dumps as fraction of period (0=off, 1=on)',iunit)
  call write_inopt(dumps_p_period,       'dumps_p_period',      'number of dumps per period (if save_period = 1)',iunit)
- call write_inopt(meas_int_d,          'meas_int_d',          'mass measurement interval (periods)',iunit)
  call write_inopt(mass_loss_start,      'mass_loss_start',     'start time for mass-loss calculation (periods)',iunit)
  call write_inopt(mass_loss_end,        'mass_loss_end',       'end time for mass-loss calculation (periods)',iunit)
  call write_inopt(check_radius_au,      'check_radius_au',     'mass-loss counting radius (AU)',iunit)
@@ -1058,24 +944,19 @@ subroutine read_options_inject(db,nerr)
 ! call read_inopt(outer_boundary_au,'outer_boundary',db,errcount=nerr,min=0.)
  !pulsation parameters
  call read_inopt(pulsation_period,'pulsation_period',db,min=0.,errcount=nerr)
- call read_inopt(pulsation_timestep,'pulsation_timestep',db,min=0.,max=1.,errcount=nerr)
  call read_inopt(piston_velocity,'piston_velocity',db,min=0.,errcount=nerr)
  call read_inopt(phi0,'phi0',db,min=-pi,max=pi,errcount=nerr)
  call read_inopt(rho_inner,'rho_inner',db,min=0.,errcount=nerr)
  call read_inopt(rho_power,'rho_power',db,min=0.,errcount=nerr)
  call read_inopt(reinject_enabled,'reinject_enabled',db,min=0,max=1,errcount=nerr)
- call read_inopt(reinject_period_d,'reinject_period_d',db,min=0.,errcount=nerr)
- call read_inopt(n_profile_points,     'n_profile_points',    db,min=11,errcount=nerr)
+ call read_inopt(ninject_period,'ninject_period',db,min=1,errcount=nerr)
  call read_inopt(n_shells,             'n_shells',            db,min=0,errcount=nerr)
  call read_inopt(n_particles_first,    'n_particles_first',   db,min=0,errcount=nerr)
  call read_inopt(min_particles_shell,  'min_particles_shell', db,min=0.,errcount=nerr)
  call read_inopt(r_min_on_rstar,       'r_min_on_rstar',      db,min=0.,max=2.,errcount=nerr)
  call read_inopt(r_max_on_rstar,       'r_max_on_rstar',      db,min=0.,errcount=nerr)
- call read_inopt(time_puls,            'time_puls',           db,min=-1.,errcount=nerr)
- call read_inopt(var_boundary,         'var_boundary',        db,min=0,max=1,errcount=nerr)
  call read_inopt(save_period,          'save_period',         db,min=0,max=1,errcount=nerr)
  call read_inopt(dumps_p_period,       'dumps_p_period',      db,min=0,errcount=nerr)
- call read_inopt(meas_int_d,           'meas_int_d',          db,min=0.,errcount=nerr)
  call read_inopt(mass_loss_start,      'mass_loss_start',     db,min=0.,errcount=nerr)
  call read_inopt(mass_loss_end,        'mass_loss_end',       db,min=0.,errcount=nerr)
  call read_inopt(check_radius_au,      'check_radius_au',     db,min=0.,errcount=nerr)

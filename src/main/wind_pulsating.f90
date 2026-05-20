@@ -191,42 +191,35 @@ end subroutine stellar_step
 subroutine calc_stellar_profile(n)
  integer, intent(in) :: n
  type(stellar_state) :: state
- real, dimension(:,:), allocatable :: tmp
+ real :: tmp(5)
  integer :: i
  real :: r_new, dr
 
  call init_atmosphere(state)
-
- allocate(tmp(5, n))
+ allocate(stellar_1D(5, n))
 
  ! dr is negative — stepping inward
  dr = (r_inner - Rstar_cgs) / real(n-1)
 
- tmp(1, 1) = state%r
- tmp(2, 1) = state%rho
- tmp(3, 1) = state%P
- tmp(4, 1) = state%u
- tmp(5, 1) = state%T
+ tmp(1) = state%r
+ tmp(2) = state%rho
+ tmp(3) = state%P
+ tmp(4) = state%u
+ tmp(5) = state%T
+ stellar_1D(:,n) = tmp
 
  do i = 2, n
     r_new = Rstar_cgs + real(i-1) * dr
     call stellar_step(state, r_new)
 
-    tmp(1, i) = state%r
-    tmp(2, i) = state%rho
-    tmp(3, i) = state%P
-    tmp(4, i) = state%u
-    tmp(5, i) = state%T
+    tmp(1) = state%r
+    tmp(2) = state%rho
+    tmp(3) = state%P
+    tmp(4) = state%u
+    tmp(5) = state%T
+    !it heare we should test the change in the variables for storing
+    stellar_1D(:, n+1-i) = tmp
  enddo
-
- print *,'@8 - can we avoid this by simply changing the indexes in the tmp arrays ? i -> n+1-i'
- ! Reverse so stellar_1D runs from r_inner (index 1) to Rstar (index n)
- if (allocated(stellar_1D)) deallocate(stellar_1D)
- allocate(stellar_1D(5, n))
- do i = 1, n
-    stellar_1D(:, i) = tmp(:, n+1-i)
- enddo
- deallocate(tmp)
 
  print *, ""
  print *, "Inner boundary conditions (after inward integration):"
@@ -306,6 +299,7 @@ subroutine save_stellarprofile(n, filename)
  open(unit=iunit, file=filename, status='replace')
  call filewrite_stellar_header(iunit, nwrite)
 
+ print *,'@ could be improve - reduce size of file see wind.f90'
  do i = 1, n
     call filewrite_stellar_state(iunit, nwrite, i)
  enddo
