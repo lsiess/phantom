@@ -40,8 +40,7 @@ module cooling_functions
            AGB_cooling, &
            cooling_dust_collision, &
            cooling_radiative_relaxation, &
-           testing_cooling_functions, &
-           set_freeze_out_abundances
+           testing_cooling_functions
 
  private
  real, parameter  :: xH = 0.7, xHe = 0.28 !assumed H and He mass fractions
@@ -133,20 +132,13 @@ subroutine AGB_cooling(T, Tdust, rho_cgs, mu, gamma, K3, Q_cgs, dlnQ_cgs, divv, 
  epsC = eps(3) - K3
  if (abundi(icoolTi) < 0.0) then
     ! skip abundance calculation (flag set in cooling_solver after first iteration of implicit loop)
-    ndens_H = rho_cgs / mass_per_H
-    abundi = abundi / ndens_H
  else
-    if (T > Tmol) then
-       ! compute chemical equilibrium abundances
-       call chemical_equilibrium_light(rho_cgs, T, epsC, mui, gammai, abundi)
-       ndens_H = rho_cgs / mass_per_H
-       abundi = abundi / ndens_H
-    else
-       ! use stored abundances at T=Tmol
-       call set_freeze_out_abundances(epsC, abundi, mui, gammai)
-    end if
+    ! compute chemical equilibrium abundances
+    call chemical_equilibrium_light(rho_cgs, T, epsC, mui, gammai, abundi)
  end if
 
+ ndens_H = rho_cgs / mass_per_H
+ abundi = abundi / ndens_H
  rhoi = rho_cgs / unit_density
 
  call energ_cooling_AGB(T,Tdust,rhoi,divv,mui,abundi,dudti)
@@ -974,40 +966,5 @@ real function heat_Compton(T_gas, rho_gas)
  endif
 
 end function heat_Compton
-
-!-----------------------------------------------------------------------
-!+
-!  Fixed chemical abundances for AGB cooling, at low temperature
-!+
-!-----------------------------------------------------------------------
-subroutine set_freeze_out_abundances(epsC, abundi, mu, gamma)
-! Abundances computed from equilibrium chemistry
-! at T = 800 K, rho_cgs = 1e-14 g/cm3
-! To be consistent with dust formation, we assume that all excess carbon is in C2H2
-! As long as we are only interested in cooling, we could actually set just the abundances of CO and H2.
- use dim, only:nabn_AGB
- use dust_formation, only:icoolH, icoolO, icoolSi, icoolH2, icoolCO, &
-                            icoolH2O, icoolOH, icoolC2H2, &
-                            icoolSiO, icoolS, icoolTi, icoolN, eps
-
- real, intent(in) :: epsC                         
- real, intent(inout) :: abundi(nabn_AGB), mu, gamma
- mu = 2.34437086092715d0
- gamma = 1.42958748221906d0
- abundi(:) = 1.d-70
- abundi(icoolH)    = 5.600d-08
- abundi(icoolH2)   = 3.083d-01
- abundi(icoolO)    = 1.796d-33
- abundi(icoolSi)   = 2.637d-10
- abundi(icoolH2O)  = 1.076d-16
- abundi(icoolCO)   = 3.671d-04
- abundi(icoolOH)   = 6.731d-27
- abundi(icoolSiO)  = 2.810d-06
- abundi(icoolS)    = 1.633d-21
- abundi(icoolTi)   = 5.302d-08
- abundi(icoolN)    = 5.412d-26
- abundi(icoolC2H2) = .5*(epsC-eps(4))
-
-end subroutine set_freeze_out_abundances
 
 end module cooling_functions

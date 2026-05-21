@@ -652,6 +652,7 @@ subroutine calc_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot, ppH2)
  T_ionisation_He = 10.**(a1 + log(rho_cgs)/log(10.) * b1 + (log(rho_cgs)/log(10.))**2 * c1)
  if (T > T_ionisation_He) then
     pH = pH_tot
+    pH2 = 0.
     mu = (1.+4.*eps(iHe))/(.5+eps(iHe)+0.5*pH/pH_tot) ! 0.62
     !  mu     = (1.+4.*eps(iHe))/(1.+eps(iHe))
  elseif (T > Tmol) then
@@ -784,7 +785,7 @@ subroutine chemical_equilibrium_light(rho_cgs, T_in, epsC, mu, gamma, abundi)
     return
  elseif (T < Tmol) then 
     abundi(:) = 0.
-    abundi(icoolH)    = 5.600d-08         *rho_cgs/(mass_per_H)
+    abundi(icoolH)    = 5.600d-08         *rho_cgs/(mass_per_H) ! Convert fractional abundances to number density
     abundi(icoolH2)   = 3.083d-01         *rho_cgs/(mass_per_H)
     abundi(icoolO)    = 1.796d-33         *rho_cgs/(mass_per_H)
     abundi(icoolSi)   = 2.637d-10         *rho_cgs/(mass_per_H)
@@ -796,7 +797,6 @@ subroutine chemical_equilibrium_light(rho_cgs, T_in, epsC, mu, gamma, abundi)
     abundi(icoolTi)   = 5.302d-08         *rho_cgs/(mass_per_H)
     abundi(icoolN)    = 5.412d-26         *rho_cgs/(mass_per_H)
     abundi(icoolC2H2) = .5*(epsC-eps(4))  *rho_cgs/(mass_per_H)
-    print*, "abundances at low Temp: H: ", abundi(icoolH), " H2: ", abundi(icoolH2)
     return
  endif
  
