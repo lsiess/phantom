@@ -161,6 +161,7 @@ subroutine implicit_cooling (ui, dudt, rho, dt, mu, gamma, Tdust, K2, K3, kappa,
  logical            :: converged, bisection
  real               :: deltaT, dfdT, dQdT, f
  real               :: Tnew, Tmin_bisect, Tmax_bisect
+ real, parameter    :: T_floor = 10.
 
  u       = ui
  T_on_u  = (gamma-1.)*mu*unit_ergg/Rg
@@ -238,7 +239,7 @@ subroutine implicit_cooling (ui, dudt, rho, dt, mu, gamma, Tdust, K2, K3, kappa,
  Tmid=T
 
 ! ------ End of Newton-Raphson  -------
-
+ Tmid = max(Tmid, T_floor)    ! To avoid negative internal energy
  u = Tmid/T_on_u
  dudt =(u-ui)/dt
  if (u < 0. .or. isnan(u)) then
@@ -620,6 +621,7 @@ end subroutine write_options_cooling_solver
 !-----------------------------------------------------------------------
 subroutine read_options_cooling_solver(db,nerr)
  use infile_utils, only:inopts,read_inopt
+ use dim, only:store_dust_temperature
  type(inopts), intent(inout) :: db(:)
  integer,      intent(inout) :: nerr
 

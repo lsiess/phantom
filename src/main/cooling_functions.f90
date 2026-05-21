@@ -40,7 +40,8 @@ module cooling_functions
            AGB_cooling, &
            cooling_dust_collision, &
            cooling_radiative_relaxation, &
-           testing_cooling_functions
+           testing_cooling_functions, &
+           set_freeze_out_abundances
 
  private
  real, parameter  :: xH = 0.7, xHe = 0.28 !assumed H and He mass fractions
@@ -132,18 +133,19 @@ subroutine AGB_cooling(T, Tdust, rho_cgs, mu, gamma, K3, Q_cgs, dlnQ_cgs, divv, 
  epsC = eps(3) - K3
  if (abundi(icoolTi) < 0.0) then
     ! skip abundance calculation (flag set in cooling_solver after first iteration of implicit loop)
+    ndens_H = rho_cgs / mass_per_H
+    abundi = abundi / ndens_H
  else
     if (T > Tmol) then
        ! compute chemical equilibrium abundances
        call chemical_equilibrium_light(rho_cgs, T, epsC, mui, gammai, abundi)
+       ndens_H = rho_cgs / mass_per_H
+       abundi = abundi / ndens_H
     else
        ! use stored abundances at T=Tmol
        call set_freeze_out_abundances(epsC, abundi, mui, gammai)
     end if
  end if
-
- ndens_H = rho_cgs / mass_per_H
- abundi = abundi / ndens_H
 
  rhoi = rho_cgs / unit_density
 
@@ -993,17 +995,17 @@ subroutine set_freeze_out_abundances(epsC, abundi, mu, gamma)
  mu = 2.34437086092715d0
  gamma = 1.42958748221906d0
  abundi(:) = 1.d-70
- abundi(icoolH)    = 9.083d-08
- abundi(icoolH2)   = 5.000d-01
- abundi(icoolO)    = 2.913d-33
- abundi(icoolSi)   = 4.278d-10
- abundi(icoolH2O)  = 1.745d-16
- abundi(icoolCO)   = 5.954d-04
- abundi(icoolOH)   = 1.092d-26
- abundi(icoolSiO)  = 4.558d-06
- abundi(icoolS)    = 2.649d-21
- abundi(icoolTi)   = 8.599d-08
- abundi(icoolN)    = 8.779d-26
+ abundi(icoolH)    = 5.600d-08
+ abundi(icoolH2)   = 3.083d-01
+ abundi(icoolO)    = 1.796d-33
+ abundi(icoolSi)   = 2.637d-10
+ abundi(icoolH2O)  = 1.076d-16
+ abundi(icoolCO)   = 3.671d-04
+ abundi(icoolOH)   = 6.731d-27
+ abundi(icoolSiO)  = 2.810d-06
+ abundi(icoolS)    = 1.633d-21
+ abundi(icoolTi)   = 5.302d-08
+ abundi(icoolN)    = 5.412d-26
  abundi(icoolC2H2) = .5*(epsC-eps(4))
 
 end subroutine set_freeze_out_abundances
