@@ -161,7 +161,6 @@ end subroutine evolve_dust
 !-----------------------------------------------------------------------
 subroutine evolve_chem(dt, T, rho_cgs, JKmuS)
 !all quantities in cgs
- use eos, only:ieos
 
  real, intent(in)    :: dt, rho_cgs
  real, intent(inout) :: T, JKmuS(:)
@@ -715,7 +714,6 @@ subroutine init_muGamma(rho_cgs, T, mu, gamma, ppH, ppH2)
  real, intent(out)   :: mu, gamma
  real, intent(out), optional :: ppH, ppH2
  real :: KH2, pH_tot, pH, pH2
- real :: pH_double, pH_tot_double
 
  pH_tot = rho_cgs*kboltz*T/(patm*mass_per_H)
  if (T > 1.d5) then
@@ -758,7 +756,6 @@ subroutine chemical_equilibrium_light(rho_cgs, T_in, epsC, mu, gamma, abundi)
  integer :: i, nit
  real    :: X, AA, BB
  real    :: T
- real    :: pH_mugamma, pH_tot_mugamma, pH2_mugamma
 
  T = max(T_in, 10.d0)
 
@@ -969,7 +966,7 @@ pure real function calc_Kd(coefs, T)
   implicit none
   real, intent(in) :: coefs(5)
   real, intent(in) :: T
-  real, parameter :: R = 1.987165_16
+  real, parameter :: R = 1.987165
   real :: G, d
 
   G = coefs(1)/T + coefs(2) + (coefs(3)+(coefs(4)+coefs(5)*T)*T)*T
