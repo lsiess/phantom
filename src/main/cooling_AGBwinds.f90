@@ -193,7 +193,7 @@ end subroutine energ_cooling_AGB
 subroutine cool_func(temp, Tdust, yn, dl, divv, abundances, ylam, rates)
  use fs_data
  use mol_data
-!  use h2_opac_table
+ use h2_opac_table
  use dim,     only:nElements
  use io, only:fatal
  use dust_formation, only:icoolH,icoolC,icoolO,icoolSi,icoolH2,icoolCO,icoolH2O,icoolOH,icoolHe
@@ -1442,95 +1442,6 @@ end subroutine compute_stim
 !=======================================================================
 !
 !    \\\\\\\\\\      B E G I N   S U B R O U T I N E      //////////
-!    //////////        L O A D _ H 2 _ T A B L E          \\\\\\\\\\
-!
-!=======================================================================
-!
-
-! subroutine load_H2_table
-!  use mol_data
-
-!     implicit none
-
-!     integer i, j
-!     open(12, file='H2-cooling-ratios.dat', status='old')
-!     do i = 1, nh2op
-!        do j = 1, nh2op
-!           read(12,*) h2_opac_temp(i), h2_opac_column(j), h2_opac(i,j)
-!        enddo
-!     enddo
-!     close (12, status='keep')
-
-!  return
-! end subroutine load_H2_table
-
-subroutine load_H2_table()
-   use mol_data, only : nh2op, h2_opac, h2_opac_temp, h2_opac_column
-   implicit none
-
-   integer :: iu, nfile, ios
-   logical :: iexist
-
-   inquire(file='H2-cooling-ratios.dat', exist=iexist)
-   if (iexist) then
-      ! write(*,*) 'Loading H2 opacity table...'
-   else
-      write(*,*) 'ERROR: H2-cooling-ratios.dat does not exist'
-      stop
-   end if      
-   open(newunit=iu, file='H2-cooling-ratios.dat', &
-        status='old', action='read', iostat=ios)
-
-   if (ios /= 0) then
-      write(*,*) 'ERROR: Cannot open H2-cooling-ratios.dat'
-      stop
-   end if
-
-   ! --- Read and check table size ---
-   read(iu, *, iostat=ios) nfile
-   if (ios /= 0) then
-      write(*,*) 'ERROR: Failed reading nh2op'
-      stop
-   end if
-
-   if (nfile /= nh2op) then
-      write(*,*) 'ERROR: nh2op mismatch'
-      write(*,*) '  File:', nfile, ' Code:', nh2op
-      stop
-   end if
-
-   ! --- Read temperature and column grids ---
-   read(iu, *, iostat=ios) h2_opac_temp
-   if (ios /= 0) then
-      write(*,*) 'ERROR: Failed reading temperature grid'
-      stop
-   end if
-
-   read(iu, *, iostat=ios) h2_opac_column
-   if (ios /= 0) then
-      write(*,*) 'ERROR: Failed reading column grid'
-      stop
-   end if
-
-   ! --- Read opacity table (column-major, Fortran-native) ---
-   read(iu, *, iostat=ios) h2_opac
-   if (ios /= 0) then
-      write(*,*) 'ERROR: Failed reading opacity table'
-      stop
-   end if
-
-   close(iu)
-end subroutine load_H2_table
-!=======================================================================
-!
-!    \\\\\\\\\\        E N D   S U B R O U T I N E        //////////
-!    //////////         L O A D _ H 2 _ T A B L E         \\\\\\\\\\
-!
-!=======================================================================
-!
-!=======================================================================
-!
-!    \\\\\\\\\\      B E G I N   S U B R O U T I N E      //////////
 !    //////////    C O M P U T E _ H 2 _ O P A C I T Y    \\\\\\\\\\
 !
 !=======================================================================
@@ -1539,6 +1450,7 @@ end subroutine load_H2_table
 
 subroutine compute_h2_opacity(temp, N_H2_eff, opac)
  use mol_data
+ use h2_opac_table
 
     implicit none
    
@@ -1925,8 +1837,6 @@ subroutine init_cooling_AGB
 ! from J = 0 <-> J=1 transitions in cool_func
 !
     cltab(67,itemp) = 9d0 * exp(-170.5d0 / temp)
-
-    call load_H2_table
 !
 !
 ! (cl6) --  the atomic cooling function - this is computed by fitting

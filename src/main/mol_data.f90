@@ -78,11 +78,6 @@ module mol_data
 !
 ! CO optically thick rotational cooling
 !
-! Opacity correction -- Sobolev approx., as in YOHA06
-!
- integer, parameter :: nh2op = 101
- real :: h2_opac_temp(nh2op), h2_opac_column(nh2op), h2_opac(nh2op,nh2op)
-!
 ! CO & H2O optically thick rotational cooling 
 !
  integer, parameter :: nco_temp   = 11
