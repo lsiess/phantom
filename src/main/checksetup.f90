@@ -127,7 +127,7 @@ subroutine check_setup(nerror,nwarn,restart)
  elseif (npart==0 .and. nptmass==0) then
     if (id==master) print*,'WARNING! setup: npart = 0 (and no sink particles either)'
     nwarn = nwarn + 1
- elseif (npart==0 .and. inject_type /= 'wind') then
+ elseif (npart==0 .and. inject_type /= 'wind' .and. inject_type /= 'pulsation') then
     if (id==master) print*,'WARNING! setup contains no SPH particles (but has ',nptmass,' point masses)'
     nwarn = nwarn + 1
  endif

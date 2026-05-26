@@ -19,11 +19,9 @@ module inject
 !   - jet_edge_velocity  : *velocity at the edge of the jet (km/s, only for sink1)*
 !   - jet_opening_angle  : *half opening angle of the jet (degree)*
 !   - outer_boundary     : *delete gas particles outside this radius (au)*
-!   - piston_velocity    : *velocity amplitude of the pulsation (km/s)*
-!   - pulsation_period   : *stellar pulsation period (days)*
 !   - rfill_domain       : *outer radius of the background density profile*
 !   - wind_shell_spacing : *desired ratio of sphere spacing to particle spacing*
-!   - wind_type          : *wind type 0=std, 1=transonic, 2=pulsation, 3=jets*
+!   - wind_type          : *wind type 0=std, 1=transonic, 2=jets*
 !
 ! :Dependencies: dim, dust_formation, eos, infile_utils, injectutils, io,
 !   options, orbits, part, partinject, physcon, ptmass_radiation, timestep,
@@ -48,11 +46,7 @@ module inject
  integer :: iwind_resolution = 0
  integer :: nfill_domain = 0
  real :: outer_boundary_au = 30.
- real :: wind_shell_spacing = 1.
- real :: pulsation_period
- real :: pulsation_period_days = 0.
- real :: piston_velocity_km_s = 0.
- real :: dtpulsation = huge(0.)
+ real :: wind_shell_spacing = 1.\
  real :: jet_edge_velocity = 0.
  real :: jet_opening_angle = 0.
  real :: jet_opening_angle_degree = 0.
@@ -60,10 +54,9 @@ module inject
 
 ! global variables
  real :: u_to_temperature_ratio
- real :: omega_puls,deltaR_puls,piston_velocity !pulsations
  integer :: nwrite
 
- logical :: pulsating_wind,onewind
+ logical :: onewind
  character(len=*), parameter :: label = 'inject_wind'
 
 contains
@@ -98,7 +91,7 @@ subroutine init_inject(ierr)
  onewind = (nwinds <= 1)
  ! change particle injection method if more than 1 sink is emitting a wind
  if (nwinds > 1) then
-    if (wind_type == 3) call init_jets(jet_edge_velocity,jet_opening_angle)
+    if (wind_type == 2) call init_jets(jet_edge_velocity,jet_opening_angle)
  endif
  if (abs(xyzmh_ptmass(imloss,1)) < tiny(0.)) call fatal(label,'the wind logic imposes that sink 1 is loosing mass')
 
@@ -106,9 +99,6 @@ subroutine init_inject(ierr)
  ierr = 0
 
  seed_random = -1  ! reset seed_random to avoid reproducibility issues
-
- pulsating_wind = (pulsation_period_days > 0.) .and. (piston_velocity_km_s > 0.)
- if (ieos == 6) call fatal(label,'cannot use ieos=6 with pulsation')
 
 ! setup thermo
  if (gamma > 1.0001) then
@@ -118,8 +108,6 @@ subroutine init_inject(ierr)
  endif
  if (isothermal) wind_temperature = polyk * mass_proton_cgs/kboltz * unit_velocity**2*gmw
 
- call init_pulsating_wind(pulsating_wind)
-
  write(*,'(/,70("-"))')
  do isink = 1, nptmass
 
@@ -128,19 +116,14 @@ subroutine init_inject(ierr)
 
     call get_params_from_sink(xyzmh_ptmass(:,isink),params)
 
-    if (pulsating_wind) then
-       !implement background spheres starting from the smallest radius
-       !params%Rinject = min(params%Rinject,(xyzmh_ptmass(iReff,isink)-deltaR_puls)*udist)
-    else
-       if (params%Rinject < xyzmh_ptmass(5,isink)*udist) then
-          print *,'stop wind_inject_radius < Racc (au)',params%Rinject/au,xyzmh_ptmass(5,isink)*udist/au
-          call fatal(label,'invalid setting wind_inject_radius < accretion radius')
-       endif
-       call init_wind_equations(xyzmh_ptmass(4,isink),xyzmh_ptmass(iTeff,isink),u_to_temperature_ratio)
-
-       ! integrate wind equation to get initial velocity and sonic radius to set resolution
-       call setup_wind(params,u_to_temperature_ratio,rsonic,tsonic,wind_type)
+    if (params%Rinject < xyzmh_ptmass(5,isink)*udist) then
+       print *,'stop wind_inject_radius < Racc (au)',params%Rinject/au,xyzmh_ptmass(5,isink)*udist/au
+       call fatal(label,'invalid setting wind_inject_radius < accretion radius')
     endif
+    call init_wind_equations(xyzmh_ptmass(4,isink),xyzmh_ptmass(iTeff,isink),u_to_temperature_ratio)
+
+    ! integrate wind equation to get initial velocity and sonic radius to set resolution
+    call setup_wind(params,u_to_temperature_ratio,rsonic,tsonic,wind_type)
 
     if (xyzmh_ptmass(ivwind,isink) <= 0.) xyzmh_ptmass(ivwind,isink) = params%vwind/unit_velocity
     if (xyzmh_ptmass(iTwind,isink) <= 0.) xyzmh_ptmass(iTwind,isink) = params%Twind
@@ -153,7 +136,7 @@ subroutine init_inject(ierr)
     params%Mdot = xyzmh_ptmass(imloss,isink)*unit_Mdot
 
     ! compute 1D wind profile to get tcross & save 1D profile
-    if (.not. pulsating_wind .or. rfill_domain_au > 0.) then
+    if (rfill_domain_au > 0.) then
        call set_1D_wind_profile(params,isink,d_part,time_between_spheres,tboundary,tcross,tfill,onewind)
     endif
 
@@ -431,15 +414,7 @@ subroutine logging(params,isink,time_between_spheres,neighbour_distance,&
        print*,'CAREFUL : rotation velocity exceeding equatorial break-up velocity'
     endif
  endif
- if (pulsating_wind) then
-    print*,'number of ejected shells per pulsation period (should at least be > 10) ',pulsation_period/time_between_spheres
-    print*,'pulsation period in code units = ',pulsation_period
-    !sanity checks
-    ! 1 - ensure that a minimum number of shells are ejected during a pulsation period
-    if (pulsation_period/time_between_spheres < 10. ) print *,'WARNING! only ',pulsation_period/time_between_spheres,&
-         ' shells will be ejected during a pulsation period'
-    ! 2 - make sure the size of the boundary layer is not too big (< 0.2 injection_radius)
- elseif (lsonic) then
+ if (lsonic) then
     !save a few models before the particles reach the sonic point
     if (dtmax > tsonic/utime) print *,'WARNING! dtmax > time to sonic point'
     !if solution subsonic, minimum resolution required so a few shells can be inserted between the injection radius and the sonic point
@@ -515,7 +490,7 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,&
        !
        ! delete particles that exit the outer boundary
        !
-       inner_radius = rinject + deltaR_puls*sin(omega_puls*time)
+       inner_radius = rinject
 
        if (outer_boundary_au > rinject) call delete_particles_outside_sphere(x0,real(outer_boundary_au*au/udist),npart)
        call delete_dead_particles_inside_radius(x0,inner_radius,npart)
@@ -565,18 +540,14 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,&
        !compute the radius, velocity, temperature, chemistry of a shell at the current local time
        v = wind_injection_speed
        r = rinject
-       if (pulsating_wind.and.released) then
-          !call pulsating_wind_profile(time,local_time,r,v,u,rho,e,GM,i,inner_sphere)
+       if (idust_opacity == 2) then
+          call interp_wind_profile(time,local_time,r,v,u,rho,e,GM,fdone,isink,JKmuS)
        else
-          if (idust_opacity == 2) then
-             call interp_wind_profile(time,local_time,r,v,u,rho,e,GM,fdone,isink,JKmuS)
-          else
-             call interp_wind_profile(time,local_time,r,v,u,rho,e,GM,fdone,isink)
-          endif
-          if (iverbose > 0) print '(" ## update boundary  ",i4,2(i4),i7,i2,5x,8(1x,es12.5))',i,&
-               inner_sphere,outer_sphere,npart,isink,time,local_time,r/xyzmh_ptmass(iReff,isink),v*udist/utime,&
-               xyzmh_ptmass(imloss,isink) /(solarm/umass) * (years/utime)
+          call interp_wind_profile(time,local_time,r,v,u,rho,e,GM,fdone,isink)
        endif
+       if (iverbose > 0) print '(" ## update boundary  ",i4,2(i4),i7,i2,5x,8(1x,es12.5))',i,&
+            inner_sphere,outer_sphere,npart,isink,time,local_time,r/xyzmh_ptmass(iReff,isink),v*udist/utime,&
+            xyzmh_ptmass(imloss,isink) /(solarm/umass) * (years/utime)
 
        if (i > inner_sphere) then
           ! boundary sphere
@@ -615,10 +586,6 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,&
     mass_lost = mass_of_spheres * (inner_sphere-outer_sphere+1)
     if (dtlast <= 0. .and. nfill > 0) mass_lost = mass_lost + mass_of_spheres * nfill
     xyzmh_ptmass(4,isink) = xyzmh_ptmass(4,isink) - mass_lost
-    if (pulsating_wind) then
-       inner_radius = rinject + deltaR_puls*sin(omega_puls*time)
-       xyzmh_ptmass(5,isink) = inner_radius
-    endif
 
     !
     ! return timestep constraint to ensure that time between sphere
@@ -626,7 +593,7 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,&
     !
     !dr = neighbour_distance*rinject
     !dtinject = 0.25*dr/sqrt(cs2max)
-    dtinject = min(0.2*time_between_spheres,dtpulsation,dtinject)
+    dtinject = min(0.2*time_between_spheres,dtinject)
  enddo
  if (time <= 0.) dtinject = 0.01*dtinject
 
@@ -746,31 +713,6 @@ end subroutine set_1D_wind_profile
 
 !-----------------------------------------------------------------------
 !+
-!  initialize oscillating inner boundary
-!+
-!-----------------------------------------------------------------------
-subroutine init_pulsating_wind(pulsating_wind)
-
- use units,   only:unit_velocity,utime
- use physcon, only:pi,days,km
- logical, intent(in) :: pulsating_wind
-
- if (pulsating_wind) then
-    pulsation_period = pulsation_period_days * (days/utime)
-    dtpulsation      = pulsation_period/50.
-    omega_puls       = 2.*pi/pulsation_period
-    deltaR_puls      = pulsation_period*piston_velocity/(2.*pi)
-    piston_velocity  = piston_velocity_km_s * (km / unit_velocity)
- else
-    omega_puls       = 0.d0
-    deltaR_puls      = 0.d0
-    piston_velocity  = 0.d0
- endif
-
-end subroutine init_pulsating_wind
-
-!-----------------------------------------------------------------------
-!+
 !  Sets default options for the injection module
 !+
 !-----------------------------------------------------------------------
@@ -803,12 +745,8 @@ subroutine write_options_inject(iunit)
  use infile_utils, only:write_inopt
  integer, intent(in) :: iunit
 
- call write_inopt(wind_type,'wind_type','wind type 0=std, 1=transonic, 2=pulsation, 3=jets',iunit)
+ call write_inopt(wind_type,'wind_type','wind type 0=std, 1=transonic, 2=jets',iunit)
  if (wind_type == 2) then
-    call write_inopt(pulsation_period_days,'pulsation_period','stellar pulsation period (days)',iunit)
-    call write_inopt(piston_velocity_km_s,'piston_velocity','velocity amplitude of the pulsation (km/s)',iunit)
- endif
- if (wind_type == 3) then
     call write_inopt(jet_edge_velocity,'jet_edge_velocity','velocity at the edge of the jet (km/s, only for sink1)',iunit)
     call write_inopt(jet_opening_angle_degree,'jet_opening_angle','half opening angle of the jet (degree)',iunit)
  endif
@@ -839,12 +777,8 @@ subroutine read_options_inject(db,nerr)
     init_opt = .true.
     call set_default_options_inject()
  endif
- call read_inopt(wind_type,'wind_type',db,errcount=nerr,min=0,max=3)
+ call read_inopt(wind_type,'wind_type',db,errcount=nerr,min=0,max=2)
  if (wind_type == 2) then
-    call read_inopt(pulsation_period_days,'pulsation_period',db,errcount=nerr,min=0.)
-    call read_inopt(piston_velocity_km_s,'piston_velocity',db,errcount=nerr,min=0.)
- endif
- if (wind_type == 3) then
     call read_inopt(jet_edge_velocity,'jet_edge_velocity',db,errcount=nerr,min=0.)
     call read_inopt(jet_opening_angle_degree,'jet_opening_angle',db,errcount=nerr,min=0.,max=90.)
     jet_opening_angle = jet_opening_angle_degree*deg_to_rad

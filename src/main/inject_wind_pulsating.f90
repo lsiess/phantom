@@ -39,38 +39,38 @@ module inject
  implicit none
  character(len=*), parameter, public :: inject_type = 'pulsation'
 
- public :: init_inject, inject_particles, write_options_inject, read_options_inject, &
-           set_default_options_inject, update_injected_par
+ public :: init_inject, inject_particles,write_options_inject,read_options_inject, &
+           set_default_options_inject,update_injected_par
  private
 
+
+ integer :: wind_type             = 1
+ real    :: wind_shell_spacing    = 1.0
  integer :: iboundary_spheres     = 5
- integer :: n_profile_points      = 10000
- integer :: n_shells              = 15
- integer :: n_particles_first     = 0
- real    :: min_particles_shell   = 100.
- real    :: rho_power             = 4.0
- real    :: r_min_on_rstar        = 0.9
- real    :: r_max_on_rstar        = 1.4 !@LS potentially go aways
- real    :: dtpulsation           = huge(0.)
  real    :: pulsation_period_days = 300.0
  real    :: piston_velocity_km_s  = 4.0
- real    :: rho_inner             = 1.0e-12
- integer :: wind_type             = 1
  real    :: phi0                  = -piontwo
- real    :: wind_shell_spacing    = 1.0
- integer :: save_period           = 0
- integer :: dumps_p_period        = 10 !@ should go away
-
+ real    :: rho_power             = 4.0
+ real    :: rho_inner             = 1.0e-12
  integer :: reinject_enabled      = 1
- integer :: ninject_period        = 40
+
+ integer :: n_particles_first     = 0
+ real    :: min_particles_shell   = 100.
+ real    :: r_min_on_rstar        = 0.9
+ integer :: n_shells              = 15 !@ this should probably go away
+ real    :: r_max_on_rstar        = 1.4 !@LS potentially go aways
+ integer :: n_profile_points      = 10000 !@LS quite large
+ integer :: save_period           = 0 !@ redundent with dumps_p_period --> removed
+
  real    :: mass_loss_start       = 2.0
  real    :: mass_loss_end         = 4.0
  real    :: check_radius_au       = 3.0 !@LS sholuld be defined based on the envelope mass
  integer :: update_L              = 0
- integer :: verbose               = 1
 
  integer, parameter :: wind_emitting_sink = 1
  integer, parameter :: max_measurements   = 10000
+ integer, parameter :: ninject_period     = 40
+ integer :: verbose = 1
 
  real :: omega_pulsation, deltaR_osc, pulsation_period, piston_velocity
  real :: Rstar, r_min, r_max
@@ -122,32 +122,17 @@ module inject
 contains
 
 subroutine set_default_options_inject(flag)
+ use physcon, only:days
+ use units,   only:utime
  integer, optional, intent(in) :: flag
 
- iboundary_spheres     = 5
- n_profile_points      = 10000 !@LS quite large
- n_shells              = 15
- n_particles_first     = 0
- min_particles_shell   = 100.
- rho_power             = 4.0
- r_min_on_rstar        = 0.9
- r_max_on_rstar        = 1.4
- dtpulsation           = huge(0.)
- rho_inner             = 1.0e-12
- wind_type             = 1
- pulsation_period_days = 300.0
- piston_velocity_km_s  = 4.0
- phi0                  = -3.1415926536d0/2.0
- wind_shell_spacing    = 1.0
- save_period           = 0
- dumps_p_period        = 10
- reinject_enabled      = 1
- ninject_period        = 40
- mass_loss_start       = 1.0
- mass_loss_end         = 3.0
- check_radius_au       = 3.0
- update_L              = 0
- verbose               = 1
+ if (.not. present(flag)) return
+ pulsation_period = pulsation_period_days * (days / utime)
+
+ print *,''
+ print*,'INFO! to save 10 dumps per pulsation period set dtmax = ',pulsation_period/10.
+ print*,'INFO! to save 20 dumps per pulsation period set dtmax = ',pulsation_period/20.
+ print*,'INFO! to save 30 dumps per pulsation period set dtmax = ',pulsation_period/30.
 
 end subroutine set_default_options_inject
 
@@ -215,12 +200,6 @@ subroutine init_inject(ierr)
  r_min = r_min_on_rstar * Rstar + deltaR_osc * sin(phi0)
  r_max = r_max_on_rstar * Rstar + deltaR_osc * sin(phi0)
  if (r_min <= 0.) call fatal(label,'r_min must be > 0')
-
- if (save_period == 1) then
-    print *,'@2 - calculation of dtmax should be askked in setup, so remove dumps_p_period'
-    dtmax = 1. / (dumps_p_period) * pulsation_period
-    print *, 'dtmax: ', dtmax
- endif
 
  reinject_period        = pulsation_period/real(ninject_period)
  measurement_interval   = reinject_period
@@ -431,7 +410,7 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,npar
     return
  endif
 
- if (atmosphere_setup_complete) then
+ if (atmosphere_setup_complete .and. .not. allocated(r_boundary_equilibrium)) then
     call reconstruct_boundary_info(time,xyzh,npart,xyzmh_ptmass)
     time_last_reinject = time - mod(time, reinject_period)
     call read_mass_loss_data()
@@ -716,6 +695,7 @@ subroutine apply_pulsation(time,xyzh,vxyzu,npart,xyzmh_ptmass,vxyz_ptmass)
  real    :: x, y, z, rho, u, T, P
  real    :: Reff, Teff, Lum
 
+ if (.not. allocated(boundary_equilibrium)) return
  if (n_boundary_particles == 0) return
 
  x0 = xyzmh_ptmass(1:3, wind_emitting_sink)
@@ -904,15 +884,12 @@ subroutine write_options_inject(iunit)
  call write_inopt(rho_inner,            'rho_inner',           'inner boundary density at r_min (cgs)',iunit)
  call write_inopt(rho_power,            'rho_power',           'density profile exponent: rho ~ r^(-rho_power)',iunit)
  call write_inopt(reinject_enabled,     'reinject_enabled',    'enable dynamic reinjection (0=off, 1=on)',iunit)
- call write_inopt(ninject_period,       'ninject_period',      'number of injection per period',iunit)
 
  call write_inopt(n_shells,             'n_shells',            'number of gas shells (if <0 determined from n_particles)',iunit)
  call write_inopt(n_particles_first,    'n_particles_first',   'particles on first shell (0=disabled)',iunit)
  call write_inopt(min_particles_shell,  'min_particles_shell', 'minimum particles per shell when using n_particles_first',iunit)
  call write_inopt(r_min_on_rstar,       'r_min_on_rstar',      'gas atmosphere inner radius as fraction of R_star',iunit)
  call write_inopt(r_max_on_rstar,       'r_max_on_rstar',      'gas atmosphere outer radius as fraction of R_star',iunit)
- call write_inopt(save_period,          'save_period',         'wether to save dumps as fraction of period (0=off, 1=on)',iunit)
- call write_inopt(dumps_p_period,       'dumps_p_period',      'number of dumps per period (if save_period = 1)',iunit)
  call write_inopt(mass_loss_start,      'mass_loss_start',     'start time for mass-loss calculation (periods)',iunit)
  call write_inopt(mass_loss_end,        'mass_loss_end',       'end time for mass-loss calculation (periods)',iunit)
  call write_inopt(check_radius_au,      'check_radius_au',     'mass-loss counting radius (AU)',iunit)
@@ -949,14 +926,11 @@ subroutine read_options_inject(db,nerr)
  call read_inopt(rho_inner,'rho_inner',db,min=0.,errcount=nerr)
  call read_inopt(rho_power,'rho_power',db,min=0.,errcount=nerr)
  call read_inopt(reinject_enabled,'reinject_enabled',db,min=0,max=1,errcount=nerr)
- call read_inopt(ninject_period,'ninject_period',db,min=1,errcount=nerr)
  call read_inopt(n_shells,             'n_shells',            db,min=0,errcount=nerr)
  call read_inopt(n_particles_first,    'n_particles_first',   db,min=0,errcount=nerr)
  call read_inopt(min_particles_shell,  'min_particles_shell', db,min=0.,errcount=nerr)
  call read_inopt(r_min_on_rstar,       'r_min_on_rstar',      db,min=0.,max=2.,errcount=nerr)
  call read_inopt(r_max_on_rstar,       'r_max_on_rstar',      db,min=0.,errcount=nerr)
- call read_inopt(save_period,          'save_period',         db,min=0,max=1,errcount=nerr)
- call read_inopt(dumps_p_period,       'dumps_p_period',      db,min=0,errcount=nerr)
  call read_inopt(mass_loss_start,      'mass_loss_start',     db,min=0.,errcount=nerr)
  call read_inopt(mass_loss_end,        'mass_loss_end',       db,min=0.,errcount=nerr)
  call read_inopt(check_radius_au,      'check_radius_au',     db,min=0.,errcount=nerr)
