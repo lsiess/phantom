@@ -695,7 +695,7 @@ subroutine apply_pulsation(time,xyzh,vxyzu,npart,xyzmh_ptmass,vxyz_ptmass)
  real    :: x, y, z, rho, u, T, P
  real    :: Reff, Teff, Lum
 
- if (.not. allocated(boundary_equilibrium)) return
+ if (.not. allocated(r_boundary_equilibrium)) return
  if (n_boundary_particles == 0) return
 
  x0 = xyzmh_ptmass(1:3, wind_emitting_sink)
