@@ -954,7 +954,7 @@ subroutine read_setupfile(filename,ierr)
 
  if (icompanion_star == 1) then
 
-    call read_setupfile_sink(db,nerr,'primary',1)
+    call read_setupfile_sink(db,nerr,'secondary',2)
     call read_inopt(semi_major_axis_au,'semi_major_axis',db,min=0.,errcount=nerr)
     semi_major_axis = semi_major_axis_au * au / udist
     call read_inopt(eccentricity,'eccentricity',db,min=0.,errcount=nerr)
