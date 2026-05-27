@@ -24,6 +24,8 @@ module wind_pulsating
  private
  real :: rho_power = 2.0
 
+ character(len=*), parameter :: label = 'wind_pulsating'
+
  ! input parameters
  real :: Mstar_cgs, Rstar_cgs, Tstar_cgs, r_inner, Star_gamma, Star_mu, rho_inner_cgs
  real, dimension(:,:), allocatable, public :: stellar_1D
@@ -188,38 +190,62 @@ end subroutine stellar_step
 !  Inward integration because we set Pout
 !
 !-----------------------------------------------------------------------
-subroutine calc_stellar_profile(n)
- integer, intent(in) :: n
+subroutine calc_stellar_profile()
+ use io,  only:fatal
  type(stellar_state) :: state
- real :: tmp(5)
- integer :: i
- real :: r_new, dr
+ integer :: i,nwrite
+ real :: r_new, dr, r_base,r_incr,rho_base,rho_incr,P_base,P_incr,u_base,&
+      u_incr,T_base,T_incr
+ integer, parameter :: nlmax = 8192   ! maxium number of steps store in the 1D profile
+ real, parameter ::  eps = 0.005
+ real, allocatable :: atmos(:,:)
 
  call init_atmosphere(state)
- allocate(stellar_1D(5, n))
+ if (.not. allocated(atmos)) allocate (atmos(5,nlmax))
 
  ! dr is negative — stepping inward
- dr = (r_inner - Rstar_cgs) / real(n-1)
+ dr = (r_inner - Rstar_cgs) / real(nlmax-1)
 
- tmp(1) = state%r
- tmp(2) = state%rho
- tmp(3) = state%P
- tmp(4) = state%u
- tmp(5) = state%T
- stellar_1D(:,n) = tmp
+ nwrite     = 0
+ r_base     = state%r
+ rho_base   = state%rho
+ P_base     = state%P
+ u_base     = state%u
+ T_base     = state%T
+ atmos(:,1) = (/state%r,state%rho,state%P,state%u,state%T/)
 
- do i = 2, n
-    r_new = Rstar_cgs + real(i-1) * dr
+ r_new      = Rstar_cgs-dr
+ do while(r_new > r_inner .and. nwrite < nlmax)
+    r_new = r_new + dr
     call stellar_step(state, r_new)
 
-    tmp(1) = state%r
-    tmp(2) = state%rho
-    tmp(3) = state%P
-    tmp(4) = state%u
-    tmp(5) = state%T
-    !it heare we should test the change in the variables for storing
-    stellar_1D(:, n+1-i) = tmp
+    r_incr     = state%r
+    rho_incr   = state%rho
+    P_incr     = state%P
+    u_incr     = state%u
+    T_incr     = state%T
+
+    if (      ( abs((r_incr     -r_base)      /r_base)      > eps ) &
+         .or. ( abs((rho_incr   -rho_base)    /rho_base)    > eps ) &
+         .or. ( abs((P_incr     -P_base)      /P_base)      > eps ) &
+         .or. ( abs((u_incr     -u_base)      /u_base)      > eps ) &
+         .or. ( abs((T_incr     -T_base)      /T_base)      > eps ) ) then
+
+       nwrite     = nwrite + 1
+       r_base     = state%r
+       rho_base   = state%rho
+       P_base     = state%P
+       u_base     = state%u
+       T_base     = state%T
+       atmos(:,nwrite) = (/state%r,state%rho,state%P,state%u,state%T/)
+    endif
  enddo
+
+ if (nwrite > nlmax-1 .and. r_new  > r_inner) call fatal(label,'atmosphere profile integration not complete, increase nlmax')
+
+ allocate(stellar_1D(5,nwrite))
+ stellar_1D(:, 1:nwrite) = atmos(:,nwrite:1:-1)
+ deallocate(atmos)
 
  print *, ""
  print *, "Inner boundary conditions (after inward integration):"
@@ -227,9 +253,10 @@ subroutine calc_stellar_profile(n)
  print *, " rho  (inner) :", stellar_1D(2, 1)
  print *, " P    (inner) :", stellar_1D(3, 1)
  print *, " T    (inner) :", stellar_1D(5, 1)
+ print *, " number of grid points : ",nwrite
  print *, ""
 
- call save_stellarprofile(n, 'stellar_profile1D.dat')
+ call save_stellarprofile(nwrite, 'stellar_profile1D.dat')
 
 end subroutine calc_stellar_profile
 

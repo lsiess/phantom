@@ -25,25 +25,27 @@ module inject
 !   - wind_type           : *wind type: 1=prescribed, 2=period from mass-radius relation*
 !   - phi0                : *initial phase offset (radians)*
 !   - wind_shell_spacing  : *fraction of tangential and radial distance between particles*
+!   - outer_boundary      : *delete gas particles outside this radius (au)*
 !   - reinject_enabled    : *enable dynamic reinjection (logical)*
-!   - reinject_period_days: *period between reinjections in days*
 !   - mass_loss_start     : *start time for mass-loss calculation in years*
 !   - mass_loss_end       : *end time for mass-loss calculation in years*
 !   - check_radius_au     : *radius within which to count mass (AU)*
 !
-! :Dependencies: dim, eos, icosahedron, infile_utils, injectutils, io,
+! :Dependencies: dim, eos, infile_utils, injectutils, io,
 !   part, partinject, physcon, units, set_star
 !
- use io, only:fatal
  use physcon,only:piontwo
  implicit none
  character(len=*), parameter, public :: inject_type = 'pulsation'
 
  public :: init_inject, inject_particles,write_options_inject,read_options_inject, &
            set_default_options_inject,update_injected_par
+
  private
-
-
+!
+!--runtime settings for this module
+!
+! Read from input file
  integer :: wind_type             = 1
  real    :: wind_shell_spacing    = 1.0
  integer :: iboundary_spheres     = 5
@@ -52,28 +54,26 @@ module inject
  real    :: phi0                  = -piontwo
  real    :: rho_power             = 4.0
  real    :: rho_inner             = 1.0e-12
- integer :: reinject_enabled      = 1
+ integer :: reinject_enabled      = 1        !@LS I think we can remove this parameter and set it to 1 by default
+ real    :: outer_boundary_au     = 30.
 
  integer :: n_particles_first     = 0
  real    :: min_particles_shell   = 100.
  real    :: r_min_on_rstar        = 0.9
- integer :: n_shells              = 15 !@ this should probably go away
+ integer :: n_shells              = 15 !@LS this should probably go away
  real    :: r_max_on_rstar        = 1.4 !@LS potentially go aways
- integer :: n_profile_points      = 10000 !@LS quite large
-
  real    :: mass_loss_start       = 2.0
  real    :: mass_loss_end         = 4.0
  real    :: check_radius_au       = 3.0 !@LS sholuld be defined based on the envelope mass
  integer :: update_L              = 0
 
+! global variables
  integer, parameter :: wind_emitting_sink = 1
- integer, parameter :: max_measurements   = 10000
  integer, parameter :: ninject_period     = 40
  integer :: verbose = 1
 
  real :: omega_pulsation, deltaR_osc, pulsation_period, piston_velocity
- real :: Rstar, r_min, r_max
- real :: Mtotal, Msink
+ real :: Rstar, r_min, r_max, Msink, mass_of_particles
 
  integer, allocatable :: npart_per_shell(:)
  integer, allocatable :: npart_per_boundary_shell(:)
@@ -82,21 +82,13 @@ module inject
  real, allocatable :: delta_r_boundary(:)
  real, allocatable :: shell_radii_gas(:)
  real, allocatable :: shell_radii_bnd(:)
-
- real :: mass_of_gas_particle      = 0.0
- real :: mass_of_boundary_particle = 0.0
-
  real, allocatable :: delta_r_radial(:)
+ real, allocatable :: r_boundary_equilibrium(:)
 
  logical :: atmosphere_setup_complete = .false.
  integer :: n_shells_total
  integer :: n_shells_bnd
-
- real, allocatable    :: r_boundary_equilibrium(:)
- integer              :: active_boundary_spheres
-
  logical :: reinjection_needed = .false.
-
  real    :: time_last_reinject = 0.0
  real    :: reinject_period
  integer :: n_reinjections     = 0
@@ -114,31 +106,15 @@ module inject
  logical :: measurement_active          = .false.
  integer :: particles_to_inject         = 0
 
-
  character(len=*), parameter :: label = 'inject_atmosphere'
 
 contains
 
-subroutine set_default_options_inject(flag)
- use physcon, only:days
- use units,   only:utime
- integer, optional, intent(in) :: flag
-
- if (.not. present(flag)) return
- pulsation_period = pulsation_period_days * (days / utime)
-
- print *,''
- print*,'INFO! to save 10 dumps per pulsation period set dtmax = ',pulsation_period/10.
- print*,'INFO! to save 20 dumps per pulsation period set dtmax = ',pulsation_period/20.
- print*,'INFO! to save 30 dumps per pulsation period set dtmax = ',pulsation_period/30.
-
-end subroutine set_default_options_inject
-
-!----------------------------------------------------------------
+!-----------------------------------------------------------------------
 !+
 !  Initialize everything
 !+
-!----------------------------------------------------------------
+!-----------------------------------------------------------------------
 subroutine init_inject(ierr)
  use io,            only:fatal
  use physcon,       only:pi,days,au,solarm,km,years
@@ -152,6 +128,7 @@ subroutine init_inject(ierr)
  integer, intent(out) :: ierr
  real    :: Mstar_cgs, Rstar_cgs, Tstar, Lstar_cgs
  real    :: current_radius, dr
+
  integer :: shell_index, max_shells, n_first, n_shell
  integer :: expected_measurements, i
  integer, parameter  :: max_shells_tmp = 2000
@@ -166,16 +143,14 @@ subroutine init_inject(ierr)
 
  if (nptmass < 1) call fatal(label,'need at least one sink particle for central star')
 
- Mtotal    = xyzmh_ptmass(4, wind_emitting_sink)
+ Msink     = xyzmh_ptmass(4, wind_emitting_sink)
  Rstar     = xyzmh_ptmass(iReff, wind_emitting_sink)
  Rstar_cgs = Rstar * au
- Mstar_cgs = Mtotal * solarm
+ Mstar_cgs = Msink  * solarm
  Tstar     = xyzmh_ptmass(iTeff, wind_emitting_sink)
  Lstar_cgs = xyzmh_ptmass(iLum, wind_emitting_sink) * unit_luminosity
 
  call calc_kappa_max(Mstar_cgs, Lstar_cgs)
-
- Msink = Mtotal
 
  inquire(file='mass_loss_rate.dat', exist=file_exists)
 
@@ -185,9 +160,7 @@ subroutine init_inject(ierr)
        close(iunit, status='delete')
  endif
 
- active_boundary_spheres = iboundary_spheres
-
- if (wind_type == 2 .and. .not. file_exists) call calculate_period(Mtotal, Rstar, pulsation_period_days)
+ if (wind_type == 2 .and. .not. file_exists) call calculate_period(Msink, Rstar, pulsation_period_days)
 
  pulsation_period = pulsation_period_days * (days / utime)
  omega_pulsation  = 2.0*pi / pulsation_period
@@ -304,15 +277,12 @@ subroutine init_inject(ierr)
  !+
  ! determine hydrostatic profile
  !+
- call calc_stellar_profile(n_profile_points)
+ call calc_stellar_profile()
 
- mass_of_gas_particle = region_mass(r_min, r_max) / real(sum(tmp_n(1:shell_index)))
+ mass_of_particles = region_mass(r_min, r_max) / real(sum(tmp_n(1:shell_index)))
 
  n_shells_total = shell_index
  n_shells_bnd   = min(iboundary_spheres, n_shells_total)
-
- mass_of_gas_particle      = region_mass(r_min, r_max) / real(sum(tmp_n(1:n_shells_total)))
- mass_of_boundary_particle = mass_of_gas_particle
 
  allocate(npart_per_boundary_shell(n_shells_bnd))
  allocate(delta_r_boundary(n_shells_bnd))
@@ -338,8 +308,8 @@ subroutine init_inject(ierr)
  if (n_shells_bnd > 0) delta_r_radial(1:n_shells_bnd) = delta_r_boundary
  delta_r_radial(n_shells_bnd+1 : n_shells_bnd+n_shells_total) = delta_r_gas
 
- massoftype(igas)      = mass_of_gas_particle
- massoftype(iboundary) = mass_of_boundary_particle
+ massoftype(igas)      = mass_of_particles
+ massoftype(iboundary) = mass_of_particles
 
  if (file_exists) then
     call read_mass_loss_data()
@@ -350,7 +320,7 @@ subroutine init_inject(ierr)
     print *, ' rho_power                        :', rho_power
     print *, ' rho_inner (cgs)                  :', rho_inner
     print *, ' Atmosphere [r_min, r_max] Rstar  :', r_min, r_max
-    print *, ' M_atmos / M_total                :', region_mass(r_min, r_max) / Mtotal
+    print *, ' M_atmos / M_total                :', region_mass(r_min, r_max) / Msink
     print *, ' M_atmos (Msun)                   :', region_mass(r_min, r_max)
     print *, ' Boundary shells                  :', n_shells_bnd
     print *, ' Gas shells                       :', n_shells_total
@@ -360,7 +330,7 @@ subroutine init_inject(ierr)
     print *, ' Outermost boundary N_per_shell   :', npart_per_boundary_shell(n_shells_bnd)
     print *, ' Innermost gas      N_per_shell   :', npart_per_shell(1)
     print *, ' Outermost gas      N_per_shell   :', npart_per_shell(n_shells_total)
-    print *, ' Particle mass (Msun)             :', mass_of_gas_particle
+    print *, ' Particle mass (Msun)             :', mass_of_particles
     print *, ''
  endif
 
@@ -465,7 +435,7 @@ subroutine take_periodic_mass_measurements(time,xyzh,npart,xyzmh_ptmass,npartoft
        if (r2 <= rcheck2) ncount = ncount+1
     enddo
     !$omp end parallel do
-    mass_previous_measurement = ncount*mass_of_gas_particle
+    mass_previous_measurement = ncount*mass_of_particles
     time_next_measurement = time + measurement_interval
  endif
 
@@ -486,7 +456,7 @@ subroutine take_periodic_mass_measurements(time,xyzh,npart,xyzmh_ptmass,npartoft
        if (r2 <= rcheck2) ncount =- ncount+1
     enddo
     !$omp end parallel do
-    current_mass_within_radius = ncount*mass_of_gas_particle
+    current_mass_within_radius = ncount*mass_of_particles
     mass_lost          = mass_previous_measurement - current_mass_within_radius
     rate_this_interval = mass_lost / measurement_interval
     n_measurements     = n_measurements + 1
@@ -499,7 +469,7 @@ subroutine take_periodic_mass_measurements(time,xyzh,npart,xyzmh_ptmass,npartoft
     if (n_measurements > 0) then
        sum_rates = sum(mass_loss_rates(1:n_measurements))
        mean_mass_loss_rate = sum_rates / real(n_measurements)
-       particles_to_inject = nint((mean_mass_loss_rate * reinject_period) / mass_of_gas_particle)
+       particles_to_inject = nint((mean_mass_loss_rate * reinject_period) / mass_of_particles)
        if (particles_to_inject < 1) particles_to_inject = 1
        mass_loss_rate_calculated = .true.
        call write_mass_loss_data()
@@ -555,7 +525,7 @@ subroutine perform_reinjection(time,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,npart,np
  call inject_geodesic_sphere(n_shells_total + n_reinjections, npart + 1, particles_to_inject, r_inject, r_dot, u, rho, &
                                npart, npartoftype, xyzh, vxyzu, igas, x0, v0, wind_emitting_sink)
 
- mass_injected = real(npart - old_npart) * mass_of_gas_particle
+ mass_injected = real(npart - old_npart) * mass_of_particles
  xyzmh_ptmass(4, wind_emitting_sink) = xyzmh_ptmass(4, wind_emitting_sink) - mass_injected
 
  if (verbose == 1) then
@@ -671,11 +641,11 @@ subroutine reconstruct_boundary_info(time,xyzh,npart,xyzmh_ptmass)
 
 end subroutine reconstruct_boundary_info
 
-!----------------------------------------------------------------
+!-----------------------------------------------------------------------
 !+
 !  Applies pulsation motion to the boundary layers
 !+
-!----------------------------------------------------------------
+!-----------------------------------------------------------------------
 subroutine apply_pulsation(time,xyzh,vxyzu,npart,xyzmh_ptmass,vxyz_ptmass)
  use physcon,        only:pi,solarl
  use wind_pulsating, only:interp_stellar_profile
@@ -735,20 +705,22 @@ subroutine apply_pulsation(time,xyzh,vxyzu,npart,xyzmh_ptmass,vxyz_ptmass)
  enddo
 
 end subroutine apply_pulsation
-!----------------------------------------------------------------
-!+
-!  Placeholder function
-!+
-!----------------------------------------------------------------
-subroutine update_injected_par
 
+!-----------------------------------------------------------------------
+!+
+!  Updates the injected particles
+!+
+!-----------------------------------------------------------------------
+subroutine update_injected_par
+ ! -- placeholder function
+ ! -- does not do anything and will never be used
 end subroutine update_injected_par
 
-!----------------------------------------------------------------
+!-----------------------------------------------------------------------
 !+
 !  Get luminosity
 !+
-!----------------------------------------------------------------
+!-----------------------------------------------------------------------
 subroutine get_lum(Lum,Teff,Reff)
  use physcon, only:au,steboltz,solarl,pi
  use units,   only:unit_luminosity
@@ -782,11 +754,10 @@ subroutine write_mass_loss_data()
  write(iunit,*) '# Careful, this output is NOT M_sun/yr, but in code units of mass/time!'
  write(iunit,*) mass_loss_rate_calculated
  write(iunit,*) mean_mass_loss_rate
- write(iunit,*) Mtotal
+ write(iunit,*) Msink
  write(iunit,*) particles_to_inject
  write(iunit,*) n_measurements
- write(iunit,*) mass_of_gas_particle
- write(iunit,*) mass_of_boundary_particle
+ write(iunit,*) mass_of_particles
  do i = 1, n_measurements
     write(iunit,*) mass_loss_rates(i)
  enddo
@@ -818,11 +789,10 @@ subroutine read_mass_loss_data()
  read(iunit,*, iostat=ierr) mass_loss_rate_calculated
  if (ierr /= 0) then; close(iunit); return; endif
  read(iunit,*, iostat=ierr) mean_mass_loss_rate
- read(iunit,*, iostat=ierr) Mtotal
+ read(iunit,*, iostat=ierr) Msink
  read(iunit,*, iostat=ierr) particles_to_inject
  read(iunit,*, iostat=ierr) n_measurements
- read(iunit,*, iostat=ierr) mass_of_gas_particle
- read(iunit,*, iostat=ierr) mass_of_boundary_particle
+ read(iunit,*, iostat=ierr) mass_of_particles
 
  if (n_measurements > 0) then
     if (.not. allocated(mass_loss_rates)) allocate(mass_loss_rates(n_measurements))
@@ -836,8 +806,7 @@ subroutine read_mass_loss_data()
  if (verbose == 1) then
     write(iprint,*) 'Mass-loss rate data read from mass_loss_rate.dat'
     write(iprint,*) ' Mean mass-loss rate          :', mean_mass_loss_rate
-    write(iprint,*) ' Gas particle mass            :', mass_of_gas_particle
-    write(iprint,*) ' Boundary particle mass       :', mass_of_boundary_particle
+    write(iprint,*) ' Gas particle mass            :', mass_of_particles
     write(iprint,*) ' Particles to inject          :', particles_to_inject
  endif
 
@@ -863,11 +832,31 @@ subroutine calculate_period(M, R, pulsation_period_days)
 
 end subroutine calculate_period
 
-!----------------------------------------------------------------
+!-----------------------------------------------------------------------
 !+
-!  Write options to .in file
+!  Sets default options for the injection module
 !+
-!----------------------------------------------------------------
+!-----------------------------------------------------------------------
+subroutine set_default_options_inject(flag)
+ use physcon, only:days
+ use units,   only:utime
+ integer, optional, intent(in) :: flag
+
+ if (.not. present(flag)) return
+ pulsation_period = pulsation_period_days * (days / utime)
+
+ print *,''
+ print*,'INFO! to save 10 dumps per pulsation period set dtmax = ',pulsation_period/10.
+ print*,'INFO! to save 20 dumps per pulsation period set dtmax = ',pulsation_period/20.
+ print*,'INFO! to save 30 dumps per pulsation period set dtmax = ',pulsation_period/30.
+
+end subroutine set_default_options_inject
+
+!-----------------------------------------------------------------------
+!+
+!  Writes input options to the input file
+!+
+!-----------------------------------------------------------------------
 subroutine write_options_inject(iunit)
  use infile_utils, only:write_inopt
  integer, intent(in) :: iunit
@@ -891,14 +880,15 @@ subroutine write_options_inject(iunit)
  call write_inopt(mass_loss_end,        'mass_loss_end',       'end time for mass-loss calculation (periods)',iunit)
  call write_inopt(check_radius_au,      'check_radius_au',     'mass-loss counting radius (AU)',iunit)
  call write_inopt(update_L,             'update_L',            'update luminosity with pulsation (0=off, 1=on)',iunit)
+ call write_inopt(outer_boundary_au,'outer_boundary','delete gas particles outside this radius (au)',iunit)
 
 end subroutine write_options_inject
 
-!----------------------------------------------------------------
+!-----------------------------------------------------------------------
 !+
-!  Read options from .in file
+!  Reads input options from the input file.
 !+
-!----------------------------------------------------------------
+!-----------------------------------------------------------------------
 subroutine read_options_inject(db,nerr)
  use infile_utils, only:inopts,read_inopt
  use io,           only:warning
@@ -932,6 +922,7 @@ subroutine read_options_inject(db,nerr)
  call read_inopt(mass_loss_end,        'mass_loss_end',       db,min=0.,errcount=nerr)
  call read_inopt(check_radius_au,      'check_radius_au',     db,min=0.,errcount=nerr)
  call read_inopt(update_L,             'update_L',            db,min=0,max=1,errcount=nerr)
+ call read_inopt(outer_boundary_au,'outer_boundary',db,errcount=nerr,min=0.)
 
 end subroutine read_options_inject
 

@@ -46,7 +46,7 @@ module inject
  integer :: iwind_resolution = 0
  integer :: nfill_domain = 0
  real :: outer_boundary_au = 30.
- real :: wind_shell_spacing = 1.\
+ real :: wind_shell_spacing = 1.
  real :: jet_edge_velocity = 0.
  real :: jet_opening_angle = 0.
  real :: jet_opening_angle_degree = 0.
@@ -717,7 +717,6 @@ end subroutine set_1D_wind_profile
 !+
 !-----------------------------------------------------------------------
 subroutine set_default_options_inject(flag)
-
  integer, intent(in), optional :: flag
  integer :: icase
 

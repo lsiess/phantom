@@ -112,7 +112,6 @@ end subroutine setup_wind
 subroutine init_wind(params,time_end,state,tau_lucy_init)
 ! all quantities in cgs
  use physcon,          only:pi,Rg
- use io,               only:fatal
  use eos,              only:gmw
  use ptmass_radiation, only:iget_tdust
  use dust_formation,   only:kappa_gas,init_muGamma,idust_opacity
