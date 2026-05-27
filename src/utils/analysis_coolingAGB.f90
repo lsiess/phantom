@@ -1,0 +1,916 @@
+!--------------------------------------------------------------------------!
+! The Phantom Smoothed Particle Hydrodynamics code, by Daniel Price et al. !
+! Copyright (c) 2007-2024 The Authors (see AUTHORS)                        !
+! See LICENCE file for usage and distribution conditions                   !
+! http://phantomsph.github.io/                                             !
+!--------------------------------------------------------------------------!
+module analysis
+!
+! various tests of the cooling solver module
+!
+! :References: None
+!
+! :Owner: Lionel Siess
+!
+! :Runtime parameters: None
+!
+! :Dependencies: cooling, cooling_functions, cooling_solver, dim,
+!   dust_formation, options, physcon, prompting, units
+!
+
+ use cooling
+ use cooling_functions
+ use cooling_solver
+ use physcon,          only:mass_proton_cgs,kboltz,atomic_mass_unit,patm
+ use dust_formation,   only:init_muGamma,set_abundances,kappa_gas,calc_kappa_bowen,&
+                              chemical_equilibrium_light,init_nucleation, eps
+ use dim,              only:nElements, nabn_AGB
+ use io,               only:id,master
+ use part,             only:isdead_or_accreted
+
+ implicit none
+
+ character(len=20), parameter, public :: analysistype = 'cooling'
+ public :: do_analysis
+
+ private
+ integer :: analysis_to_perform
+! Indices for cooling species:
+ integer, parameter :: icoolH=1, icoolC=2, icoolO=3, icoolSi=4, icoolH2=5, icoolCO=6, &
+                       icoolH2O=7, icoolOH=8, icoolC2=9, icoolC2H=10, icoolC2H2=11, &
+                       icoolHe=12, icoolSiO=13, icoolCH4=14, icoolS=15, icoolTi=16, icoolN=17
+
+contains
+
+subroutine do_analysis(dumpfile,num,xyzh,vxyzu,particlemass,npart,time,iunit)
+
+ use prompting,  only:prompt
+
+ character(len=*), intent(in) :: dumpfile
+ integer,          intent(in) :: num,npart,iunit
+ real(kind=8),     intent(in) :: xyzh(:,:),vxyzu(:,:)
+ real(kind=8),     intent(in) :: particlemass,time
+
+
+ print "(29(a,/))", &
+ ' 1) check cooling only for temperature', &
+ ' 2) check cooling only for density', &
+ ' 3) check cooling for temperature and density (to be checked)', &
+ ' 4) test speed of AGB cooling', &
+ ' 5) check dust formation and destruction', &
+ ' 6) total dust mass', &
+ ' 7) reconstruct logNormal from moments', &
+ ' 8) radial abundance profiles'
+
+analysis_to_perform = 1
+
+call prompt('Choose analysis type ',analysis_to_perform,1,8)
+print *,''
+
+!analysis
+select case(analysis_to_perform)
+case(1) !test temperature
+  call test_cooling()
+case(2) !test density
+  call test_density()
+case(3)
+  call cooling_temp_dens()
+case(4)
+  call test_speed_AGB_cooling(dumpfile)
+case(5)
+  call compute_dust_formation()
+case(6)
+  call total_dust_mass(time,npart,particlemass,xyzh)
+case(7)
+  call reconstruct_logNorm_from_moments()
+case(8)
+  call radial_abundance_profile(npart, particlemass, xyzh, vxyzu)
+end select
+
+end subroutine do_analysis
+
+!--------------------------------------------
+!+
+!  Various tests of the cooling module
+!+
+!--------------------------------------------
+subroutine test_cooling()
+  use physcon, only:solarm,kpc
+  use units,   only:set_units
+  !integer :: nfailed(10),ierr,iregime
+  
+  if (id==master) write(*,"(/,a)") '--> TESTING COOLING MODULE'
+  
+  call set_units(mass=1e7*solarm,dist=kpc,G=1.d0)
+  
+  call test_cooling_rate()
+  
+  if (id==master) write(*,"(/,a)") '<-- COOLING TEST COMPLETE'
+  
+  end subroutine test_cooling
+
+!--------------------------------------------
+!+
+!  Cooling rates on temperature grid
+!+
+!--------------------------------------------
+subroutine test_cooling_rate()
+  use cooling_AGBwinds, only:nrates,init_cooling_AGB,energ_cooling_AGB
+  !use cooling,     only:energ_cooling
+  ! use chem,           only:init_chem,get_dphot
+  use dust_formation, only:chemical_equilibrium_light,init_muGamma,mass_per_H,Tmol
+  use physcon,        only:Rg,mass_proton_cgs,kboltz,patm
+  use units,          only:unit_density,utime
+  use dim,            only:nElements
+
+implicit none
+
+  integer, parameter :: nt = 1000
+  real :: logTmin,logTmax,logT,dlogT,T,crate,Tdust
+  real :: ndens,xi,yi,zi,mu,rho_cgs,rhoi,dT
+  real :: dudti
+  real(kind=4) :: divv_cgs, divv
+  integer :: i,iunit
+  real    :: ratesq(nrates)
+  real    :: abundi(nabn_AGB)
+  integer, parameter :: iH = 1, iHe=2, iC=3, iOx=4, iN=5, iNe=6, iSi=7, iS=8, iFe=9, iTi=10
+  real    :: ndens_H, epsC
+  real    :: gamma
+  real    :: start, finish
+  
+  if (id==master) write(*,"(/,a)") '--> testing cooling_AGB rate'
+  
+  logTmax = log10(1.5d4)
+  logTmin = log10(20.d0)
+ 
+
+  call set_abundances
+
+! Set abundances according to Agundez et al. 2020, Table 1, for a C-rich AGB star with C/O = 1.4
+! These are the abundances used in Maes 2023
+
+  ! eps(iH) = 1.0
+  ! eps(iHe) = 0.085d0
+  ! eps(iOx) = 4.90d-4
+  ! eps(iN) = 6.76d-5
+  ! eps(iNe) = 8.51e-5
+  ! eps(iSi) = 3.24d-5
+  ! eps(iS) = 1.32d-5
+  ! eps(iFe) = 3.16d-5
+  ! eps(iTi) = 8.91d-8
+  ! eps(iC) = 6.86d-4
+
+  epsC = eps(3) ! ignoring nucleation
+
+  xi = 0.
+  yi = 0.
+  zi = 0.
+  dt = 1.0d0
+  rho_cgs = 2.0d-14
+  rhoi = rho_cgs/unit_density 
+  ndens_H = rhoi*unit_density / mass_per_H
+
+
+  call init_cooling_AGB()
+  
+  ! icooling = 1      ! use cooling solver
+  ! excitation_HI = 1 ! H1 cooling
+  ! icool_method = 1  ! explicit
+  
+  open(newunit=iunit,file='cooltable.txt',status='replace')
+  write(iunit,'(A, E12.4)') '#   T   \Lambda_E(T) erg s^{-1} cm^3   N dens H: ', ndens_H
+  dlogt = (logtmax - logtmin)/real(nt)
+  divv_cgs = real(1.e-7, kind=4)   ! arbitrary non-zero value to test effect
+  divv = divv_cgs*real(utime, kind=4)
+  ! T = 1.5d3
+  ! ui = 1.5*T*(Rg/mu)/unit_ergg
+  ! call energ_cooling_AGB(ui,rhoi,divv_cgs,mu,abundance,dudti,ratesq)
+  ! ndens = (rhoi*unit_density/mass_proton_cgs)*5.d0/7.d0
+  ! crate = dudti*udist**2/utime**3*(rhoi*unit_density)
+  ! write(iunit,*) t,crate/ndens**2,ratesq(:)/ndens**2
+
+  call cpu_time(start)
+
+  abundi = 0.0  
+  T = 1.5d4
+  call init_muGamma(rho_cgs, T, mu, gamma) ! initialize mu and gamma at high temperature
+
+  do i=1,nt
+    dudti = 0.
+    logT = logTmin + (i-1)*dlogT
+    T = 10**logT
+
+    ! compute chemical equilibrium abundances
+    call chemical_equilibrium_light(rho_cgs, T, epsC, mu, gamma, abundi)
+    ! abundi = abundi / rho_cgs * mass_proton_cgs
+    abundi = abundi / ndens_H
+    
+    Tdust = T
+    
+    call energ_cooling_AGB(T,Tdust,rhoi,divv,mu,abundi,dudti,ratesq)
+
+    ndens = rhoi*unit_density/(mu*mass_proton_cgs)
+    crate = dudti*(rhoi*unit_density) ! ylamq is divided by rho_cgs in energ_cooling_AGB
+    write(iunit,*)  T,crate/ndens_H**2,                     &
+                    abundi(icoolH), abundi(icoolH2), abundi(icoolHe), &
+                    abundi(icoolCO), abundi(icoolH2O), abundi(icoolOH), &
+                    abundi(icoolO), abundi(icoolSi), abundi(icoolC2), &
+                    abundi(icoolC), abundi(icoolC2H2), abundi(icoolC2H), &
+                    abundi(icoolSiO), abundi(icoolCH4), &
+                    ratesq(:)/ndens_H**2
+  enddo
+  call cpu_time(finish)
+  print '("Time = ",f6.3," seconds.")',finish-start
+  close(iunit)
+  
+  end subroutine test_cooling_rate
+
+!--------------------------------------------
+!+
+!  Cooling rates on density grid
+!+
+!--------------------------------------------
+subroutine test_density()
+  use cooling_AGBwinds, only:nrates,init_cooling_AGB,energ_cooling_AGB
+  !use cooling,     only:energ_cooling
+  ! use chem,           only:init_chem,get_dphot
+  use dust_formation, only:chemical_equilibrium_light,init_muGamma,mass_per_H
+  use physcon,        only:Rg,mass_proton_cgs,kboltz,patm
+  use units,          only:unit_density,utime
+  use dim,            only:nElements
+
+implicit none
+
+  integer, parameter :: nt = 1000
+  real :: lognmin,lognmax,logn,dlogn,t,crate,Tdust
+  real :: xi,yi,zi,mu,rho_cgs,rhoi,dt
+  real :: dudti
+  real(kind=4) :: divv_cgs, divv
+  integer :: i,iunit
+  real    :: ratesq(nrates)
+  real    :: abundi(nabn_AGB)
+  integer, parameter :: iH = 1, iHe=2, iC=3, iOx=4, iN=5, iNe=6, iSi=7, iS=8, iFe=9, iTi=10
+  real    :: epsC
+  real    :: gamma, n_H, n_H2
+  real    :: start, finish
+  
+  if (id==master) write(*,"(/,a)") '--> testing cooling_AGB rate'
+  
+  lognmax = 15. ! H2 number density cm^-3
+  lognmin = 3.
+  T = 500.
+
+  call set_abundances
+ 
+  epsC = eps(3) ! ignoring nucleation
+
+  xi = 0.
+  yi = 0.
+  zi = 0.
+  dt = 1.0d0
+
+  call init_cooling_AGB()
+  
+  open(newunit=iunit,file='density_test.txt',status='replace')
+  write(iunit,'(A, E12.4)') '#   n_H2  Lambda_E  abundances  c.rates (\Lambda_E(T) erg s^{-1} cm^3)   T: ', T
+  dlogn = (lognmax - lognmin)/real(nt)
+  divv_cgs = real(1.e-7, kind=4)   ! arbitrary non-zero value to test effect
+  divv = divv_cgs*real(utime, kind=4)
+
+  call cpu_time(start)
+
+  abundi = 0.0
+
+  do i=1,nt
+    dudti = 0.
+    logn = lognmin + (i-1)*dlogn
+    n_H2 = 10**logn
+    n_H = 2.0 * n_H2
+    rho_cgs = n_H * mass_per_H
+    rhoi = rho_cgs/unit_density
+    call init_muGamma(rho_cgs, T, mu, gamma)
+
+    ! dphot = get_dphot(dphotflag,dphot0,xi,yi,zi)
+
+    call chemical_equilibrium_light(rho_cgs, T, epsC, mu, gamma, abundi)
+    ! ab_H2 = abundi(icoolH2)
+    abundi = abundi / n_H
+    Tdust = T
+    
+
+    call energ_cooling_AGB(T,Tdust,rhoi,divv,mu,abundi,dudti,ratesq)
+
+    crate = dudti*(rhoi*unit_density) ! ylamq is divided by rho_cgs in energ_cooling_AGB
+    write(iunit,*)  n_H2,crate/n_H2**2,                     &
+                    abundi(icoolH), abundi(icoolH2), abundi(icoolHe), &
+                    abundi(icoolCO), abundi(icoolH2O), abundi(icoolOH), &
+                    abundi(icoolO), abundi(icoolSi), abundi(icoolC2), &
+                    abundi(icoolC), abundi(icoolC2H2), abundi(icoolC2H), &
+                    abundi(icoolSiO), abundi(icoolCH4), &
+                    ratesq(:)/n_H2**2
+  enddo
+  call cpu_time(finish)
+  print '("Time = ",f6.3," seconds.")',finish-start
+  close(iunit)
+  
+  end subroutine test_density
+
+
+!--------------------------------------------
+!+
+!  Various tests of the cooling module for temperature and density
+!+
+!--------------------------------------------
+subroutine cooling_temp_dens()
+  use physcon, only:solarm,kpc
+  use units,   only:set_units
+  !integer :: nfailed(10),ierr,iregime
+
+  if (id==master) write(*,"(/,a)") '--> TESTING COOLING MODULE'
+
+  call set_units(mass=1e7*solarm,dist=kpc,G=1.d0)
+
+  call cooling_rate_temp_dens()
+
+  if (id==master) write(*,"(/,a)") '<-- COOLING TEST COMPLETE'
+
+end subroutine cooling_temp_dens
+
+!------------------------------------------------
+!+
+!  Test cooling rates for temperature and density
+!+
+!------------------------------------------------
+subroutine cooling_rate_temp_dens()
+  use cooling_AGBwinds, only:nrates,init_cooling_AGB,energ_cooling_AGB
+  use dust_formation, only:chemical_equilibrium_light,eps, &
+                           init_muGamma,set_abundances,mass_per_H
+  use physcon,        only:Rg,mass_proton_cgs,kboltz,patm
+  use units,          only:unit_density,utime
+  integer, parameter :: nt_grid = 15
+  integer, parameter :: nd_grid = 15
+  real :: logtmin,logtmax,logrhomin,logrhomax,logt,logrho,dlogt,dlogrho,t,crate,Tdust
+  real :: xi,yi,zi,mu,rho_cgs,rhoi,dt
+  real :: dudti
+  real(kind=4) :: divv_cgs, divv
+  integer :: i,l,iunit
+  real    :: ratesq(nrates)
+  real    :: abundi(nabn_AGB)
+  integer, parameter :: iH = 1, iHe=2, iC=3, iOx=4, iN=5, iNe=6, iSi=7, iS=8, iFe=9, iTi=10
+  real    :: ndens_H, epsC
+  real    :: gamma
+
+
+  if (id==master) write(*,"(/,a)") '--> testing cooling_AGB rate'
+
+  logtmax = log10(2.d4)
+  logtmin = log10(5.d2)
+  logrhomin = log10(1.d4)
+  logrhomax = log10(7.d13)
+
+  !set atomic abundances
+
+  call set_abundances
+
+  epsC = eps(3)  ! ignoring nucleation
+
+  xi = 0.
+  yi = 0.
+  zi = 0.
+  dt = 1.0d0
+  ! rho_cgs = 2.0d-12
+  ! rhoi = rho_cgs/unit_density 
+  ! ndens_H = rhoi*unit_density / mass_per_H
+
+  call init_cooling_AGB()
+
+
+  open(newunit=iunit,file='cooltable_dens.txt',status='replace')
+  write(iunit,"(a)") '#   T   \Lambda_E(T) erg s^{-1} cm^3   \Lambda erg s^{-1} cm^{-3}  '
+
+  dlogt = (logtmax - logtmin)/real(nt_grid, kind=8)
+  dlogrho = (logrhomax - logrhomin)/real(nd_grid, kind=8)
+  divv_cgs = real(1.e-7, kind=4)   ! arbitrary non-zero value to test effect
+  divv = divv_cgs*real(utime, kind=4)
+  abundi = 0.0
+
+  do l=1,nd_grid
+    logrho = logrhomin + (l-1)*dlogrho
+    ndens_H = 10**logrho
+    rho_cgs = ndens_H * mass_per_H
+    rhoi = rho_cgs/unit_density 
+    do i=1,nt_grid
+      logt = logtmin + (i-1)*dlogt
+      t = 10**logt
+      call init_muGamma(rho_cgs, t, mu, gamma)
+      
+
+      call chemical_equilibrium_light(rho_cgs, t, epsC, mu, gamma, abundi)
+
+      abundi = abundi / ndens_H
+      Tdust = t
+
+      call energ_cooling_AGB(t,Tdust,rhoi,divv,mu,abundi,dudti,ratesq)
+
+      crate = dudti*(rhoi*unit_density)
+      write(iunit,*)  t,ndens_H,crate/ndens_H**2,                     &
+                      abundi(icoolH), abundi(icoolH2), abundi(icoolHe), &
+                      abundi(icoolCO), abundi(icoolH2O), abundi(icoolOH), &
+                      abundi(icoolO), abundi(icoolSi), abundi(icoolC2), &
+                      abundi(icoolC), abundi(icoolC2H2), abundi(icoolC2H), &
+                      abundi(icoolSiO), abundi(icoolCH4), &
+                      ratesq(:)/ndens_H**2
+    enddo
+  enddo
+  close(iunit)
+
+end subroutine cooling_rate_temp_dens
+
+!-------------------------------------------------
+!+ 
+! Subroutine to check the speed of the AGB cooling
+!+
+!-------------------------------------------------
+subroutine test_speed_AGB_cooling(dumpfile)
+  use cooling_solver,   only:energ_cooling_solver,calc_cooling_rate,cooling_AGB,icool_method, &
+                           excitation_HI
+  use cooling_AGBwinds,   only:init_cooling_AGB
+  use units,            only:unit_density,unit_ergg,utime
+  use physcon,          only:kboltz,atomic_mass_unit,Rg
+  use dust_formation,   only:set_abundances,init_muGamma
+  use initial,          only:initialise
+  use readwrite_infile, only:read_infile
+  implicit none
+
+  character(len=*), intent(in)  ::   dumpfile
+  character(len=120)            ::   infile
+  real :: start, finish
+  integer, parameter :: ndt = 100000
+  integer :: i,iunit
+  real :: dt,T_gas,rho_cgs,rho,ui,dudt,mu,gamma,T_on_u,T_floor
+  real :: Tout,K2,K3,tstart
+  real :: Q,dlnQ_dlnT,kappa
+  real :: tlast,time
+  real(kind=4) :: divv, divv_cgs
+  real :: abundi(nabn_AGB)
+
+  logical :: file_exists
+  inquire(file='abundances_implicit', exist=file_exists)
+  if (file_exists) then
+    call execute_command_line('rm -f abundances_implicit')
+  end if
+  
+
+  !default cooling prescription
+  icool_method = 0    !0=implicit, 1=explicit, 2=exact solution
+  cooling_AGB = 1
+  excitation_HI = 0
+  K2 = 0
+  K3 = 0.d0
+  kappa = 0.
+  divv_cgs = real(1.e-7, kind=4)   ! arbitrary non-zero value to test effect
+  divv = divv_cgs*real(utime, kind=4)
+  abundi = 0.0
+
+  !temperature and density
+  T_gas   = 5.d3
+  rho_cgs = 2.d-14 !cgs
+  rho     = rho_cgs/unit_density
+
+  infile = dumpfile(1:index(dumpfile,'_')-1)//'.in'
+  ! call initialise()
+  ! call read_infile(infile,logfile,evfile,dfile)
+  ! call init_cooling_solver(ierr)
+  call set_abundances
+  call init_muGamma(rho_cgs, T_gas, mu, gamma)
+  call init_cooling_AGB()
+
+  ! parameters
+  tstart = 0.0
+  tlast = 1.d2     ! evolve for this many code time units
+  dt     = (tlast - tstart)/ndt   ! uniform linear spacing
+
+  ! initialize
+  time = tstart
+  call calc_cooling_rate(Q, dlnQ_dlnT, rho, T_gas, T_gas, mu, gamma, K2, 0., kappa, abundi_in=abundi)
+  T_on_u = (gamma-1.)*mu*unit_ergg/Rg
+
+  ui   = T_gas/T_on_u
+  T_floor = 10.d0
+
+  call cpu_time(start)
+
+  open(newunit=iunit, file='test_AGB_cooling', status='replace')
+
+  print *, '#Tin=', T_gas, ', rho_cgs=', rho_cgs, ', imethod=', icool_method
+
+  do i = 1, ndt
+    ! evolve forward
+     call energ_cooling_solver(ui, dudt, rho, dt, mu, gamma, 0., K2, K3, kappa, divv)
+
+     ! update internal energy (forward Euler)
+     ui = ui + dt*dudt
+
+    time = time + dt
+    Tout = max(ui*T_on_u, T_floor)
+
+    write(iunit,*) time, dt, Tout, dudt
+  enddo
+
+
+  close(iunit)
+
+  call cpu_time(finish)
+  print '("Time = ",f6.3," seconds.")',finish-start
+
+end subroutine test_speed_AGB_cooling
+
+!------------------------------------------------------
+!+
+! Subroutines to compute dust formation and destruction
+!+
+!------------------------------------------------------
+subroutine compute_dust_formation()
+  use dust_formation, only: set_abundances, evolve_chem,   &
+                            wind_CO_ratio, eps, mass_per_H
+  use physcon,        only: pi
+  use part,           only: n_nucleation, idJstar, idK0, idK1, idK2, idK3, &
+                            idmu, idgamma, idsat, idkappa, idalpha
+  implicit none
+
+  real :: rho_avg, rho_cgs, T_avg, delta_T, gamma, a0_radius, P, Scrit,    &
+          dt, epsC, ndens_H
+  integer, parameter :: iH = 1, iHe=2, iC=3, iOx=4, iN=5, iNe=6, iSi=7, iS=8, iFe=9, iTi=10
+  integer, parameter :: nTg_points = 10000
+  real :: nTg(nTg_points)
+  real :: T_range(nTg_points)
+  integer :: idx, i, iunit
+  logical :: id_exist
+  real :: JKmuS(n_nucleation)
+
+  rho_avg = 1.0d-13   ! in cgs
+  T_avg = 1600 
+  delta_T = 400
+  gamma = 5./3.  ! Adiabatic index
+  a0_radius = 1.28d-8
+  P = 2.6d7 ! in s
+  Scrit = 1
+  wind_CO_ratio = 3
+  JKmuS(idgamma) = gamma
+  JKmuS(idK0:idK3) = 0.d0
+  JKmuS(idJstar) = 0.d0
+  
+  do idx = 1, nTg_points
+    nTg(idx) = real(idx - 1) / real(nTg_points - 1)
+  end do
+
+  T_range = T_avg + delta_T * cos(2*pi*(1-nTg))
+  dt = P / nTg_points  ! Time step in seconds
+
+  call set_abundances
+  eps(iOx) = 9e-4  ! Adjusted O abundance to better match Gauger 1990
+  eps(iC) = eps(iOx) * wind_CO_ratio
+  eps(iH) = 1.0
+  epsC = eps(iC)
+
+  inquire(file='abundances_output.txt', exist=id_exist)
+  if (id_exist) then
+    call execute_command_line('rm -f abundances_output.txt')
+  end if
+
+  open(newunit=iunit,file='dustFormation_table.txt',status='replace')
+  ! write(iunit,"(a)") '#   T   \Lambda_E(T) erg s^{-1} cm^3   \Lambda erg s^{-1} cm^{-3}'
+
+  do i = 1, nTg_points
+    rho_cgs = rho_avg * (T_range(i) / T_avg)**(1/(gamma - 1))
+    ndens_H = rho_cgs / mass_per_H
+    ! eps(iC) = abundi(icoolC) / ndens_H
+    ! Call the dust formation routine for each temperature grid point
+    ! if (i > 1) then
+    !   JKmuS(i, :) = JKmuS(i-1, :)
+    ! end if
+    call evolve_chem(dt, T_range(i), rho_cgs, JKmuS(:))
+
+    write(iunit,*)  T_range(i), JKmuS(idJstar)*ndens_H, JKmuS(idK0:), &
+                   JKmuS(idK3) / (eps(iC) - eps(iOx))
+    ! Jstar = 1, K0 = 2, K1 = 3, K2 = 4, K3 = 5, mu = 6,
+    ! gamma = 7, sat = 8, kappa = 9, alpha = 10
+  end do
+  close(iunit)
+
+end subroutine compute_dust_formation
+
+
+subroutine total_dust_mass(time,npart,particlemass,xyzh)
+ use part,           only:nucleation,idK3,idK0,idK1, idJstar
+ use dust_formation, only:set_abundances, mass_per_H
+ use physcon, only:atomic_mass_unit
+ real, intent(in)               :: time,particlemass,xyzh(:,:)
+ integer, intent(in)            :: npart
+ integer                        :: i,ncols,j
+ integer                        :: dump_number = 0
+ real, dimension(2)             :: dust_mass
+ character(len=17), allocatable :: columns(:)
+ real, allocatable              :: temp(:) !npart
+ real                           :: median,mass_factor,grain_size
+ real, parameter :: a0 = 1.28e-4 !radius of a carbon atom in micron
+
+ call set_abundances !initialize mass_per_H
+ dust_mass = 0.
+ ncols = 2
+ print *,'size(nucleation,1) = ',size(nucleation,1)
+ print *,'size(nucleation,2) = ',size(nucleation,2)
+ allocate(columns(ncols),temp(npart))
+ columns = (/'Dust mass [Msun]', &
+             'median size [um]'/)
+ j=0
+ mass_factor = 12.*atomic_mass_unit*particlemass/mass_per_H
+ do i = 1,npart
+    if (.not. isdead_or_accreted(xyzh(4,i))) then
+       dust_mass(1) = dust_mass(1) + nucleation(idK3,i) *mass_factor
+       grain_size = a0*nucleation(idK1,i)/(nucleation(idK0,i)+1.0E-99) !in micron
+       if (grain_size > a0) then
+          j = j+1
+          temp(j) = grain_size
+       endif
+    endif
+ enddo
+
+ call sort(temp,j)
+ if (mod(j,2)==0) then !npart
+    median = (temp(j/2)+temp(j/2+1))/2.0 !(temp(npart/2)+temp(npart/2+1))/2.0
+ else
+    median = (temp(j/2)+temp(j/2+1))/2.0 !temp(npart/2+1)
+ endif
+
+ dust_mass(2) = median
+
+ call write_time_file('total_dust_mass_vs_time', columns, time, dust_mass, ncols, dump_number)
+ !after execution of the analysis routine, a file named "total_dust_mass_vs_time.ev" appears
+ deallocate(columns,temp)
+
+end subroutine total_dust_mass
+
+! ------------------------------------------------------
+! The following subroutines are used by total_dust_mass
+! ------------------------------------------------------
+
+subroutine write_time_file(name_in, cols, time, data_in, ncols, num)
+ !outputs a file over a series of dumps
+ character(len=*), intent(in) :: name_in
+ integer, intent(in)          :: ncols, num
+ character(len=*), dimension(ncols), intent(in) :: cols
+ character(len=20), dimension(ncols) :: columns
+ character(len=40)             :: data_formatter, column_formatter
+ character(len(name_in)+9)    :: file_name
+ real, intent(in)             :: time
+ real, dimension(ncols), intent(in) :: data_in
+ integer                      :: i, unitnum
+
+ write(column_formatter, "(a,I2.2,a)") "('#',2x,", ncols+1, "('[',a15,']',3x))"
+ write(data_formatter, "(a,I2.2,a)") "(", ncols+1, "(2x,es18.11e2))"
+ write(file_name,"(2a,i3.3,a)") name_in, '.ev'
+
+ if (num == 0) then
+    unitnum = 1000
+
+    open(unit=unitnum,file=file_name,status='replace')
+    do i=1,ncols
+       write(columns(i), "(I2,a)") i+1, cols(i)
+    enddo
+
+    !set column headings
+    write(unitnum, column_formatter) '1         time', columns(:)
+    close(unit=unitnum)
+ endif
+
+ unitnum=1001+num
+
+ open(unit=unitnum,file=file_name, position='append')
+
+ write(unitnum,data_formatter) time, data_in(:ncols)
+
+ close(unit=unitnum)
+
+end subroutine write_time_file
+
+! --------------------------------------------------------------------
+! subroutine  Sort():
+!    This subroutine receives an array x() and sorts it into ascending
+! order.
+! --------------------------------------------------------------------
+
+subroutine  Sort(x, longitud)
+ implicit  none
+ integer, intent(in)                   :: longitud
+ real, dimension(longitud), intent(inout) :: x
+ integer                               :: i
+ integer                               :: location
+
+ do i = 1, longitud-1             ! except for the last
+    location = findminimum(x, i, longitud)  ! find min from this to last
+    call swap(x(i), x(location))  ! swap this and the minimum
+ enddo
+end subroutine Sort
+
+! --------------------------------------------------------------------
+! integer function  FindMinimum():
+!    This function returns the location of the minimum in the section
+! between Start and End.
+! --------------------------------------------------------------------
+
+integer function  FindMinimum(x, Start, Fin)
+ implicit  none
+ integer, intent(in)                   :: start, fin
+ real, dimension(Fin), intent(in) :: x
+ real                            :: minimum
+ integer                            :: location
+ integer                            :: i
+
+ minimum  = x(start)          ! assume the first is the min
+ location = start             ! record its position
+ do i = start+1, fin          ! start with next elements
+    if (x(i) < minimum) then  !   if x(i) less than the min?
+       minimum  = x(i)        !      yes, a new minimum found
+       location = i                !      record its position
+    endif
+ enddo
+ findminimum = location            ! return the position
+end function FindMinimum
+
+subroutine swap(a,b)
+ real, intent(inout) :: a,b
+ real                :: c
+
+ c = a
+ a = b
+ b = c
+
+end subroutine swap
+
+subroutine reconstruct_logNorm_from_moments()
+  use dust_formation,     only:fit_lognormal_from_m012
+ implicit none
+
+  real :: K0, K1, K2, K3
+  real :: mu, sigma
+  integer :: info
+
+  K0 = 1.5d-4
+  K1 = 6.0d-4
+  K2 = 2.6d-2
+  K3 = 1.0d0
+
+  call fit_lognormal_from_m012(K0, K1, K2, mu, sigma, info)
+
+  print *, 'Given moments:'
+  print *, 'K0 = ', K0
+  print *, 'K1 = ', K1
+  print *, 'K2 = ', K2
+  print *, 'K3 = ', K3
+  print *, 'Fitted log-normal parameters:'
+  print *, 'mu = ', mu
+  print *, 'sigma = ', sigma
+
+
+
+end subroutine reconstruct_logNorm_from_moments
+
+! -------------------------------------------------------
+! Subroutine to compute the radial abundance profile of cooling species
+! -------------------------------------------------------
+
+
+subroutine radial_abundance_profile(npart, particlemass, xyzh, vxyzu)
+ use part,      only:hfact,nucleation,idK3
+ use units,     only:unit_ergg,unit_density
+ use physcon,   only:Rg
+ use dust_formation, only:chemical_equilibrium_light,mass_per_H,eps
+
+ real, intent(in)               :: particlemass,xyzh(:,:),vxyzu(:,:)
+ integer, intent(in)            :: npart
+
+ integer, parameter :: nbins = 300
+
+ real :: r, rmin, rmax
+ real, dimension(nbins+1) :: r_edge
+ real, dimension(nbins)   :: r_cent
+
+ real, dimension(nbins, nabn_AGB) :: sum_abund
+ real, dimension(nbins) :: sum_T, sum_rho, sum_K3
+ real, dimension(nbins) :: T_profile, rho_profile, K3_profile
+ integer, dimension(nbins)     :: npart_bin
+ real, dimension(nbins, nabn_AGB) :: abund_profile
+ real, dimension(nabn_AGB) :: abundi
+ integer :: i, ibin
+ real :: epsC, mu, gamma
+ real :: dr, hi, rho_cgs, ui, T_on_u, T, n_H
+ integer, parameter :: iC = 3
+
+
+ sum_abund  = 0.0
+ sum_T     = 0.0
+ sum_rho   = 0.0
+ sum_K3    = 0.0
+ npart_bin  = 0
+ mu = 2.3  ! mean molecular weight, can be adjusted based on the composition
+ gamma = 5./3. ! adiabatic index, can also be adjusted
+ T_on_u = (gamma-1.) * mu * unit_ergg / Rg
+
+ rmin = 1.d0
+ rmax = 30.d0
+ dr = (rmax - rmin)/real(nbins)
+ do i = 1, nbins+1
+    r_edge(i) = rmin + (i-1)*dr
+ enddo
+ do i = 1, nbins
+    r_cent(i) = 0.5*(r_edge(i) + r_edge(i+1))
+ enddo
+
+ do i = 1, npart
+
+  abundi = 0.0
+
+  if (isdead_or_accreted(xyzh(4,i))) cycle
+
+  ! radius
+  r = sqrt(xyzh(1,i)**2 + xyzh(2,i)**2 + xyzh(3,i)**2)
+
+  ibin = int((r - rmin)/dr) + 1
+  if (ibin < 1 .or. ibin > nbins) cycle
+
+  ! density from h
+  hi     = xyzh(4,i)
+  rho_cgs = particlemass * (hfact/abs(hi))**3 *unit_density
+  n_H = rho_cgs / mass_per_H
+
+  ui = vxyzu(4,i)
+  T      = T_on_u * ui
+
+  ! print *, 'Particle ', i, ': r = ', r, ' cm, rho = ', rho_cgs, ' g/cm^3, T = ', T, ' K', ' epsC = ', epsC
+
+  epsC   = eps(iC) - nucleation(idK3, i)
+  call chemical_equilibrium_light(rho_cgs, T, epsC, mu, gamma, abundi)
+  abundi = abundi / n_H
+
+  ! print *, 'Abundances for particle ', i, ':'
+  ! print *, 'H2: ', abundi(icoolH2)
+  ! print *, 'CO: ', abundi(icoolCO)
+  ! print *, 'SiO: ', abundi(icoolSiO)
+
+  sum_abund(ibin,:) = sum_abund(ibin,:) + abundi(:)
+  sum_T(ibin) = sum_T(ibin) + T
+  sum_rho(ibin) = sum_rho(ibin) + rho_cgs
+  sum_K3(ibin) = sum_K3(ibin) + nucleation(idK3,i)
+  npart_bin(ibin)   = npart_bin(ibin) + 1
+
+enddo
+
+do i = 1, nbins
+  if (npart_bin(i) > 0) then
+     abund_profile(i,:) = sum_abund(i,:) / real(npart_bin(i))
+     T_profile(i) = sum_T(i) / real(npart_bin(i))
+     rho_profile(i) = sum_rho(i) / real(npart_bin(i))
+     K3_profile(i) = sum_K3(i) / real(npart_bin(i))
+  else
+     abund_profile(i,:) = -1.0
+     T_profile(i) = -1.0
+     rho_profile(i) = -1.0
+     K3_profile(i) = -1.0
+  endif
+enddo
+
+open(unit=10, file='abundance_1Dprofile.dat', status='replace')
+write(10,'(A)') '# r[cm]  T[K]  rho[g/cm^3]  Npart  K3  X_H  X_C  X_O  X_Si  X_H2  X_CO  &
+                X_H2O  X_OH  X_C2  X_C2H  X_C2H2  X_He  X_SiO  X_CH4  X_S  X_Ti  X_N'
+
+do i = 1, nbins
+  if (npart_bin(i) > 0) then
+    write(10,'(E15.7,1X,E12.5,1X,E12.5,1X,I8,1X,E12.5,1X,*(E12.5,1X))') &
+     r_cent(i), T_profile(i), rho_profile(i), npart_bin(i), K3_profile(i), abund_profile(i,:)
+  endif
+enddo
+
+close(10)
+
+end subroutine radial_abundance_profile
+
+
+! Delete particles is not yet used, might be needed for post processing with MCFOST
+subroutine delete_particles(npart_in)
+  use part, only:delete_dead_or_accreted_particles,npartoftype
+  integer, intent(in) :: npart_in
+  integer :: npart
+
+  npart = npart_in
+
+  print *, 'Number of particles before deletion: ', npart
+
+  call delete_dead_or_accreted_particles(npart, npartoftype)
+
+  print *, 'Number of particles after deletion: ', npart
+
+end subroutine delete_particles
+
+
+end module analysis
