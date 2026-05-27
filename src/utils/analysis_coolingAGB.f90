@@ -604,7 +604,8 @@ end subroutine compute_dust_formation
 subroutine total_dust_mass(time,npart,particlemass,xyzh)
  use part,           only:nucleation,idK3,idK0,idK1, idJstar
  use dust_formation, only:set_abundances, mass_per_H
- use physcon, only:atomic_mass_unit
+ use physcon,        only:atomic_mass_unit
+ use sortutils,      only:indexx
  real, intent(in)               :: time,particlemass,xyzh(:,:)
  integer, intent(in)            :: npart
  integer                        :: i,ncols,j
@@ -612,15 +613,16 @@ subroutine total_dust_mass(time,npart,particlemass,xyzh)
  real, dimension(2)             :: dust_mass
  character(len=17), allocatable :: columns(:)
  real, allocatable              :: temp(:) !npart
+ integer, allocatable           :: indx(:)
  real                           :: median,mass_factor,grain_size
  real, parameter :: a0 = 1.28e-4 !radius of a carbon atom in micron
 
  call set_abundances !initialize mass_per_H
  dust_mass = 0.
  ncols = 2
+ allocate(columns(ncols),temp(npart),indx(npart))
  print *,'size(nucleation,1) = ',size(nucleation,1)
  print *,'size(nucleation,2) = ',size(nucleation,2)
- allocate(columns(ncols),temp(npart))
  columns = (/'Dust mass [Msun]', &
              'median size [um]'/)
  j=0
@@ -636,13 +638,9 @@ subroutine total_dust_mass(time,npart,particlemass,xyzh)
     endif
  enddo
 
- call sort(temp,j)
- if (mod(j,2)==0) then !npart
-    median = (temp(j/2)+temp(j/2+1))/2.0 !(temp(npart/2)+temp(npart/2+1))/2.0
- else
-    median = (temp(j/2)+temp(j/2+1))/2.0 !temp(npart/2+1)
- endif
-
+ call indexx(j,temp,indx)
+ median = (temp(indx(j/2))+temp(indx(j/2+1)))/2.0
+ 
  dust_mass(2) = median
 
  call write_time_file('total_dust_mass_vs_time', columns, time, dust_mass, ncols, dump_number)
@@ -693,60 +691,6 @@ subroutine write_time_file(name_in, cols, time, data_in, ncols, num)
  close(unit=unitnum)
 
 end subroutine write_time_file
-
-! --------------------------------------------------------------------
-! subroutine  Sort():
-!    This subroutine receives an array x() and sorts it into ascending
-! order.
-! --------------------------------------------------------------------
-
-subroutine  Sort(x, longitud)
- implicit  none
- integer, intent(in)                   :: longitud
- real, dimension(longitud), intent(inout) :: x
- integer                               :: i
- integer                               :: location
-
- do i = 1, longitud-1             ! except for the last
-    location = findminimum(x, i, longitud)  ! find min from this to last
-    call swap(x(i), x(location))  ! swap this and the minimum
- enddo
-end subroutine Sort
-
-! --------------------------------------------------------------------
-! integer function  FindMinimum():
-!    This function returns the location of the minimum in the section
-! between Start and End.
-! --------------------------------------------------------------------
-
-integer function  FindMinimum(x, Start, Fin)
- implicit  none
- integer, intent(in)                   :: start, fin
- real, dimension(Fin), intent(in) :: x
- real                            :: minimum
- integer                            :: location
- integer                            :: i
-
- minimum  = x(start)          ! assume the first is the min
- location = start             ! record its position
- do i = start+1, fin          ! start with next elements
-    if (x(i) < minimum) then  !   if x(i) less than the min?
-       minimum  = x(i)        !      yes, a new minimum found
-       location = i                !      record its position
-    endif
- enddo
- findminimum = location            ! return the position
-end function FindMinimum
-
-subroutine swap(a,b)
- real, intent(inout) :: a,b
- real                :: c
-
- c = a
- a = b
- b = c
-
-end subroutine swap
 
 subroutine reconstruct_logNorm_from_moments()
   use dust_formation,     only:fit_lognormal_from_m012
