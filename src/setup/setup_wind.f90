@@ -172,7 +172,6 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
  use io,              only:master
  use eos,             only:gmw,ieos,isink,qfacdisc
  use spherical,       only:set_sphere
- use timestep,        only:dtmax
  use infile_utils,    only:get_options
  use kernel,          only:hfact_default
  use prompting,       only:prompt
@@ -1033,7 +1032,6 @@ subroutine read_setupfile_sink(db,nerr,name,isink)
  integer,          intent(in) :: isink
  integer,          intent(inout) :: nerr
  type(inopts)     :: db(:)
- integer :: ichange
 
  call read_inopt(mass_msun(isink),name // '_mass',db,min=0.,max=1000.,errcount=nerr)
  mass(isink) = mass_msun(isink) * (solarm / umass)

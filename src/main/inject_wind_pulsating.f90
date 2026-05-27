@@ -60,7 +60,6 @@ module inject
  integer :: n_shells              = 15 !@ this should probably go away
  real    :: r_max_on_rstar        = 1.4 !@LS potentially go aways
  integer :: n_profile_points      = 10000 !@LS quite large
- integer :: save_period           = 0 !@ redundent with dumps_p_period --> removed
 
  real    :: mass_loss_start       = 2.0
  real    :: mass_loss_end         = 4.0
@@ -94,7 +93,6 @@ module inject
  integer :: n_shells_bnd
 
  real, allocatable    :: r_boundary_equilibrium(:)
- integer              :: n_boundary_particles !@LS could potentially be removed ?
  integer              :: active_boundary_spheres
 
  logical :: reinjection_needed = .false.
@@ -150,7 +148,6 @@ subroutine init_inject(ierr)
  use injectutils,   only:get_neighb_distance
  use wind_pulsating,only:setup_star,calc_stellar_profile,region_mass,interp_stellar_profile
  use dust_formation,only:calc_kappa_max
- use timestep,      only:dtmax
 
  integer, intent(out) :: ierr
  real    :: Mstar_cgs, Rstar_cgs, Tstar, Lstar_cgs
@@ -386,7 +383,6 @@ end subroutine init_inject
 !+
 !----------------------------------------------------------------
 subroutine inject_particles(time,dtlast,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,npart,npart_old,npartoftype,dtinject)
- use part, only:igas,iboundary,iamtype
 
  real,    intent(in)    :: time,dtlast
  real,    intent(inout) :: xyzh(:,:),vxyzu(:,:),xyzmh_ptmass(:,:),vxyz_ptmass(:,:)
@@ -438,7 +434,6 @@ end subroutine inject_particles
 !+
 !----------------------------------------------------------------
 subroutine take_periodic_mass_measurements(time,xyzh,npart,xyzmh_ptmass,npartoftype)
- use part,   only:igas,iboundary,iphase,iamtype
  use physcon,only:solarm,years,days
 
  real,    intent(in) :: time
@@ -519,7 +514,7 @@ end subroutine take_periodic_mass_measurements
 !+
 !----------------------------------------------------------------
 subroutine perform_reinjection(time,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,npart,npartoftype)
- use part,           only:igas,iboundary,iamtype,set_particle_type
+ use part,           only:igas
  use injectutils,    only:inject_geodesic_sphere
  use wind_pulsating, only:interp_stellar_profile
  use physcon,        only:pi
@@ -529,7 +524,7 @@ subroutine perform_reinjection(time,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,npart,np
  integer, intent(inout) :: npart
  integer, intent(inout) :: npartoftype(:)
 
- integer :: old_npart, i
+ integer :: old_npart, i, nboundary
  real    :: r_inject, phase, r_dot, rho, u, T, P
  real    :: x0(3), v0(3)
  real    :: mass_injected
@@ -539,9 +534,10 @@ subroutine perform_reinjection(time,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,npart,np
 
  phase = omega_pulsation * time + phi0
  r_dot = piston_velocity * cos(phase)
+ nboundary = npartoftype(3)
 
- if (allocated(r_boundary_equilibrium) .and. n_boundary_particles > 0) then
-    r_inject = r_boundary_equilibrium(n_boundary_particles) + delta_r_radial(iboundary_spheres + 1)
+ if (allocated(r_boundary_equilibrium) .and. nboundary > 0) then
+    r_inject = r_boundary_equilibrium(nboundary) + delta_r_radial(iboundary_spheres + 1)
     r_inject = r_inject + deltaR_osc * sin(phase)
  else
     r_inject = r_min
@@ -579,7 +575,7 @@ end subroutine perform_reinjection
 !+
 !----------------------------------------------------------------
 subroutine setup_initial_atmosphere(xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,npart,npartoftype)
- use part,           only:igas,iboundary,iphase,iamtype
+ use part,           only:igas,iboundary
  use injectutils,    only:inject_geodesic_sphere
  use wind_pulsating, only:interp_stellar_profile
  use physcon,        only:pi,km,au
@@ -645,24 +641,24 @@ end subroutine setup_initial_atmosphere
 !+
 !----------------------------------------------------------------
 subroutine reconstruct_boundary_info(time,xyzh,npart,xyzmh_ptmass)
- use part,   only:iboundary,iphase,iamtype,npartoftype
+ use part,   only:npartoftype
  use physcon,only:pi
 
  real,    intent(in) :: time
  real,    intent(inout) :: xyzh(:,:),xyzmh_ptmass(:,:)
  integer, intent(in) :: npart
- integer :: i, j
+ integer :: i,nboundary
  real    :: x0(3), r_current, phase
 
  x0    = xyzmh_ptmass(1:3, wind_emitting_sink)
  phase = omega_pulsation * time + phi0
 
- n_boundary_particles = npartoftype(3)
+ nboundary = npartoftype(3)
 
- if (n_boundary_particles > 0) then
-    allocate(r_boundary_equilibrium(n_boundary_particles))
+ if (nboundary > 0) then
+    allocate(r_boundary_equilibrium(nboundary))
 
-    do i = 1, n_boundary_particles
+    do i = 1,nboundary
           r_current = sqrt((xyzh(1,i)-x0(1))**2 + &
                            (xyzh(2,i)-x0(2))**2 + &
                            (xyzh(3,i)-x0(3))**2)
@@ -670,7 +666,7 @@ subroutine reconstruct_boundary_info(time,xyzh,npart,xyzmh_ptmass)
     enddo
 
     print *, 'Reconstructed boundary particle info:'
-    print *, 'Boundary particles: ', n_boundary_particles
+    print *, 'Boundary particles: ', nboundary
  endif
 
 end subroutine reconstruct_boundary_info
@@ -683,20 +679,21 @@ end subroutine reconstruct_boundary_info
 subroutine apply_pulsation(time,xyzh,vxyzu,npart,xyzmh_ptmass,vxyz_ptmass)
  use physcon,        only:pi,solarl
  use wind_pulsating, only:interp_stellar_profile
- use part,           only:iTeff,iLum,iReff
+ use part,           only:iTeff,iLum,iReff,npartoftype
 
  real,    intent(in)    :: time
  real,    intent(inout) :: xyzh(:,:),vxyzu(:,:),xyzmh_ptmass(:,:),vxyz_ptmass(:,:)
  integer, intent(in)    :: npart
 
- integer :: i, ipart
- real    :: r_eq, r_new, r_current, phase, alpha, deltaR_osc
+ integer :: i, nboundary
+ real    :: r_eq, r_new, r_current, phase, deltaR_osc
  real    :: x_hat(3), r_dot, x0(3), v0(3)
- real    :: x, y, z, rho, u, T, P
+ real    :: x, y, z
  real    :: Reff, Teff, Lum
 
  if (.not. allocated(r_boundary_equilibrium)) return
- if (n_boundary_particles == 0) return
+ nboundary = npartoftype(3)
+ if (nboundary == 0) return
 
  x0 = xyzmh_ptmass(1:3, wind_emitting_sink)
  v0 = vxyz_ptmass(1:3,  wind_emitting_sink)
@@ -706,7 +703,7 @@ subroutine apply_pulsation(time,xyzh,vxyzu,npart,xyzmh_ptmass,vxyz_ptmass)
 
  r_dot = piston_velocity * cos(phase)
 
- do i = 1, n_boundary_particles
+ do i = 1, nboundary
     r_eq  = r_boundary_equilibrium(i)
     r_new = r_eq + deltaR_osc * sin(phase)
 
@@ -728,7 +725,7 @@ subroutine apply_pulsation(time,xyzh,vxyzu,npart,xyzmh_ptmass,vxyz_ptmass)
     vxyzu(3,i) = r_dot * x_hat(3) + v0(3)
 
     if (update_L == 1) then
-       Reff = xyzmh_ptmass(iReff,1) + deltaR_osc * (sin(phi0) * (1.0 - alpha) + alpha * sin(phase))
+       Reff = xyzmh_ptmass(iReff,1) + deltaR_osc * sin(phase)
        Teff = xyzmh_ptmass(iTeff,1)
        Lum  = xyzmh_ptmass(iLum,1)
        call get_lum(Lum, Teff, Reff)
