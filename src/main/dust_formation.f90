@@ -50,7 +50,7 @@ module dust_formation
 
  character(len=*), parameter :: label = 'dust_formation'
  real :: wind_CO_ratio = 2.
- real :: bowen_kmax  = -1
+ real :: bowen_kmax  = -1.
  real :: grad_to_ggrav = 0.95
  real :: kappa_max
  real :: bowen_Tcond = 1500.
@@ -279,7 +279,7 @@ subroutine calc_kappa_max(Mstar_cgs, Lstar_cgs)
  use physcon, only:c,Gg
  real, intent(in) :: Mstar_cgs, Lstar_cgs
 
- if (bowen_kmax > 0.) then
+ if (bowen_kmax > tiny(0.)) then
     kappa_max = bowen_kmax
  else
     kappa_max = grad_to_ggrav * 4.0 * pi * Gg * Mstar_cgs * c / Lstar_cgs
@@ -747,8 +747,8 @@ subroutine write_options_dust_formation(iunit)
  endif
  if (idust_opacity == 1) then
     call write_inopt(kappa_gas,'kappa_gas','constant gas opacity (cm²/g)',iunit)
-    call write_inopt(bowen_kmax,'bowen_kmax','maximum dust opacity (cm²/g) (if < 0, calculated using grad_to_ggrav)',iunit)
-    if (bowen_kmax > 0.) call write_inopt(grad_to_ggrav,'grad_to_ggrav','ratio of radiative to gravitational acceleration',iunit)
+    call write_inopt(bowen_kmax,'bowen_kmax','maximum dust opacity (cm²/g) (if <= 0, calculated using grad_to_ggrav)',iunit)
+    if (bowen_kmax < tiny(0.)) call write_inopt(grad_to_ggrav,'grad_to_ggrav','ratio of radiative to gravitational acceleration',iunit)
     call write_inopt(bowen_Tcond,'bowen_Tcond','dust condensation temperature (K)',iunit)
     call write_inopt(bowen_delta,'bowen_delta','condensation temperature range (K)',iunit)
  endif
@@ -779,8 +779,8 @@ subroutine read_options_dust_formation(db,nerr)
  endif
  if (idust_opacity == 1) then
     call read_inopt(kappa_gas,'kappa_gas',db,errcount=nerr,min=0.)
-    call read_inopt(bowen_kmax,'bowen_kmax',db,errcount=nerr,min=0.)
-    if (bowen_kmax > 0.) call read_inopt(grad_to_ggrav,'grad_to_ggrav',db,errcount=nerr,min=0.)
+    call read_inopt(bowen_kmax,'bowen_kmax',db,errcount=nerr,min=-100.)
+    if (bowen_kmax < tiny(0.)) call read_inopt(grad_to_ggrav,'grad_to_ggrav',db,errcount=nerr,min=0.)
     call read_inopt(bowen_Tcond,'bowen_Tcond',db,errcount=nerr,min=0.)
     call read_inopt(bowen_delta,'bowen_delta',db,errcount=nerr,min=0.)
  endif

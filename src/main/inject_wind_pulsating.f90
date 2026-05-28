@@ -64,7 +64,7 @@ module inject
  real    :: r_max_on_rstar        = 1.4 !@LS potentially go aways
  real    :: mass_loss_start       = 2.0
  real    :: mass_loss_end         = 4.0
- real    :: check_radius_au       = 3.0 !@LS sholuld be defined based on the envelope mass
+ real    :: check_radius_au       = 3.0 !@LS should be defined based on the envelope mass
  integer :: update_L              = 0
 
 ! global variables
@@ -871,7 +871,7 @@ subroutine write_options_inject(iunit)
  call write_inopt(rho_power,            'rho_power',           'density profile exponent: rho ~ r^(-rho_power)',iunit)
  call write_inopt(reinject_enabled,     'reinject_enabled',    'enable dynamic reinjection (0=off, 1=on)',iunit)
 
- call write_inopt(n_shells,             'n_shells',            'number of gas shells (if <0 determined from n_particles)',iunit)
+ call write_inopt(n_shells,             'n_shells',            'number of gas shells (if = 0 determined from n_particles)',iunit)
  call write_inopt(n_particles_first,    'n_particles_first',   'particles on first shell (0=disabled)',iunit)
  call write_inopt(min_particles_shell,  'min_particles_shell', 'minimum particles per shell when using n_particles_first',iunit)
  call write_inopt(r_min_on_rstar,       'r_min_on_rstar',      'gas atmosphere inner radius as fraction of R_star',iunit)
