@@ -748,7 +748,8 @@ subroutine write_options_dust_formation(iunit)
  if (idust_opacity == 1) then
     call write_inopt(kappa_gas,'kappa_gas','constant gas opacity (cm²/g)',iunit)
     call write_inopt(bowen_kmax,'bowen_kmax','maximum dust opacity (cm²/g) (if <= 0, calculated using grad_to_ggrav)',iunit)
-    if (bowen_kmax < tiny(0.)) call write_inopt(grad_to_ggrav,'grad_to_ggrav','ratio of radiative to gravitational acceleration',iunit)
+    if (bowen_kmax < tiny(0.)) call write_inopt(grad_to_ggrav,'grad_to_ggrav',&
+         'ratio of radiative to gravitational acceleration',iunit)
     call write_inopt(bowen_Tcond,'bowen_Tcond','dust condensation temperature (K)',iunit)
     call write_inopt(bowen_delta,'bowen_delta','condensation temperature range (K)',iunit)
  endif

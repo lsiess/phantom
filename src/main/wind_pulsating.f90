@@ -193,7 +193,7 @@ end subroutine stellar_step
 subroutine calc_stellar_profile()
  use io,  only:fatal
  type(stellar_state) :: state
- integer :: i,nwrite
+ integer :: nwrite
  real :: r_new, dr, r_base,r_incr,rho_base,rho_incr,P_base,P_incr,u_base,&
       u_incr,T_base,T_incr
  integer, parameter :: nlmax = 8192   ! maxium number of steps store in the 1D profile

@@ -84,6 +84,7 @@ module inject
  real, allocatable :: shell_radii_bnd(:)
  real, allocatable :: delta_r_radial(:)
  real, allocatable :: r_boundary_equilibrium(:)
+ real, allocatable :: JKmuS(:)
 
  logical :: atmosphere_setup_complete = .false.
  integer :: n_shells_total
@@ -120,10 +121,12 @@ subroutine init_inject(ierr)
  use physcon,       only:pi,days,au,solarm,km,years
  use eos,           only:gmw,gamma
  use units,         only:utime,umass,unit_velocity,unit_luminosity
- use part,          only:xyzmh_ptmass,massoftype,igas,iboundary,nptmass,iTeff,iReff,iLum,npartoftype
+ use part,          only:xyzmh_ptmass,massoftype,igas,iboundary,nptmass,iTeff,iReff,iLum,npartoftype,&
+                         idgamma,idmu,n_nucleation
  use injectutils,   only:get_neighb_distance
  use wind_pulsating,only:setup_star,calc_stellar_profile,region_mass,interp_stellar_profile
  use dust_formation,only:calc_kappa_max
+ use dim,           only:do_nucleation
 
  integer, intent(out) :: ierr
  real    :: Mstar_cgs, Rstar_cgs, Tstar, Lstar_cgs
@@ -140,6 +143,14 @@ subroutine init_inject(ierr)
  integer :: iunit
 
  ierr = 0
+
+ ! initialize nucleation
+ if (do_nucleation) then
+    allocate(JKmuS(n_nucleation))
+    JKmuS = 0.
+    JKmuS(idgamma) = gamma
+    JKmuS(idmu)    = gmw
+ endif
 
  if (nptmass < 1) call fatal(label,'need at least one sink particle for central star')
 
@@ -488,6 +499,7 @@ subroutine perform_reinjection(time,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,npart,np
  use injectutils,    only:inject_geodesic_sphere
  use wind_pulsating, only:interp_stellar_profile
  use physcon,        only:pi
+ use dim,            only:do_nucleation
 
  real,    intent(in)    :: time
  real,    intent(inout) :: xyzh(:,:),vxyzu(:,:),xyzmh_ptmass(:,:),vxyz_ptmass(:,:)
@@ -522,8 +534,13 @@ subroutine perform_reinjection(time,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,npart,np
  old_npart      = npart
  n_reinjections = n_reinjections + 1
 
- call inject_geodesic_sphere(n_shells_total + n_reinjections, npart + 1, particles_to_inject, r_inject, r_dot, u, rho, &
-                               npart, npartoftype, xyzh, vxyzu, igas, x0, v0, wind_emitting_sink)
+ if (do_nucleation) then
+   call inject_geodesic_sphere(n_shells_total+n_reinjections,npart+1,particles_to_inject,&
+        r_inject,r_dot,u,rho,npart,npartoftype,xyzh,vxyzu,igas,x0,v0,wind_emitting_sink,JKmuS)
+ else
+    call inject_geodesic_sphere(n_shells_total+n_reinjections,npart+1,particles_to_inject,&
+        r_inject,r_dot,u,rho,npart,npartoftype,xyzh,vxyzu,igas,x0,v0,wind_emitting_sink)
+ endif
 
  mass_injected = real(npart - old_npart) * mass_of_particles
  xyzmh_ptmass(4, wind_emitting_sink) = xyzmh_ptmass(4, wind_emitting_sink) - mass_injected
@@ -549,6 +566,7 @@ subroutine setup_initial_atmosphere(xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,npart,np
  use injectutils,    only:inject_geodesic_sphere
  use wind_pulsating, only:interp_stellar_profile
  use physcon,        only:pi,km,au
+ use dim,            only:do_nucleation
 
  real,    intent(inout) :: xyzh(:,:),vxyzu(:,:)
  real,    intent(in)    :: xyzmh_ptmass(:,:),vxyz_ptmass(:,:)
@@ -572,8 +590,13 @@ subroutine setup_initial_atmosphere(xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,npart,np
     call interp_stellar_profile(r, rho, P, u, T)
     v_radial       = 0.0
     first_particle = npart + 1
-    call inject_geodesic_sphere(i, first_particle, npart_per_boundary_shell(i), r, v_radial, u, rho, &
-                                 npart, npartoftype, xyzh, vxyzu, iboundary, x0, v0, wind_emitting_sink)
+    if (do_nucleation) then
+       call inject_geodesic_sphere(i, first_particle, npart_per_boundary_shell(i), r, v_radial, u, rho, &
+            npart, npartoftype, xyzh, vxyzu, iboundary, x0, v0, wind_emitting_sink,JKmuS)
+    else
+       call inject_geodesic_sphere(i, first_particle, npart_per_boundary_shell(i), r, v_radial, u, rho, &
+            npart, npartoftype, xyzh, vxyzu, iboundary, x0, v0, wind_emitting_sink)
+    endif
  enddo
 
 !+
@@ -584,8 +607,13 @@ subroutine setup_initial_atmosphere(xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,npart,np
     call interp_stellar_profile(r, rho, P, u, T)
     v_radial       = 0.0
     first_particle = npart + 1
-    call inject_geodesic_sphere(n_shells_bnd + i, first_particle, npart_per_shell(i), r, v_radial, u, rho, &
-                                 npart, npartoftype, xyzh, vxyzu, igas, x0, v0, wind_emitting_sink)
+    if (do_nucleation) then
+       call inject_geodesic_sphere(n_shells_bnd + i, first_particle, npart_per_shell(i), r, v_radial, u, rho, &
+            npart, npartoftype, xyzh, vxyzu, igas, x0, v0, wind_emitting_sink,JKmuS)
+    else
+       call inject_geodesic_sphere(n_shells_bnd + i, first_particle, npart_per_shell(i), r, v_radial, u, rho, &
+            npart, npartoftype, xyzh, vxyzu, igas, x0, v0, wind_emitting_sink)
+    endif
  enddo
 
  nboundary            = npartoftype(iboundary)
