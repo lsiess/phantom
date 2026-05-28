@@ -890,6 +890,7 @@ subroutine interp_wind_profile(time,local_time,r,v,u,rho,e,GM,fdone,isink,JKmuS)
  use part,           only:idgamma
  use eos,            only:gamma
  use table_utils,    only:find_nearest_index,interp_1d
+ use io,             only:fatal
 
  real,    intent(in)  :: time,local_time,GM
  integer, intent(in)  :: isink
@@ -905,7 +906,7 @@ subroutine interp_wind_profile(time,local_time,r,v,u,rho,e,GM,fdone,isink,JKmuS)
  elseif (isink == 2 .and. allocated(trvurho_1D2)) then
     trvurho => trvurho_1D2
  else
-    stop
+    call fatal(label,'interp_wind_profile : trvurho_1D not allocated')
  endif
 
  ltime = local_time*utime

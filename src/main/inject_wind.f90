@@ -136,9 +136,7 @@ subroutine init_inject(ierr)
     params%Mdot = xyzmh_ptmass(imloss,isink)*unit_Mdot
 
     ! compute 1D wind profile to get tcross & save 1D profile
-    if (rfill_domain_au > 0.) then
-       call set_1D_wind_profile(params,isink,d_part,time_between_spheres,tboundary,tcross,tfill,onewind)
-    endif
+    call set_1D_wind_profile(params,isink,d_part,time_between_spheres,tboundary,tcross,tfill,onewind)
 
 ! logging
     if (xyzmh_ptmass(imloss,isink) > 0.) &
@@ -542,7 +540,7 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,&
        r = rinject
        if (idust_opacity == 2) then
           call interp_wind_profile(time,local_time,r,v,u,rho,e,GM,fdone,isink,JKmuS)
-       else
+      else
           call interp_wind_profile(time,local_time,r,v,u,rho,e,GM,fdone,isink)
        endif
        if (iverbose > 0) print '(" ## update boundary  ",i4,2(i4),i7,i2,5x,8(1x,es12.5))',i,&
