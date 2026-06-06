@@ -197,10 +197,10 @@ subroutine evolve_chem(dt, T, rho_cgs, JKmuS)
        JstarS = JstarS/ nH_tot
        call evol_K(JKmuS(idJstar), JKmuS(idK0:idK3), JstarS, taustar, taugr, dt, Jstar_new, K_new)
     else
-       if (any(JKmuS(idK0:idK3) > 0.0)) then
+       if (any(JKmuS(idK0:idK3) > 0.0) .and. S < 1. .and. T > 1800.) then
           call calc_nucleation(T, pC, pC2, 0.0, pC2H, pC2H2, S, JstarS, taustar, taugr)
           adot = 1. / 3. / taugr    ! Equation 28 in Gauger 1990
-          call evap_shift_remove(JKmuS(idK0:idK3), dt, adot, K_new(0:3))
+          call evap_shift_remove(JKmuS(idK0:idK3), dt, adot, K_new)
           Jstar_new = 0.0
        else
           Jstar_new = 0.0
@@ -375,19 +375,6 @@ subroutine evol_K(Jstar_in, K, JstarS_in, taustar, taugr, dt, Jstar_new, K_new)
  i4 = d**3/6. - i3
  i5 = d**4/24. - i4
  Jstar_new = Jstar_in*i0 + JstarS_in*i1
- ! When Jstar or JstarS are < 1.d-50 (around 1d-70), they make the moments grow in an unrealistic way,
- ! for example we are unable to reproduce the average radius.
- ! The correct values to be considered (to reproduce Gauger 1990) are only larger than 1d-50
- if (Jstar_in < 1.d-50) then
-    Jstar = 0.0
- else
-    Jstar = Jstar_in
- endif
- if (JstarS_in < 1.d-50) then
-    JstarS = 0.0
- else
-    JstarS = JstarS_in
- endif
  ! When Jstar or JstarS are < 1.d-50 (around 1d-70), they make the moments grow in an unrealistic way,
  ! for example we are unable to reproduce the average radius.
  ! The correct values to be considered (to reproduce Gauger 1990) are only larger than 1d-50
