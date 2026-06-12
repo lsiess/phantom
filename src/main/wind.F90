@@ -998,95 +998,105 @@ subroutine save_windprofile (params,rout,rfill,tend,tcross,tfill,filename,isink)
  real, allocatable :: trvurho_temp(:,:)
  real, allocatable :: JKmuS_temp(:,:)
  type(wind_state) :: state
- integer :: iter,itermax,nwrite,writeline
+ integer :: iter,itermax,nwrite,writeline,nread,ios
+ logical :: lexist
+ real :: array(23)
  character(len=64) :: cstop
 
  if (.not. allocated(trvurho_temp)) allocate (trvurho_temp(5,nlmax))
  if (idust_opacity == 2 .and. .not. allocated(JKmuS_temp)) allocate (JKmuS_temp(n_nucleation,nlmax))
 
- write (*,'("Saving 1D model to ",A)') trim(filename)
- if (rfill > 0.) then
-    !set a large time_end so the time integration allows the particles to reach rfill
-    time_end = 1e7*utime
- else
-    time_end = tend
- endif
- if (iget_tdust == 4) then
-    call get_initial_tau_lucy(params,time_end,tau_lucy_init)
-    call init_wind(params,time_end,state,tau_lucy_init)
- else
-    call init_wind(params,time_end,state)
- endif
- if (write_files) then
-    open(newunit=iu,file=filename)
-    call filewrite_header(iu,nwrite)
-    call filewrite_state(iu,nwrite, state)
- endif
+ inquire(file=filename, exist=lexist)
 
- eps       = 0.01
- iter      = 0
- itermax   = int(huge(itermax)/10.) !this number is huge but may be needed for RK6 solver
- tcross    = huge(0.)
- tfill     = -1.
- writeline = 0
+ if (lexist) then
+    print*, "Reading the wind profile"
+    call load_windprofile(filename,trvurho_temp,JKmuS_temp,writeline,state)
 
- r_base     = state%r
- v_base     = state%v
- T_base     = state%Tg
- mu_base    = state%mu
- gamma_base = state%gamma
- time_base  = state%time+1e-4
+else
+   write (*,'("Saving 1D model to ",A)') trim(filename)
+   if (rfill > 0.) then
+      !set a large time_end so the time integration allows the particles to reach rfill
+      time_end = 1e7*utime
+   else
+      time_end = tend
+   endif
+   if (iget_tdust == 4) then
+      call get_initial_tau_lucy(params,time_end,tau_lucy_init)
+      call init_wind(params,time_end,state,tau_lucy_init)
+   else
+      call init_wind(params,time_end,state)
+   endif
+   if (write_files) then
+      open(newunit=iu,file=filename)
+      call filewrite_header(iu,nwrite)
+      call filewrite_state(iu,nwrite, state)
+   endif
 
- do while((state%r < rfill .or. state%time < time_end) .and. tfill < 0. .and. &
-      iter < itermax .and. state%Tg > Tdust_stop .and. writeline < nlmax)
-    iter = iter+1
-    call wind_step(params,state)
-    state%Tg = max(state%Tg,1.0001*Tdust_stop)
+   eps       = 0.01
+   iter      = 0
+   itermax   = int(huge(itermax)/10.) !this number is huge but may be needed for RK6 solver
+   tcross    = huge(0.)
+   tfill     = -1.
+   writeline = 0
 
-    r_incr     = state%r
-    v_incr     = state%v
-    T_incr     = state%Tg
-    time_incr  = state%time
-    mu_incr    = state%mu
-    gamma_incr = state%gamma
+   r_base     = state%r
+   v_base     = state%v
+   T_base     = state%Tg
+   mu_base    = state%mu
+   gamma_base = state%gamma
+   time_base  = state%time+1e-4
 
-    if (      ( abs((r_incr     -r_base)      /r_base)      > eps ) &
-         .or. ( abs((v_incr     -v_base)      /v_base)      > eps ) &
-         .or. ( abs((T_incr     -T_base)      /T_base)      > eps ) &
-         .or. ( abs((gamma_incr -gamma_base)  /gamma_base)  > eps ) &
-         .or. ( abs((time_incr  -time_base)   /time_base)   > 100.*eps ) &
-         .or. ( abs((mu_incr    -mu_base)     /mu_base)     > eps ) ) then
+   do while((state%r < rfill .or. state%time < time_end) .and. tfill < 0. .and. &
+         iter < itermax .and. state%Tg > Tdust_stop .and. writeline < nlmax)
+      iter = iter+1
+      call wind_step(params,state)
+      state%Tg = max(state%Tg,1.0001*Tdust_stop)
 
-       writeline = writeline + 1
-       if (write_files) call filewrite_state(iu,nwrite,state)
+      r_incr     = state%r
+      v_incr     = state%v
+      T_incr     = state%Tg
+      time_incr  = state%time
+      mu_incr    = state%mu
+      gamma_incr = state%gamma
 
-       r_base     = state%r
-       v_base     = state%v
-       T_base     = state%Tg
-       mu_base    = state%mu
-       time_base  = state%time
-       gamma_base = state%gamma
-       trvurho_temp(:,writeline) = (/state%time,state%r,state%v,state%u,state%rho/)
-       if (idust_opacity == 2) JKmuS_temp(:,writeline) = (/state%JKmuS(1:n_nucleation)/)
+      if (      ( abs((r_incr     -r_base)      /r_base)      > eps ) &
+            .or. ( abs((v_incr     -v_base)      /v_base)      > eps ) &
+            .or. ( abs((T_incr     -T_base)      /T_base)      > eps ) &
+            .or. ( abs((gamma_incr -gamma_base)  /gamma_base)  > eps ) &
+            .or. ( abs((time_incr  -time_base)   /time_base)   > 100.*eps ) &
+            .or. ( abs((mu_incr    -mu_base)     /mu_base)     > eps ) ) then
 
-    endif
-    if (state%r > rout)  tcross = min(state%time,tcross)
-    if (state%r > rfill .and. rfill > 0.) tfill  = state%time
- enddo
- if (state%time/time_end < .3 .and. state%r < rfill) then
-    cstop = 'undefined'
-    if (state%Tg < Tdust_stop) cstop = 'temperature reached lower limit (Tdust_stop)'
-    if (iter > itermax) cstop = 'maximum iteration reached (itermax)'
-    if (nlmax < writeline) cstop = 'wind storage exceeds limit (nlmax)'
-    if (state%time > time_end) cstop = 'integration time exceeds time_end'
-    if (state%r > rfill) cstop = 'integration goes beyond rfill'
-    write(*,'("[WARNING] wind integration failed because ",A," : t/tend = ",f7.5,", dt/tend = ",&
-    &es10.3," Tgas = ",f6.0,", r/rout = ",f7.5,", iter = ",f5.3, "%")') trim(cstop), &
-    state%time/time_end,state%dt/time_end,state%Tg,state%r/max(state%r,rout),(100.*iter/itermax)
- else
-    print *,'integration successful, #',iter,' iterations required, rout = ',state%r/au
- endif
- if (write_files) close(iu)
+         writeline = writeline + 1
+         if (write_files) call filewrite_state(iu,nwrite,state)
+
+         r_base     = state%r
+         v_base     = state%v
+         T_base     = state%Tg
+         mu_base    = state%mu
+         time_base  = state%time
+         gamma_base = state%gamma
+         trvurho_temp(:,writeline) = (/state%time,state%r,state%v,state%u,state%rho/)
+         if (idust_opacity == 2) JKmuS_temp(:,writeline) = (/state%JKmuS(1:n_nucleation)/)
+
+      endif
+      if (state%r > rout)  tcross = min(state%time,tcross)
+      if (state%r > rfill .and. rfill > 0.) tfill  = state%time
+   enddo
+   if (state%time/time_end < .3 .and. state%r < rfill) then
+      cstop = 'undefined'
+      if (state%Tg < Tdust_stop) cstop = 'temperature reached lower limit (Tdust_stop)'
+      if (iter > itermax) cstop = 'maximum iteration reached (itermax)'
+      if (nlmax < writeline) cstop = 'wind storage exceeds limit (nlmax)'
+      if (state%time > time_end) cstop = 'integration time exceeds time_end'
+      if (state%r > rfill) cstop = 'integration goes beyond rfill'
+      write(*,'("[WARNING] wind integration failed because ",A," : t/tend = ",f7.5,", dt/tend = ",&
+      &es10.3," Tgas = ",f6.0,", r/rout = ",f7.5,", iter = ",f5.3, "%")') trim(cstop), &
+      state%time/time_end,state%dt/time_end,state%Tg,state%r/max(state%r,rout),(100.*iter/itermax)
+   else
+      print *,'integration successful, #',iter,' iterations required, rout = ',state%r/au
+   endif
+   if (write_files) close(iu)
+ endif 
  !stop 'save_windprofile'
 
  if (isink == 1) then
@@ -1108,6 +1118,52 @@ subroutine save_windprofile (params,rout,rfill,tend,tcross,tfill,filename,isink)
  endif
 
 end subroutine save_windprofile
+
+subroutine load_windprofile(filename,trvurho_temp,JKmuS_temp,nlines,state)
+
+   use dust_formation, only:idust_opacity
+
+   character(*), intent(in) :: filename
+   real, allocatable, intent(out) :: trvurho_temp(:,:), JKmuS_temp(:,:)
+   integer,      intent(out) :: nlines
+   type(wind_state), intent(out) :: state
+
+   integer :: iu, ios, i
+   character(len=512) :: header
+   real, allocatable :: profile(:,:)   ! (23, nlines)
+
+   real :: array(23)
+
+   open(newunit=iu,file=filename,status='old',action='read')
+
+   read(iu,'(A)') header   ! skip header
+
+   nlines = 0
+   do
+      read(iu,*,iostat=ios) array
+      if (ios /= 0) exit
+      nlines = nlines + 1
+   enddo
+
+   rewind(iu)
+   read(iu,'(A)') header
+   allocate(trvurho_temp(5,nlines))
+   allocate(JKmuS_temp(n_nucleation,nlines))
+   allocate(profile(23,nlines))
+
+   do i = 1, nlines
+      read(iu,*) profile(:,i)
+   enddo
+
+   do i = 1, nlines
+      call array_to_state(profile(:,i), state)
+      trvurho_temp(:,i) = (/state%time,state%r,state%v,state%u,state%rho/)
+      if (idust_opacity == 2) JKmuS_temp(:,i) = (/state%JKmuS(1:n_nucleation)/)
+   enddo
+
+   close(iu)
+
+end subroutine load_windprofile
 
 subroutine filewrite_header(iunit,nwrite)
  integer, intent(in)  :: iunit
@@ -1157,6 +1213,46 @@ subroutine state_to_array(state,array)
  endif
  array(23) = state%Q
 end subroutine state_to_array
+
+subroutine array_to_state(array,state)
+   use dust_formation, only:idust_opacity
+   type(wind_state), intent(out) :: state
+   real,             intent(in)  :: array(:)
+   
+   state%time     = array(1)
+   state%r        = array(2)
+   state%v        = array(3)
+   state%Tg       = array(4)
+   state%c        = array(5)
+   state%p        = array(6)
+   state%u        = array(7)
+   state%rho      = array(8)
+   state%alpha    = array(9)
+   state%a        = array(10)
+   if (idust_opacity == 2) then
+      state%JKmuS(idmu)   = array(11)
+   else
+      state%mu         = array(11)
+   endif
+   state%JKmuS(idsat)  = array(12)
+   state%JKmuS(idJstar)= array(13)
+   state%JKmuS(idK0)   = array(14)
+   state%JKmuS(idK1)   = array(15)
+   state%JKmuS(idK2)   = array(16)
+   state%JKmuS(idK3)   = array(17)
+   state%tau_lucy     = array(18)
+   state%kappa        = array(19)
+   state%tau          = array(20)
+   state%Tdust        = array(21)
+   if (idust_opacity == 2) then
+      state%JKmuS(idgamma)  = array(22)
+   else
+      state%gamma         = array(22)
+   endif
+   state%Q            = array(23)
+   
+end subroutine array_to_state
+ 
 
 subroutine filewrite_state(iunit,nwrite,state)
  integer,          intent(in) :: iunit,nwrite
