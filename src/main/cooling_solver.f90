@@ -85,16 +85,17 @@ end subroutine init_cooling_solver
 !   cooling prescription and choice of solver
 !+
 !-----------------------------------------------------------------------
-subroutine energ_cooling_solver(ui,dudt,rho,dt,mu,gamma,Tdust,K2,K3,kappa,divv)
+subroutine energ_cooling_solver(ui,dudt,rho,dt,mu,gamma,Tdust,K2,K3,kappa,divv,xi,yi,zi)
  real, intent(in)  :: ui,rho,dt                       ! in code units
  real(kind=4), intent(in) :: divv                     ! in code units
  real, intent(in)  :: Tdust,mu,gamma,K2,K3,kappa      ! in cgs
  real, intent(out) :: dudt                            ! in code units
+ real, intent(in), optional :: xi,yi,zi
 
  if (icool_method == 2) then
     call exact_cooling(ui,dudt,rho,dt,mu,gamma,Tdust,K2,K3,kappa,divv)
  elseif (icool_method == 0) then
-    call implicit_cooling(ui,dudt,rho,dt,mu,gamma,Tdust,K2,K3,kappa,divv)
+    call implicit_cooling(ui,dudt,rho,dt,mu,gamma,Tdust,K2,K3,kappa,divv,xi,yi,zi)
  else
     call explicit_cooling(ui,dudt,rho,dt,mu,gamma,Tdust,K2,K3,kappa,divv)
  endif
@@ -140,7 +141,7 @@ end subroutine explicit_cooling
 !   implicit cooling
 !+
 !-----------------------------------------------------------------------
-subroutine implicit_cooling (ui, dudt, rho, dt, mu, gamma, Tdust, K2, K3, kappa, divv)
+subroutine implicit_cooling (ui, dudt, rho, dt, mu, gamma, Tdust, K2, K3, kappa, divv, xi, yi, zi)
 
  use physcon, only:Rg
  use units,   only:unit_ergg
@@ -151,6 +152,7 @@ subroutine implicit_cooling (ui, dudt, rho, dt, mu, gamma, Tdust, K2, K3, kappa,
  real, intent(in)  :: ui, rho, dt, mu, gamma
  real, intent(in)  :: Tdust, K2, K3, kappa
  real(kind=4), intent(in) :: divv
+ real, intent(in), optional :: xi, yi, zi
  real, intent(out) :: dudt
 
  real, parameter    :: tol = 1.d-3, Tmin = 1.
@@ -169,7 +171,8 @@ subroutine implicit_cooling (ui, dudt, rho, dt, mu, gamma, Tdust, K2, K3, kappa,
 
  abundi = 0.0
 
- call calc_cooling_rate(Q,dlnQ_dlnT, rho, T, Tdust, mu, gamma, K2, K3, kappa, divv_in=divv)
+ call calc_cooling_rate(Q,dlnQ_dlnT, rho, T, Tdust, mu, gamma, K2, K3, kappa, divv_in=divv, &
+                        & xi_in=xi, yi_in=yi, zi_in=zi)
 
  ! cooling negligible, return
  if (abs(Q) < tiny(0.)) then
@@ -194,7 +197,8 @@ subroutine implicit_cooling (ui, dudt, rho, dt, mu, gamma, Tdust, K2, K3, kappa,
 
  do while (iter < iter_max)
    if (iter > 0) abundi(icoolTi) = -1.0  ! flag to skip abundance calculation after first iteration
-   call calc_cooling_rate(Qi,dlnQ_dlnT, rho, T, Tdust, mu, gamma, K2, K3, kappa, divv_in=divv, abundi_in=abundi)
+   call calc_cooling_rate(Qi,dlnQ_dlnT, rho, T, Tdust, mu, gamma, K2, K3, kappa, &
+   & divv_in=divv, abundi_in=abundi, xi_in=xi, yi_in=yi, zi_in=zi)
 
    f   = T - T0 - Qi*dt*T_on_u
    dQdT = Qi * dlnQ_dlnT / T
@@ -363,14 +367,16 @@ end subroutine exact_cooling
 !  calculate cooling rates
 !+
 !-----------------------------------------------------------------------
-subroutine calc_cooling_rate(Q, dlnQ_dlnT, rho, T, Teq, mu, gamma, K2, K3, kappa, divv_in, abundi_in)
+subroutine calc_cooling_rate(Q, dlnQ_dlnT, rho, T, Teq, mu, gamma, K2, K3, kappa, divv_in, abundi_in,&
+                             & xi_in, yi_in, zi_in, r_in)
  use units,   only:unit_ergg,unit_density,utime
  use dim,    only:nabn_AGB
  use physcon, only:mass_proton_cgs
  use cooling_functions, only:cooling_neutral_hydrogen,&
      cooling_Bowen_relaxation,AGB_cooling,cooling_dust_collision,&
      cooling_radiative_relaxation,piecewise_law, &
-     cooling_high_temp,testing_cooling_functions
+     cooling_high_temp,testing_cooling_functions, &
+     rad_temp,radiative_heating
  !use cooling_molecular, only:do_molecular_cooling,calc_cool_molecular
 
  real, intent(in)  :: rho, T, Teq     !rho in code units
@@ -379,8 +385,11 @@ subroutine calc_cooling_rate(Q, dlnQ_dlnT, rho, T, Teq, mu, gamma, K2, K3, kappa
  real, intent(inout), optional      :: abundi_in(:)
  real(kind=4)                       :: divv
  real, intent(in)  :: K2, K3, kappa       !cgs
+ real, intent(in), optional :: xi_in, yi_in, zi_in
+ real, intent(in), optional :: r_in
  real, intent(out) :: Q, dlnQ_dlnT    !code units
  real :: abundi(nabn_AGB)
+ real :: Trad, Q_radHeat, dlnQ_radHeat, Tref
 
  real :: Q_cgs,Q_H0, Q_relax_Bowen, Q_col_dust, Q_relax_Stefan, Q_coolingAGB, Q_molec, Q_shock
  real :: dlnQ_H0, dlnQ_relax_Bowen, dlnQ_col_dust, dlnQ_relax_Stefan, dlnQ_coolingAGB, &
@@ -440,8 +449,19 @@ subroutine calc_cooling_rate(Q, dlnQ_dlnT, rho, T, Teq, mu, gamma, K2, K3, kappa
  if (excitation_HI  == 99) call testing_cooling_functions(int(K2), T, Q_H0, dlnQ_H0)
  !if (do_molecular_cooling) call calc_cool_molecular(T, r, rho_cgs, Q_molec, dlnQ_molec)
 
+ Tref = 3000.
+
+ if (present(xi_in) .and. present(yi_in) .and. present(zi_in)) then
+    call rad_temp(Tref, Trad, xi=xi_in, yi=yi_in, zi=zi_in)
+ else
+    call rad_temp(Tref, Trad, r_in=r_in)
+ endif
+
+ call rad_temp(Tref, Trad, xi_in, yi_in, zi_in, r_in)
+ call radiative_heating(Trad, T, rho_cgs, Q_radHeat, dlnQ_radHeat)
+
  Q_cgs = Q_H0 + Q_relax_Bowen + Q_col_dust + Q_relax_Stefan + Q_coolingAGB &
-	+ Q_molec + Q_shock + Q_hightemp
+	+ Q_molec + Q_shock + Q_hightemp + Q_radHeat
  if (Q_cgs == 0.) then
     dlnQ_dlnT = 0.
  else

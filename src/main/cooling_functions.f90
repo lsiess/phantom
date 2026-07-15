@@ -40,7 +40,8 @@ module cooling_functions
            AGB_cooling, &
            cooling_dust_collision, &
            cooling_radiative_relaxation, &
-           testing_cooling_functions
+           testing_cooling_functions, &
+           rad_temp, radiative_heating
 
  private
  real, parameter  :: xH = 0.7, xHe = 0.28 !assumed H and He mass fractions
@@ -387,6 +388,48 @@ subroutine nelectron_mu(T_gas, rho_gas, nH, nHe, n_e, mu)
  mu        = 4./(2.*xH*(1.+yy+2.*xx*yy)+xHe*(1+z1+z1*z2))
 
 end subroutine nelectron_mu
+
+subroutine rad_temp(Tref, Trad, xi, yi, zi, r_in)
+ use part, only:xyzmh_ptmass,iReff
+ use units, only:udist
+ real, intent(in)  :: Tref
+ real, intent(out) :: Trad
+ real, intent(in), optional  :: xi, yi, zi
+ real, intent(in), optional :: r_in
+ real :: W, Rstar, r
+
+ Rstar = xyzmh_ptmass(iReff,1)
+ if (present(r_in)) then
+    r = r_in
+ elseif (present(xi) .and. present(yi) .and. present(zi)) then
+    r = sqrt((xi-xyzmh_ptmass(1,1))**2 + (yi-xyzmh_ptmass(2,1))**2 + (zi-xyzmh_ptmass(3,1))**2) 
+ else
+    print*, 'Error: either r_in or (xi, yi, zi) must be provided.'
+    stop
+ endif
+ W = 0.5*( 1. - sqrt( 1 - (Rstar/r)**2 ) )
+ Trad = Tref * W**0.25
+
+!  print*, 'Rstar: ', xyzmh_ptmass(iReff,1), 'r: ', r, 'Trad: ', Trad
+!  print*, 'x star: ', xyzmh_ptmass(1,1), 'y star: ', xyzmh_ptmass(2,1), 'z star: ', xyzmh_ptmass(3,1)
+!  print*, 'x: ', xi, 'y: ', yi, 'z: ', zi
+!  print*, 'udist: ', udist
+
+end subroutine rad_temp
+
+subroutine radiative_heating(Trad, Tg, rho_cgs, Q_radHeat, dlnQ_radHeat)
+ use physcon, only:steboltz
+ real, intent(in)  :: Trad, Tg, rho_cgs
+ real, intent(out) :: Q_radHeat, dlnQ_radHeat
+ real, parameter   :: kappa_gas = 2.d-4      ! in cgs, from Woitke 2006, A&A, 452, 537–549
+
+ Q_radHeat = 4*steboltz*kappa_gas*(Trad**4-Tg**4)
+ dlnQ_radHeat = 0.
+
+ print*, 'Radiative heating: ', Q_radHeat, 'T rad: ', Trad, 'Tg: ', Tg, 'rho_cgs: ', rho_cgs
+
+end subroutine radiative_heating
+ 
 
 !-----------------------------------------------------------------------
 !+
