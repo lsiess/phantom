@@ -28,7 +28,7 @@ contains
 subroutine split_a_particle(nchild,iparent,xyzh,vxyzu, &
            lattice_type,ires,ichildren)
  use icosahedron, only:pixel2vector,compute_corners,compute_matrices
- use part,        only:copy_particle
+ use part,        only:copy_particle_all
  integer, intent(in)    :: nchild,iparent,lattice_type,ires
  integer, intent(in)    :: ichildren !the index *after* which children are stored
  real,    intent(inout) :: xyzh(:,:),vxyzu(:,:)
@@ -49,7 +49,7 @@ subroutine split_a_particle(nchild,iparent,xyzh,vxyzu, &
  do j=0,nchild-2
     ichild = ichild + 1
     ! copy properties
-    call copy_particle(iparent,ichildren+ichild,.true.)
+    call copy_particle_all(iparent,ichildren+ichild,.true.)
 
     ! adjust the position
     if (lattice_type == 0) then
@@ -197,7 +197,7 @@ end subroutine fancy_merge_into_a_particle
 !-----------------------------------------------------------------------
 subroutine fast_merge_into_a_particle(nchild,ichildren,mchild,npart, &
            xyzh,vxyzu,npartoftype,iparent)
- use part,   only:copy_particle,kill_particle
+ use part,   only:copy_particle_all,kill_particle
  integer, intent(in)    :: nchild,ichildren(nchild),iparent
  integer, intent(inout) :: npart
  real,    intent(inout) :: xyzh(:,:),vxyzu(:,:)
@@ -206,7 +206,7 @@ subroutine fast_merge_into_a_particle(nchild,ichildren,mchild,npart, &
  integer :: i
 
  ! use first child to be parent
- call copy_particle(ichildren(1),iparent,.true.)
+ call copy_particle_all(ichildren(1),iparent,.true.)
  xyzh(4,iparent) = xyzh(4,ichildren(1)) * (nchild)**(1./3.)
 
  ! discard the rest

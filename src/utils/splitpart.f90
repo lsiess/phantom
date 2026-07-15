@@ -26,7 +26,7 @@ contains
 subroutine split_all_particles(npart,npartoftype,massoftype,xyzh,vxyzu, &
                                  nchild,lattice_type,ires)
  use io,    only:fatal,error
- use part,  only:igas,copy_particle
+ use part,  only:igas,copy_particle_all
  integer, intent(inout) :: npart
  integer, intent(inout) :: npartoftype(:)
  real,    intent(inout) :: massoftype(:)
@@ -73,7 +73,7 @@ end subroutine split_all_particles
 subroutine merge_all_particles(npart,npartoftype,massoftype,xyzh,vxyzu, &
                                 nchild,nactive_here,fancy_merging)
  use part,          only:igas,kill_particle,delete_dead_or_accreted_particles
- use part,          only:isdead_or_accreted,copy_particle
+ use part,          only:isdead_or_accreted,copy_particle_all
  use timestep_ind,  only:nactive
  use io,            only:fatal,error
  use getneighbours, only:generate_neighbour_lists,neighb,neighcount,neighmax
@@ -140,7 +140,7 @@ subroutine merge_all_particles(npart,npartoftype,massoftype,xyzh,vxyzu, &
     !-- quick stochastic merging
     do i = 1,npart,nchild
        iparent = iparent + 1
-       call copy_particle(i,npart+iparent,.true.)
+       call copy_particle_all(i,npart+iparent,.true.)
        xyzh(4,npart+iparent) = xyzh(4,i) * (nchild)**(1./3.)
     enddo
  else
@@ -223,7 +223,7 @@ subroutine merge_all_particles(npart,npartoftype,massoftype,xyzh,vxyzu, &
 
  !-- move the new parents
  do i = 1,nparent
-    call copy_particle(npart+i,i,.true.)
+    call copy_particle_all(npart+i,i,.true.)
  enddo
 
  !-- kill all the useless children

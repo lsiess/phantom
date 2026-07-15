@@ -118,10 +118,11 @@ subroutine test_cooling_rate()
   use cooling_AGBwinds, only:nrates,init_cooling_AGB,energ_cooling_AGB
   !use cooling,     only:energ_cooling
   ! use chem,           only:init_chem,get_dphot
-  use dust_formation, only:chemical_equilibrium_light,init_muGamma,mass_per_H,Tmol
+  use dust_formation, only:chemical_equilibrium_light,init_muGamma,mass_per_H
   use physcon,        only:Rg,mass_proton_cgs,kboltz,patm
   use units,          only:unit_density,utime
   use dim,            only:nElements
+  use cooling_functions, only:cooling_neutral_hydrogen
 
 implicit none
 
@@ -137,6 +138,7 @@ implicit none
   real    :: ndens_H, epsC
   real    :: gamma
   real    :: start, finish
+  real    :: HI_Spitzer, dlnQ_dlnT_Spitzer
   
   if (id==master) write(*,"(/,a)") '--> testing cooling_AGB rate'
   
@@ -208,6 +210,8 @@ implicit none
     Tdust = T
     
     call energ_cooling_AGB(T,Tdust,rhoi,divv,mu,abundi,dudti,ratesq)
+
+    ! call cooling_neutral_hydrogen(T, rho_cgs, HI_Spitzer, dlnQ_dlnT_Spitzer)
 
     ndens = rhoi*unit_density/(mu*mass_proton_cgs)
     crate = dudti*(rhoi*unit_density) ! ylamq is divided by rho_cgs in energ_cooling_AGB
@@ -602,13 +606,16 @@ end subroutine compute_dust_formation
 
 
 subroutine total_dust_mass(time,npart,particlemass,xyzh)
- use part,           only:nucleation,idK3,idK0,idK1, idJstar
- use dust_formation, only:set_abundances, mass_per_H
+ use part,           only:nucleation,idK3,idK0,idK1, idJstar,aprmassoftype
+ use part,           only:apr_level,massoftype,igas
+ use dust_formation, only:set_abundances, mass_per_H, eps
  use physcon,        only:atomic_mass_unit
  use sortutils,      only:indexx
+  use dim,            only:use_apr
+  use utils_apr,        only:apr_max
  real, intent(in)               :: time,particlemass,xyzh(:,:)
  integer, intent(in)            :: npart
- integer                        :: i,ncols,j
+ integer                        :: i,ncols,j,ierr
  integer                        :: dump_number = 0
  real, dimension(2)             :: dust_mass
  character(len=17), allocatable :: columns(:)
@@ -616,6 +623,7 @@ subroutine total_dust_mass(time,npart,particlemass,xyzh)
  integer, allocatable           :: indx(:)
  real                           :: median,mass_factor,grain_size
  real, parameter :: a0 = 1.28e-4 !radius of a carbon atom in micron
+ real :: pmassi
 
  call set_abundances !initialize mass_per_H
  dust_mass = 0.
@@ -626,10 +634,31 @@ subroutine total_dust_mass(time,npart,particlemass,xyzh)
  columns = (/'Dust mass [Msun]', &
              'median size [um]'/)
  j=0
- mass_factor = 12.*atomic_mass_unit*particlemass/mass_per_H
+print*,massoftype
+print*,apr_max
+
+  do i = 1,apr_max
+    aprmassoftype(:,i) = massoftype(:)/(2.**(i-1))
+    print*, "aprmassoftype(:,", i, ") = ", aprmassoftype(:,i)
+ enddo
+
+!  mass_factor = 12.*atomic_mass_unit*particlemass/mass_per_H
  do i = 1,npart
     if (.not. isdead_or_accreted(xyzh(4,i))) then
+      if (use_apr) then
+          pmassi = aprmassoftype(igas, apr_level(i))
+        else
+          pmassi = particlemass
+        endif
+      mass_factor = 12.*atomic_mass_unit*pmassi/mass_per_H
+      !  print *, "shape =", shape(nucleation)
+      !  print *, "lbound =", lbound(nucleation)
+      !  print *, "ubound =", ubound(nucleation)
+      !  print*, "K3: ", nucleation(idK3,1), "mass_factor: ", mass_factor
        dust_mass(1) = dust_mass(1) + nucleation(idK3,i) *mass_factor
+       if (nucleation(idK3, i) > eps(3)) then
+          print *, "Warning: K3 exceeds available carbon for particle ", i
+       endif
        grain_size = a0*nucleation(idK1,i)/(nucleation(idK0,i)+1.0E-99) !in micron
        if (grain_size > a0) then
           j = j+1
@@ -666,7 +695,7 @@ subroutine write_time_file(name_in, cols, time, data_in, ncols, num)
  integer                      :: i, unitnum
 
  write(column_formatter, "(a,I2.2,a)") "('#',2x,", ncols+1, "('[',a15,']',3x))"
- write(data_formatter, "(a,I2.2,a)") "(", ncols+1, "(2x,es18.11e2))"
+ write(data_formatter, "(a,I2.2,a)") "(", ncols+1, "(2x,es25.17e2))"
  write(file_name,"(2a,i3.3,a)") name_in, '.ev'
 
  if (num == 0) then
@@ -826,7 +855,7 @@ enddo
 
 open(unit=10, file='abundance_1Dprofile.dat', status='replace')
 write(10,'(A)') '# r[cm]  T[K]  rho[g/cm^3]  Npart  K3  X_H  X_C  X_O  X_Si  X_H2  X_CO  &
-                X_H2O  X_OH  X_C2  X_C2H  X_C2H2  X_He  X_SiO  X_CH4  X_S  X_Ti  X_N'
+                & X_H2O  X_OH  X_C2  X_C2H  X_C2H2  X_He  X_SiO  X_CH4  X_S  X_Ti  X_N'
 
 do i = 1, nbins
   if (npart_bin(i) > 0) then

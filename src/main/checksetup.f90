@@ -762,16 +762,25 @@ end subroutine check_setup_wind_radiation
 !+
 !------------------------------------------------------------------
 subroutine check_setup_nucleation(npart,nerror)
- use part, only:nucleation,nucleation_label,n_nucleation,idmu,idgamma
+ use part, only:nucleation,nucleation_label,n_nucleation,idmu,idgamma,idK3
+ use dust_formation, only:set_abundances,eps
+ use io, only:warning
  integer, intent(in)    :: npart
  integer, intent(inout) :: nerror
  integer :: i,j,nbad(n_nucleation)
+
+ call set_abundances ! Retrieve carbon abundance
 
  nbad = 0
  !-- Check that all the parameters are > 0 when needed
  do i=1,npart
     if (nucleation(idmu,i) < 0.1) nbad(idmu) = nbad(idmu) + 1
     if (nucleation(idgamma,i) < 1.) nbad(idgamma) = nbad(idgamma) + 1
+    if (nucleation(idK3,i) < 0.) then
+      call warning('check_setup_nucleation', 'nucleation K3 should be non-negative')
+    elseif (nucleation(idK3,i) > eps(3)) then
+      call warning('check_setup_nucleation', 'nucleation K3 is very large, check units and values')
+    endif
  enddo
  do j=1,n_nucleation
     if (nbad(j) > 0) then

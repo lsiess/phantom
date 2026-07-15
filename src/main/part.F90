@@ -1385,6 +1385,8 @@ subroutine copy_particle_all(src,dst,new_part)
  if (itau_alloc == 1) tau(dst) = tau(src)
  if (itauL_alloc == 1) tau_lucy(dst) = tau_lucy(src)
 
+ print*, "copy_particle_all: src=",iorig(src)," dst=",iorig(dst)
+
  if (use_krome) then
     T_gas_cool(dst)       = T_gas_cool(src)
  endif
@@ -1494,9 +1496,14 @@ subroutine combine_two_particles(keep,discard)
  if (maxp_h2==maxp .or. maxp_krome==maxp) abundance(:,keep) = 0.5*(abundance(:,keep) + abundance(:,discard))
  eos_vars(:,keep) = 0.5*(eos_vars(:,keep) + eos_vars(:,discard))
  if (store_dust_temperature) dust_temp(keep) = 0.5*(dust_temp(keep) + dust_temp(discard))
- if (do_nucleation) nucleation(:,keep) = 0.5*(nucleation(:,keep) + nucleation(:,discard))
+ if (do_nucleation) then
+    nucleation(idJstar,keep) = min(nucleation(idJstar,keep),nucleation(idJstar,discard))
+    nucleation(2:10,keep) = 0.5*(nucleation(2:10,keep) + nucleation(2:10,discard))
+ endif
  if (itau_alloc == 1) tau(keep) = 0.5*(tau(keep) + tau(discard))
  if (itauL_alloc == 1) tau_lucy(keep) = 0.5*(tau_lucy(keep) + tau_lucy(discard))
+
+ print*, "Combining particles ",iorig(keep)," and ",iorig(discard)
 
  if (use_krome) then
     T_gas_cool(keep)       = 0.5*(T_gas_cool(keep) + T_gas_cool(discard))
@@ -1558,6 +1565,7 @@ subroutine shuffle_part(np)
     if (newpart <= np) then
        if (.not.isdead(np)) then
           ! move particle to new position
+         print*, 'shuffle_part: moving particle ', np, ' to position ',newpart
           call copy_particle_all(np,newpart,.false.)
           ! move ibelong to new position
           if (mpi) ibelong(newpart) = ibelong(np)

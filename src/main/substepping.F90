@@ -1055,11 +1055,11 @@ subroutine cooling_abundances_update(i,pmassi,xyzh,vxyzu,eos_vars,abundance,nucl
                                      divcurlv,abundc,abunde,abundo,abundsi,dt,dphot0)
  use dim,             only:h2chemistry,do_nucleation,use_krome,update_muGamma,store_dust_temperature, &
 			   nabn_AGB
- use part,            only:idK2,idK3,idmu,idkappa,idgamma,imu,igamma,nabundances,imu,itemp,rhoh
+ use part,            only:idK2,idK3,idmu,idkappa,idgamma,imu,igamma,nabundances,imu,itemp,rhoh,iorig
  use cooling_ism,     only:nabn,dphotflag
  use options,         only:icooling
  use chem,            only:update_abundances,get_dphot
- use dust_formation,  only:evolve_dust,calc_muGamma,chemical_equilibrium_light
+ use dust_formation,  only:evolve_dust,calc_muGamma,chemical_equilibrium_light,eps
  use cooling,         only:energ_cooling,cooling_in_step
  use eos_HIIR,        only:muion,Tion
 #ifdef KROME
@@ -1105,6 +1105,9 @@ subroutine cooling_abundances_update(i,pmassi,xyzh,vxyzu,eos_vars,abundance,nucl
     call evolve_dust(dt, xyzh(:,i), vxyzu(4,i), nucleation(:,i), dust_temp(i), rhoi)
     eos_vars(imu,i)    = nucleation(idmu,i)
     eos_vars(igamma,i) = nucleation(idgamma,i)
+    if (nucleation(5,i) > eps(3)) then
+       print*, 'cooling abundances_update: K3 > eps(3) = ',nucleation(5,i),eps(3), 'for particle ',iorig(i)
+    endif
  elseif (update_muGamma) then
     call calc_muGamma(rhoi,eos_vars(itemp,i),eos_vars(imu,i),eos_vars(igamma,i),pH,pH_tot)
  endif

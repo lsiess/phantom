@@ -1011,6 +1011,7 @@ subroutine save_windprofile (params,rout,rfill,tend,tcross,tfill,filename,isink)
  if (lexist) then
     print*, "Reading the wind profile"
     call load_windprofile(filename,trvurho_temp,JKmuS_temp,writeline,state)
+    tfill = -1.
 
 else
    write (*,'("Saving 1D model to ",A)') trim(filename)
