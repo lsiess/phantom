@@ -747,25 +747,25 @@ subroutine chemical_equilibrium_light(rho_cgs, T_in, epsC, mu, gamma, abundi)
  T = max(T_in, 10.d0)
 
  call calc_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot, pH2)
- cst = mass_per_H/(mu*mass_proton_cgs*kboltz*T)
+ cst = patm*mass_per_H/(mu*mass_proton_cgs*kboltz*T)
  if (T > 1.d4) then
-    abundi(icoolC)    = eps(iC)*pH_tot* (patm*mass_per_H)/(mu*mass_proton_cgs*kboltz*T)
+    abundi(icoolC)    = eps(iC)*pH_tot* cst
     abundi(icoolC2)   = 0.
     abundi(icoolC2H)  = 0.
     abundi(icoolC2H2) = 0.
-    abundi(icoolH)   = pH  *(patm*mass_per_H)/(mu*mass_proton_cgs*kboltz*T)
+    abundi(icoolH)   = pH  *cst
     abundi(icoolH2)  = 1.d-50
-    abundi(icoolHe)  = eps(ihe)*pH_tot* (patm*mass_per_H)/(mu*mass_proton_cgs*kboltz*T)
+    abundi(icoolHe)  = eps(ihe)*pH_tot* cst
     abundi(icoolCO)  = 1.d-50
     abundi(icoolH2O) = 1.d-50
     abundi(icoolOH)  = 1.d-50
-    abundi(icoolO)   = eps(iOx)*pH_tot* (patm*mass_per_H)/(mu*mass_proton_cgs*kboltz*T)
-    abundi(icoolSi)  = eps(iSi)*pH_tot* (patm*mass_per_H)/(mu*mass_proton_cgs*kboltz*T)
+    abundi(icoolO)   = eps(iOx)*pH_tot* cst
+    abundi(icoolSi)  = eps(iSi)*pH_tot* cst
     abundi(icoolSiO) = 1.d-50
     abundi(icoolCH4) = 1.d-50
-    abundi(icoolS)   = eps(iS)*pH_tot* (patm*mass_per_H)/(mu*mass_proton_cgs*kboltz*T)
-    abundi(icoolTi)  = eps(iTi)*pH_tot* (patm*mass_per_H)/(mu*mass_proton_cgs*kboltz*T)
-    abundi(icoolN)   = eps(iN)*pH_tot* (patm*mass_per_H)/(mu*mass_proton_cgs*kboltz*T)
+    abundi(icoolS)   = eps(iS)*pH_tot*  cst
+    abundi(icoolTi)  = eps(iTi)*pH_tot* cst
+    abundi(icoolN)   = eps(iN)*pH_tot*  cst
     return
  elseif (T < Tmol) then 
     abundi(:) = 0.
@@ -795,18 +795,18 @@ subroutine chemical_equilibrium_light(rho_cgs, T_in, epsC, mu, gamma, abundi)
  pH       = solve_q(2.*Kd(iH2), 1., -pH_tot)
 
  ! These are initial guesses
- pN       = abundi(icoolN) / (patm*cst)
- pN_old   = abundi(icoolN) / (patm*cst)
- pC       = abundi(icoolC) / (patm*cst)
- pC_old   = abundi(icoolC) / (patm*cst)
- pO       = abundi(icoolO) / (patm*cst)
- pO_old   = abundi(icoolO) / (patm*cst)
- pSi      = abundi(icoolSi) / (patm*cst)
- pSi_old  = abundi(icoolSi) / (patm*cst)
- pS       = abundi(icoolS) / (patm*cst)
- pS_old   = abundi(icoolS) / (patm*cst)
- pTi      = abundi(icoolTi) / (patm*cst)
- pTi_old  = abundi(icoolTi) / (patm*cst)
+ pN       = abundi(icoolN) / cst
+ pN_old   = abundi(icoolN) / cst
+ pC       = abundi(icoolC) / cst
+ pC_old   = abundi(icoolC) / cst
+ pO       = abundi(icoolO) / cst
+ pO_old   = abundi(icoolO) / cst
+ pSi      = abundi(icoolSi) / cst
+ pSi_old  = abundi(icoolSi) / cst
+ pS       = abundi(icoolS) / cst
+ pS_old   = abundi(icoolS) / cst
+ pTi      = abundi(icoolTi) / cst
+ pTi_old  = abundi(icoolTi) / cst
  err      = 1.
  nit      = 0
 
@@ -878,20 +878,20 @@ subroutine chemical_equilibrium_light(rho_cgs, T_in, epsC, mu, gamma, abundi)
  pCH4  = Kd(iCH4)*pC*pH**4
  pSiO  = Kd(iSiO)*pO*pSi
 
- abundi(icoolH)   = pH               *patm*cst
- abundi(icoolH2)  = Kd(iH2)*pH**2    *patm*cst
- abundi(icoolHe)  = eps(ihe)*pH_tot  *patm*cst  ! pH_tot is not changing, but helium probably changes following change in mu
- abundi(icoolCO)  = Kd(iCO)*pC*pO    *patm*cst
- abundi(icoolH2O) = Kd(iH2O)*pH**2*pO*patm*cst
- abundi(icoolOH)  = Kd(iOH) *pH*pO   *patm*cst
- abundi(icoolO)   = pO               *patm*cst
- abundi(icoolSi)  = pSi              *patm*cst
- abundi(icoolC2)  = pC2              *patm*cst
- abundi(icoolC)   = pC               *patm*cst
- abundi(icoolC2H2) = pC2H2           *patm*cst
- abundi(icoolC2H) = pC2H             *patm*cst
- abundi(icoolSiO) = pSiO             *patm*cst
- abundi(icoolCH4) = pCH4             *patm*cst
+ abundi(icoolH)   = pH               *cst
+ abundi(icoolH2)  = Kd(iH2)*pH**2    *cst
+ abundi(icoolHe)  = eps(ihe)*pH_tot  *cst  ! pH_tot is not changing, but helium probably changes following change in mu
+ abundi(icoolCO)  = Kd(iCO)*pC*pO    *cst
+ abundi(icoolH2O) = Kd(iH2O)*pH**2*pO*cst
+ abundi(icoolOH)  = Kd(iOH) *pH*pO   *cst
+ abundi(icoolO)   = pO               *cst
+ abundi(icoolSi)  = pSi              *cst
+ abundi(icoolC2)  = pC2              *cst
+ abundi(icoolC)   = pC               *cst
+ abundi(icoolC2H2) = pC2H2           *cst
+ abundi(icoolC2H) = pC2H             *cst
+ abundi(icoolSiO) = pSiO             *cst
+ abundi(icoolCH4) = pCH4             *cst
 
  ! These abundances are number densities, so in units of cm^{-3}
 
