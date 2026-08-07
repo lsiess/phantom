@@ -746,8 +746,6 @@ subroutine chemical_equilibrium_light(rho_cgs, T_in, epsC, mu, gamma, abundi)
 
  T = max(T_in, 10.d0)
 
- call calc_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot, pH2)
- cst = patm*mass_per_H/(mu*mass_proton_cgs*kboltz*T)
  if (T > 1.d4) then
     abundi(icoolC)    = eps(iC)*pH_tot* cst
     abundi(icoolC2)   = 0.
@@ -768,22 +766,11 @@ subroutine chemical_equilibrium_light(rho_cgs, T_in, epsC, mu, gamma, abundi)
     abundi(icoolN)   = eps(iN)*pH_tot*  cst
     return
  elseif (T < Tmol) then 
-    abundi(:) = 0.
-    abundi(icoolH)    = 5.600d-08         *rho_cgs/(mass_per_H) ! Convert fractional abundances to number density
-    abundi(icoolH2)   = 3.083d-01         *rho_cgs/(mass_per_H)
-    abundi(icoolO)    = 1.796d-33         *rho_cgs/(mass_per_H)
-    abundi(icoolSi)   = 2.637d-10         *rho_cgs/(mass_per_H)
-    abundi(icoolH2O)  = 1.076d-16         *rho_cgs/(mass_per_H)
-    abundi(icoolCO)   = 3.671d-04         *rho_cgs/(mass_per_H)
-    abundi(icoolOH)   = 6.731d-27         *rho_cgs/(mass_per_H)
-    abundi(icoolSiO)  = 2.810d-06         *rho_cgs/(mass_per_H)
-    abundi(icoolS)    = 1.633d-21         *rho_cgs/(mass_per_H)
-    abundi(icoolTi)   = 5.302d-08         *rho_cgs/(mass_per_H)
-    abundi(icoolN)    = 5.412d-26         *rho_cgs/(mass_per_H)
-    abundi(icoolC2H2) = .5*(epsC-eps(4))  *rho_cgs/(mass_per_H)
-    return
+    T = Tmol  ! Freeze chemistry at Tmol, as reactions are too slow below this temperature
  endif
- 
+
+ call calc_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot, pH2)
+ cst = patm*mass_per_H/(mu*mass_proton_cgs*kboltz*T)
  pH_tot = rho_cgs*T*kboltz/(patm*mass_per_H)
 
 ! Dissociation constants
