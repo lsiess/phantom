@@ -54,7 +54,7 @@ subroutine evolve_hydro(dt, rvT, Rstar_cgs, Mdot_cgs, mu, gamma, alpha, dalpha_d
  real, parameter :: rvt_tol = 1.e-2, safety = 0.9, pshrnk = -0.25, errcon = 1.89e-4, pgrow = -0.2
  character(len=3), parameter :: RK_solver = 'RK4'
 
- cs = sqrt(gamma*Rg*rvT(2)/mu)
+ cs = sqrt(gamma*Rg*rvT(3)/mu)
  rold = rvT(1)
  err = 1.
  do while (err > rvt_tol)
@@ -97,7 +97,7 @@ subroutine evolve_hydro(dt, rvT, Rstar_cgs, Mdot_cgs, mu, gamma, alpha, dalpha_d
        else
           !limit increase in dt to obtain a smooth solution
           if (abs(log(new_rvT(2)/cs)) > 1.10) then
-             dt_next = dt
+             dt_next = 2.*dt
           else
              dt_next = 5.*dt
           endif
@@ -249,7 +249,7 @@ subroutine RK4_step_dr(dt,rvT,Rstar_cgs,Mdot_cgs,mu,gamma,alpha,dalpha_dr,Q,dQ_d
  ! else
  r = r0+A4*H
  v = v0+H*(B41*dv1_dr+B42*dv2_dr+B43*dv3_dr)
- T = T0+H*(B41*dv1_dr+B42*dv2_dr+B43*dT3_dr)
+ T = T0+H*(B41*dT1_dr+B42*dT2_dr+B43*dT3_dr)
  call calc_dvT_dr(r, v, T, Rstar_cgs, Mdot_cgs, mu, gamma, alpha, dalpha_dr, Q, dQ_dr, dv4_dr, dT4_dr, numerator, denominator)
  new_rvT(1) = r
  new_rvT(2) = v0 + H*(C1*dv1_dr+C2*dv2_dr+C3*dv3_dr+C4*dv4_dr)
