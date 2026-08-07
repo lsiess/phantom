@@ -70,11 +70,11 @@ print *,''
 !analysis
 select case(analysis_to_perform)
 case(1) !test temperature
-  call test_cooling()
+  call test_cooling_temperature()
 case(2) !test density
-  call test_density()
+  call test_cooling_density()
 case(3)
-  call cooling_temp_dens()
+  call test_cooling_temp_dens()
 case(4)
   call test_speed_AGB_cooling(dumpfile)
 case(5)
@@ -91,36 +91,16 @@ end subroutine do_analysis
 
 !--------------------------------------------
 !+
-!  Various tests of the cooling module
-!+
-!--------------------------------------------
-subroutine test_cooling()
-  use physcon, only:solarm,kpc
-  use units,   only:set_units
-  !integer :: nfailed(10),ierr,iregime
-  
-  if (id==master) write(*,"(/,a)") '--> TESTING COOLING MODULE'
-  
-  call set_units(mass=1e7*solarm,dist=kpc,G=1.d0)
-  
-  call test_cooling_rate()
-  
-  if (id==master) write(*,"(/,a)") '<-- COOLING TEST COMPLETE'
-  
-  end subroutine test_cooling
-
-!--------------------------------------------
-!+
 !  Cooling rates on temperature grid
 !+
 !--------------------------------------------
-subroutine test_cooling_rate()
+subroutine test_cooling_temperature()
   use cooling_AGBwinds, only:nrates,init_cooling_AGB,energ_cooling_AGB
   !use cooling,     only:energ_cooling
   ! use chem,           only:init_chem,get_dphot
-  use dust_formation, only:chemical_equilibrium_light,init_muGamma,mass_per_H
-  use physcon,        only:Rg,mass_proton_cgs,kboltz,patm
-  use units,          only:unit_density,utime
+  use dust_formation, only:chemical_equilibrium_light,init_muGamma,mass_per_H,Tmol
+  use physcon,        only:Rg,mass_proton_cgs,kboltz,patm,solarm,kpc
+  use units,          only:unit_density,utime,set_units
   use dim,            only:nElements
   use cooling_functions, only:cooling_neutral_hydrogen
 
@@ -140,7 +120,9 @@ implicit none
   real    :: start, finish
   real    :: HI_Spitzer, dlnQ_dlnT_Spitzer
   
-  if (id==master) write(*,"(/,a)") '--> testing cooling_AGB rate'
+  if (id==master) write(*,"(/,a)") '--> testing cooling_AGB rate for a range of temperatures'
+
+  call set_units(mass=1e7*solarm,dist=kpc,G=1.d0)
   
   logTmax = log10(1.5d4)
   logTmin = log10(20.d0)
@@ -168,7 +150,7 @@ implicit none
   yi = 0.
   zi = 0.
   dt = 1.0d0
-  rho_cgs = 2.0d-14
+  rho_cgs = 2.2d-14
   rhoi = rho_cgs/unit_density 
   ndens_H = rhoi*unit_density / mass_per_H
 
@@ -179,7 +161,7 @@ implicit none
   ! excitation_HI = 1 ! H1 cooling
   ! icool_method = 1  ! explicit
   
-  open(newunit=iunit,file='cooltable.txt',status='replace')
+  open(newunit=iunit,file='temp_test_cooling.txt',status='replace')
   write(iunit,'(A, E12.4)') '#   T   \Lambda_E(T) erg s^{-1} cm^3   N dens H: ', ndens_H
   dlogt = (logtmax - logtmin)/real(nt)
   divv_cgs = real(1.e-7, kind=4)   ! arbitrary non-zero value to test effect
@@ -227,20 +209,20 @@ implicit none
   print '("Time = ",f6.3," seconds.")',finish-start
   close(iunit)
   
-  end subroutine test_cooling_rate
+  end subroutine test_cooling_temperature
 
 !--------------------------------------------
 !+
 !  Cooling rates on density grid
 !+
 !--------------------------------------------
-subroutine test_density()
+subroutine test_cooling_density()
   use cooling_AGBwinds, only:nrates,init_cooling_AGB,energ_cooling_AGB
   !use cooling,     only:energ_cooling
   ! use chem,           only:init_chem,get_dphot
   use dust_formation, only:chemical_equilibrium_light,init_muGamma,mass_per_H
-  use physcon,        only:Rg,mass_proton_cgs,kboltz,patm
-  use units,          only:unit_density,utime
+  use physcon,        only:Rg,mass_proton_cgs,kboltz,patm,solarm,kpc
+  use units,          only:unit_density,utime,set_units
   use dim,            only:nElements
 
 implicit none
@@ -258,7 +240,9 @@ implicit none
   real    :: gamma, n_H, n_H2
   real    :: start, finish
   
-  if (id==master) write(*,"(/,a)") '--> testing cooling_AGB rate'
+  if (id==master) write(*,"(/,a)") '--> testing cooling_AGB rate for a range of densities'
+
+  call set_units(mass=1e7*solarm,dist=kpc,G=1.d0)
   
   lognmax = 15. ! H2 number density cm^-3
   lognmin = 3.
@@ -275,10 +259,10 @@ implicit none
 
   call init_cooling_AGB()
   
-  open(newunit=iunit,file='density_test.txt',status='replace')
+  open(newunit=iunit,file='density_test_cooling.txt',status='replace')
   write(iunit,'(A, E12.4)') '#   n_H2  Lambda_E  abundances  c.rates (\Lambda_E(T) erg s^{-1} cm^3)   T: ', T
   dlogn = (lognmax - lognmin)/real(nt)
-  divv_cgs = real(1.e-7, kind=4)   ! arbitrary non-zero value to test effect
+  divv_cgs = real(1.d-30, kind=4)   !real(1.e10, kind=4)   ! arbitrary non-zero value to test effect
   divv = divv_cgs*real(utime, kind=4)
 
   call cpu_time(start)
@@ -292,7 +276,10 @@ implicit none
     n_H = 2.0 * n_H2
     rho_cgs = n_H * mass_per_H
     rhoi = rho_cgs/unit_density
-    call init_muGamma(rho_cgs, T, mu, gamma)
+    ! The next two lines are to reproduce Figure 6 in NK93, varying divv and keeping N_tilde fixed
+    ! N_tilde needs to be defined as a parameter, either N_tilde = 1.d22, or N_tilde ~ 0
+    ! divv_cgs = real(n_H2/N_tilde*1.d5, kind=4)   ! arbitrary non-zero value to test effect
+    ! divv = divv_cgs*real(utime, kind=4)
 
     ! dphot = get_dphot(dphotflag,dphot0,xi,yi,zi)
 
@@ -317,40 +304,19 @@ implicit none
   print '("Time = ",f6.3," seconds.")',finish-start
   close(iunit)
   
-  end subroutine test_density
-
-
-!--------------------------------------------
-!+
-!  Various tests of the cooling module for temperature and density
-!+
-!--------------------------------------------
-subroutine cooling_temp_dens()
-  use physcon, only:solarm,kpc
-  use units,   only:set_units
-  !integer :: nfailed(10),ierr,iregime
-
-  if (id==master) write(*,"(/,a)") '--> TESTING COOLING MODULE'
-
-  call set_units(mass=1e7*solarm,dist=kpc,G=1.d0)
-
-  call cooling_rate_temp_dens()
-
-  if (id==master) write(*,"(/,a)") '<-- COOLING TEST COMPLETE'
-
-end subroutine cooling_temp_dens
+  end subroutine test_cooling_density
 
 !------------------------------------------------
 !+
 !  Test cooling rates for temperature and density
 !+
 !------------------------------------------------
-subroutine cooling_rate_temp_dens()
+subroutine test_cooling_temp_dens()
   use cooling_AGBwinds, only:nrates,init_cooling_AGB,energ_cooling_AGB
   use dust_formation, only:chemical_equilibrium_light,eps, &
                            init_muGamma,set_abundances,mass_per_H
-  use physcon,        only:Rg,mass_proton_cgs,kboltz,patm
-  use units,          only:unit_density,utime
+  use physcon,        only:Rg,mass_proton_cgs,kboltz,patm,solarm,kpc
+  use units,          only:unit_density,utime,set_units
   integer, parameter :: nt_grid = 15
   integer, parameter :: nd_grid = 15
   real :: logtmin,logtmax,logrhomin,logrhomax,logt,logrho,dlogt,dlogrho,t,crate,Tdust
@@ -365,7 +331,10 @@ subroutine cooling_rate_temp_dens()
   real    :: gamma
 
 
-  if (id==master) write(*,"(/,a)") '--> testing cooling_AGB rate'
+  if (id==master) write(*,"(/,a)") &
+        '--> testing cooling_AGB rate for a range of temperatures and densities'
+
+  call set_units(mass=1e7*solarm,dist=kpc,G=1.d0)
 
   logtmax = log10(2.d4)
   logtmin = log10(5.d2)
@@ -389,7 +358,7 @@ subroutine cooling_rate_temp_dens()
   call init_cooling_AGB()
 
 
-  open(newunit=iunit,file='cooltable_dens.txt',status='replace')
+  open(newunit=iunit,file='temp_dens_test_cooling.txt',status='replace')
   write(iunit,"(a)") '#   T   \Lambda_E(T) erg s^{-1} cm^3   \Lambda erg s^{-1} cm^{-3}  '
 
   dlogt = (logtmax - logtmin)/real(nt_grid, kind=8)
@@ -428,7 +397,7 @@ subroutine cooling_rate_temp_dens()
   enddo
   close(iunit)
 
-end subroutine cooling_rate_temp_dens
+end subroutine test_cooling_temp_dens
 
 !-------------------------------------------------
 !+ 
