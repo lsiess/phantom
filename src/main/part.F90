@@ -1385,7 +1385,7 @@ subroutine copy_particle_all(src,dst,new_part)
  if (itau_alloc == 1) tau(dst) = tau(src)
  if (itauL_alloc == 1) tau_lucy(dst) = tau_lucy(src)
 
- print*, "copy_particle_all: src=",iorig(src)," dst=",iorig(dst)
+!  print*, "copy_particle_all: src=",iorig(src)," dst=",iorig(dst)
 
  if (use_krome) then
     T_gas_cool(dst)       = T_gas_cool(src)
@@ -1565,7 +1565,7 @@ subroutine shuffle_part(np)
     if (newpart <= np) then
        if (.not.isdead(np)) then
           ! move particle to new position
-         print*, 'shuffle_part: moving particle ', np, ' to position ',newpart
+          ! print*, 'shuffle_part: moving particle ', np, ' to position ',newpart
           call copy_particle_all(np,newpart,.false.)
           ! move ibelong to new position
           if (mpi) ibelong(newpart) = ibelong(np)

@@ -747,6 +747,9 @@ subroutine chemical_equilibrium_light(rho_cgs, T_in, epsC, mu, gamma, abundi)
  T = max(T_in, 10.d0)
 
  if (T > 1.d4) then
+    call calc_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot, pH2)
+    cst = patm*mass_per_H/(mu*mass_proton_cgs*kboltz*T)
+    pH_tot = rho_cgs*T*kboltz/(patm*mass_per_H)
     abundi(icoolC)    = eps(iC)*pH_tot* cst
     abundi(icoolC2)   = 0.
     abundi(icoolC2H)  = 0.

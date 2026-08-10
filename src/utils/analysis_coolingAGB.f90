@@ -188,6 +188,8 @@ implicit none
     call chemical_equilibrium_light(rho_cgs, T, epsC, mu, gamma, abundi)
     ! abundi = abundi / rho_cgs * mass_proton_cgs
     abundi = abundi / ndens_H
+
+    print*, "[test_cooling_temperature] T=", T, "abundances: ", abundi
     
     Tdust = T
     
