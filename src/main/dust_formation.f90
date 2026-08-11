@@ -197,7 +197,10 @@ subroutine evolve_chem(dt, T, rho_cgs, JKmuS)
        JstarS = JstarS/ nH_tot
        call evol_K(JKmuS(idJstar), JKmuS(idK0:idK3), JstarS, taustar, taugr, dt, Jstar_new, K_new)
     else
-       if (any(JKmuS(idK0:idK3) > 0.0) .and. S < 1. .and. T > 1800.) then
+       if (T > 1.d4) then
+          Jstar_new = 0.0
+          K_new(0:3) = 0.0 ! Instantaneous evaporation of dust at high temperature, to avoid numerical problems
+       elseif (any(JKmuS(idK0:idK3) > 0.0) .and. S < 1. .and. T > 1800.) then
           call calc_taugr(T, pC, pC2, pC2H, pC2H2, S, taugr)
           adot = 1. / 3. / taugr    ! Equation 28 in Gauger 1990
           call evap_shift_remove(JKmuS(idK0:idK3), dt, adot, K_new)
