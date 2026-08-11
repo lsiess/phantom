@@ -36,7 +36,7 @@ module dust_formation
       read_options_dust_formation,write_options_dust_formation,&
       calc_Eddington_factor,calc_muGamma,init_muGamma,init_nucleation,&
       write_headeropts_dust_formation,read_headeropts_dust_formation,&
-      evap_shift_remove, fit_lognormal_from_m012
+      evap_shift_remove, fit_lognormal_from_m012, calc_taugr
 !
 !--runtime settings for this module
 !
@@ -198,7 +198,7 @@ subroutine evolve_chem(dt, T, rho_cgs, JKmuS)
        call evol_K(JKmuS(idJstar), JKmuS(idK0:idK3), JstarS, taustar, taugr, dt, Jstar_new, K_new)
     else
        if (any(JKmuS(idK0:idK3) > 0.0) .and. S < 1. .and. T > 1800.) then
-          call calc_nucleation(T, pC, pC2, 0.0, pC2H, pC2H2, S, JstarS, taustar, taugr)
+          call calc_taugr(T, pC, pC2, pC2H, pC2H2, S, taugr)
           adot = 1. / 3. / taugr    ! Equation 28 in Gauger 1990
           call evap_shift_remove(JKmuS(idK0:idK3), dt, adot, K_new)
           Jstar_new = 0.0
@@ -348,6 +348,24 @@ subroutine calc_nucleation(T, pC, pC2, pC3, pC2H, pC2H2, S, JstarS, taustar, tau
  endif
  taugr = kboltz*T/(A0*v1*(alpha1*pC*(1.-1./S) + 2.*alpha2/sqrt(2.)*(pC2+pC2H+pC2H2)*(1.-1./S**2)))
 end subroutine calc_nucleation
+
+!------------------------------------
+!
+! Compute growth timescale
+!
+!------------------------------------
+subroutine calc_taugr(T, pC, pC2, pC2H, pC2H2, S, taugr)
+ real, intent(in)  :: T, pC, pC2, pC2H, pC2H2, S
+ real, intent(out) :: taugr
+ real, parameter   :: A0 = 20.7d-16
+ real, parameter   :: alpha1 = 0.37 !sticking coef for C
+ real, parameter   :: alpha2 = 0.34 !sticking coef for C2,C2H,C2H2
+ real              :: v1
+
+ v1     = vfactor*sqrt(T)
+ taugr = kboltz*T/(A0*v1*(alpha1*pC*(1.-1./S) + 2.*alpha2/sqrt(2.)*(pC2+pC2H+pC2H2)*(1.-1./S**2)))
+
+end subroutine calc_taugr
 
 !------------------------------------
 !
