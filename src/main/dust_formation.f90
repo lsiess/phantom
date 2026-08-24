@@ -662,6 +662,8 @@ subroutine calc_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot, ppH2)
     pH2 = 0.
     mu = (1.+4.*eps(iHe))/(.5+eps(iHe)+0.5*pH/pH_tot) ! 0.62
     !  mu     = (1.+4.*eps(iHe))/(1.+eps(iHe))
+    x         = 2.*(1.+4.*eps(iHe))/mu
+    gamma     = (3.*x+4.+4.*eps(iHe))/(x+4.+4.*eps(iHe))
  elseif (T > Tmol) then
 ! iterate to get consistently pH, T, mu and gamma
     tol       = 1.d-3
