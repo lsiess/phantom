@@ -36,7 +36,7 @@ module dust_formation
       read_options_dust_formation,write_options_dust_formation,&
       calc_Eddington_factor,calc_muGamma,init_muGamma,init_nucleation,&
       write_headeropts_dust_formation,read_headeropts_dust_formation,&
-      evap_shift_remove, fit_lognormal_from_m012
+      evap_shift_remove, fit_lognormal_from_m012, calc_taugr
 !
 !--runtime settings for this module
 !
@@ -197,8 +197,11 @@ subroutine evolve_chem(dt, T, rho_cgs, JKmuS)
        JstarS = JstarS/ nH_tot
        call evol_K(JKmuS(idJstar), JKmuS(idK0:idK3), JstarS, taustar, taugr, dt, Jstar_new, K_new)
     else
-       if (any(JKmuS(idK0:idK3) > 0.0) .and. S < 1. .and. T > 1800.) then
-          call calc_nucleation(T, pC, pC2, 0.0, pC2H, pC2H2, S, JstarS, taustar, taugr)
+       if (T > 1.d4) then
+          Jstar_new = 0.0
+          K_new(0:3) = 0.0 ! Instantaneous evaporation of dust at high temperature, to avoid numerical problems
+       elseif (any(JKmuS(idK0:idK3) > 0.0) .and. S < 1. .and. T > 1800.) then
+          call calc_taugr(T, pC, pC2, pC2H, pC2H2, S, taugr)
           adot = 1. / 3. / taugr    ! Equation 28 in Gauger 1990
           call evap_shift_remove(JKmuS(idK0:idK3), dt, adot, K_new)
           Jstar_new = 0.0
@@ -348,6 +351,24 @@ subroutine calc_nucleation(T, pC, pC2, pC3, pC2H, pC2H2, S, JstarS, taustar, tau
  endif
  taugr = kboltz*T/(A0*v1*(alpha1*pC*(1.-1./S) + 2.*alpha2/sqrt(2.)*(pC2+pC2H+pC2H2)*(1.-1./S**2)))
 end subroutine calc_nucleation
+
+!------------------------------------
+!
+! Compute growth timescale
+!
+!------------------------------------
+subroutine calc_taugr(T, pC, pC2, pC2H, pC2H2, S, taugr)
+ real, intent(in)  :: T, pC, pC2, pC2H, pC2H2, S
+ real, intent(out) :: taugr
+ real, parameter   :: A0 = 20.7d-16
+ real, parameter   :: alpha1 = 0.37 !sticking coef for C
+ real, parameter   :: alpha2 = 0.34 !sticking coef for C2,C2H,C2H2
+ real              :: v1
+
+ v1     = vfactor*sqrt(T)
+ taugr = kboltz*T/(A0*v1*(alpha1*pC*(1.-1./S) + 2.*alpha2/sqrt(2.)*(pC2+pC2H+pC2H2)*(1.-1./S**2)))
+
+end subroutine calc_taugr
 
 !------------------------------------
 !
@@ -641,6 +662,8 @@ subroutine calc_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot, ppH2)
     pH2 = 0.
     mu = (1.+4.*eps(iHe))/(.5+eps(iHe)+0.5*pH/pH_tot) ! 0.62
     !  mu     = (1.+4.*eps(iHe))/(1.+eps(iHe))
+    x         = 2.*(1.+4.*eps(iHe))/mu
+    gamma     = (3.*x+4.+4.*eps(iHe))/(x+4.+4.*eps(iHe))
  elseif (T > Tmol) then
 ! iterate to get consistently pH, T, mu and gamma
     tol       = 1.d-3
@@ -746,9 +769,10 @@ subroutine chemical_equilibrium_light(rho_cgs, T_in, epsC, mu, gamma, abundi)
 
  T = max(T_in, 10.d0)
 
- call calc_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot, pH2)
- cst = patm*mass_per_H/(mu*mass_proton_cgs*kboltz*T)
  if (T > 1.d4) then
+    call calc_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot, pH2)
+    cst = patm*mass_per_H/(mu*mass_proton_cgs*kboltz*T)
+    pH_tot = rho_cgs*T*kboltz/(patm*mass_per_H)
     abundi(icoolC)    = eps(iC)*pH_tot* cst
     abundi(icoolC2)   = 0.
     abundi(icoolC2H)  = 0.
@@ -768,22 +792,11 @@ subroutine chemical_equilibrium_light(rho_cgs, T_in, epsC, mu, gamma, abundi)
     abundi(icoolN)   = eps(iN)*pH_tot*  cst
     return
  elseif (T < Tmol) then 
-    abundi(:) = 0.
-    abundi(icoolH)    = 5.600d-08         *rho_cgs/(mass_per_H) ! Convert fractional abundances to number density
-    abundi(icoolH2)   = 3.083d-01         *rho_cgs/(mass_per_H)
-    abundi(icoolO)    = 1.796d-33         *rho_cgs/(mass_per_H)
-    abundi(icoolSi)   = 2.637d-10         *rho_cgs/(mass_per_H)
-    abundi(icoolH2O)  = 1.076d-16         *rho_cgs/(mass_per_H)
-    abundi(icoolCO)   = 3.671d-04         *rho_cgs/(mass_per_H)
-    abundi(icoolOH)   = 6.731d-27         *rho_cgs/(mass_per_H)
-    abundi(icoolSiO)  = 2.810d-06         *rho_cgs/(mass_per_H)
-    abundi(icoolS)    = 1.633d-21         *rho_cgs/(mass_per_H)
-    abundi(icoolTi)   = 5.302d-08         *rho_cgs/(mass_per_H)
-    abundi(icoolN)    = 5.412d-26         *rho_cgs/(mass_per_H)
-    abundi(icoolC2H2) = .5*(epsC-eps(4))  *rho_cgs/(mass_per_H)
-    return
+    T = Tmol  ! Freeze chemistry at Tmol, as reactions are too slow below this temperature
  endif
- 
+
+ call calc_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot, pH2)
+ cst = patm*mass_per_H/(mu*mass_proton_cgs*kboltz*T)
  pH_tot = rho_cgs*T*kboltz/(patm*mass_per_H)
 
 ! Dissociation constants

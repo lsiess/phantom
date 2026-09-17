@@ -391,7 +391,7 @@ subroutine calc_cooling_rate(Q, dlnQ_dlnT, rho, T, Teq, mu, gamma, K2, K3, kappa
  if (present(divv_in)) then
     divv = divv_in
  else
-    divv = 0.0
+    divv = 1.d0 ! Low value to avoid div by zero in AGB cooling, mimicking high optical depth, hence lower cooling
  end if
  if (present(abundi_in)) then
     abundi = abundi_in

@@ -477,7 +477,7 @@ subroutine cool_func(temp, Tdust, yn, dl, divv, abundances, ylam, rates)
  abhI   = abundances(icoolH)
  abhei  = abundances(icoolHe)
 
- abe = calc_eps_e(temp) ! This function gives wrong abundances at very high temperatures: FIX!
+ abe = calc_eps_e(temp)
  if (temp > 1.0d4) then
    abhp = abhI
  elseif (temp > 1.0d3) then
