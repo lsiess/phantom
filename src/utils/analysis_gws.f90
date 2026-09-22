@@ -1,6 +1,6 @@
 !--------------------------------------------------------------------------!
 ! The Phantom Smoothed Particle Hydrodynamics code, by Daniel Price et al. !
-! Copyright (c) 2007-2024 The Authors (see AUTHORS)                        !
+! Copyright (c) 2007-2026 The Authors (see AUTHORS)                        !
 ! See LICENCE file for usage and distribution conditions                   !
 ! http://phantomsph.github.io/                                             !
 !--------------------------------------------------------------------------!
@@ -14,8 +14,8 @@ module analysis
 !
 ! :Runtime parameters: None
 !
-! :Dependencies: deriv, externalforces, gravwaveutils, infile_utils,
-!   initial, part, prompting, readwrite_infile, units
+! :Dependencies: externalforces, gravwaveutils, infile_utils, initial,
+!   part, prompting, readwrite_infile, units
 !
  implicit none
  character(len=20), parameter, public :: analysistype = 'gws'
@@ -28,7 +28,6 @@ contains
 
 subroutine do_analysis(dumpfile,numfile,xyzh,vxyzu,pmass,npart,time,iunitone)
  use externalforces,   only:initialise_externalforces,update_externalforce,externalforce,externalforce_vdependent
- use deriv,            only:derivs
  use initial,          only:initialise,startrun,endrun
  use readwrite_infile, only:read_infile
  use prompting,        only:prompt
@@ -36,18 +35,18 @@ subroutine do_analysis(dumpfile,numfile,xyzh,vxyzu,pmass,npart,time,iunitone)
  use part,             only:isdead_or_accreted,fxyzu,fext,nptmass,xyzmh_ptmass,vxyz_ptmass,fxyz_ptmass
  use gravwaveutils,    only:calculate_strain
  use infile_utils,     only:open_db_from_file,inopts,read_inopt,close_db
+ character(len=*), intent(in)    :: dumpfile
+ real,             intent(inout) :: xyzh(:,:),vxyzu(:,:)
+ real,             intent(inout) :: pmass,time
+ integer,          intent(in)    :: iunitone,numfile
+ integer,          intent(inout) :: npart
  integer           :: iunit
  type(inopts), allocatable :: db(:)
- character(len=*),     intent(in)        :: dumpfile
- real,                 intent(inout)     :: xyzh(:,:),vxyzu(:,:)
- real,                 intent(inout)     :: pmass,time
- integer,              intent(in)        :: iunitone,numfile
- integer,              intent(inout)     :: npart
  character(len=120)    :: infile,logfile,evfile,dfile
  integer               :: ierr,i
  real                  :: dtextforce,x0(3),v0(3),a0(3),q(6),r2,x,y,z
  integer, parameter    :: iu = 1993, iuu=1994, iuuu=1995
- real,parameter        :: onethird=1/3.
+ real, parameter        :: onethird=1/3.
  logical, save         :: first = .true., firstdump=.true.,firstdumpa=.true.
  real                  :: hp(4),hx(4),ddq_xy(3,3)
  real                  :: utime_tmp,umass_tmp,udist_tmp,dtmax

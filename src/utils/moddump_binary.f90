@@ -1,6 +1,6 @@
 !--------------------------------------------------------------------------!
 ! The Phantom Smoothed Particle Hydrodynamics code, by Daniel Price et al. !
-! Copyright (c) 2007-2024 The Authors (see AUTHORS)                        !
+! Copyright (c) 2007-2026 The Authors (see AUTHORS)                        !
 ! See LICENCE file for usage and distribution conditions                   !
 ! http://phantomsph.github.io/                                             !
 !--------------------------------------------------------------------------!
@@ -16,17 +16,19 @@ module moddump
 !
 ! :Runtime parameters: None
 !
-! :Dependencies: centreofmass, dim, eos, extern_corotate, externalforces,
-!   infile_utils, io, options, part, physcon, prompting, readwrite_dumps,
-!   readwrite_mesa, setbinary, table_utils, timestep, units, vectorutils
+! :Dependencies: centreofmass, dim, eos, extern_corotate,
+!   extern_gwinspiral, externalforces, infile_utils, io, options, part,
+!   physcon, prompting, readwrite_dumps, readwrite_mesa, setbinary,
+!   table_utils, timestep, units, vectorutils
 !
  implicit none
+ character(len=*), parameter, public :: moddump_flags = ''
 
 contains
 
 subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  use part,              only:nptmass,xyzmh_ptmass,vxyz_ptmass,ihacc,ihsoft,igas,&
-                             delete_dead_or_accreted_particles,mhd,rhoh,shuffle_part,&
+                             delete_dead_or_accreted_particles,mhd,rho,shuffle_part,&
                              kill_particle,copy_particle
  use setbinary,         only:set_binary
  use units,             only:umass,udist,utime
@@ -34,9 +36,10 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  use centreofmass,      only:reset_centreofmass,get_centreofmass
  use prompting,         only:prompt
  use options,           only:iexternalforce
- use externalforces,    only:omega_corotate,iext_corotate
+ use externalforces,    only:omega_corotate,iext_corotate,iext_gwinspiral
  use extern_corotate,   only:icompanion_grav,companion_xpos,companion_mass,primarycore_xpos,&
                              primarycore_mass,primarycore_hsoft,hsoft
+ use extern_gwinspiral, only:Nstar_gw
  use infile_utils,      only:open_db_from_file,inopts,read_inopt,close_db
  use table_utils,       only:yinterp
  use readwrite_mesa,    only:read_mesa
@@ -46,10 +49,10 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  use readwrite_dumps,   only:read_dump
  use eos,               only:X_in,Z_in
 
- integer, intent(inout)    :: npart
- integer, intent(inout)    :: npartoftype(:)
- real,    intent(inout)    :: massoftype(:)
- real,    intent(inout)    :: xyzh(:,:),vxyzu(:,:)
+ integer, intent(inout) :: npart
+ integer, intent(inout) :: npartoftype(:)
+ real,    intent(inout) :: massoftype(:)
+ real,    intent(inout) :: xyzh(:,:),vxyzu(:,:)
  integer                   :: i,ierr,setup_case,ioption=1,irhomax,n
  integer                   :: iremove = 2
  integer                   :: nstar1,nstar2,nptmass1,nptmass2,iprim,isec
@@ -60,12 +63,11 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  real                      :: mcut,rcut,Mstar,radi,rhopart,rhomax = 0.0
  real                      :: time2,hfact2
  real                      :: xyzmh1_stash(nsinkproperties),xyzmh2_stash(nsinkproperties),vxyz1_stash(3),vxyz2_stash(3)
- real, allocatable         :: r(:),den(:),pres(:),temp(:),enitab(:),Xfrac(:),Yfrac(:),m(:)
- logical                   :: use_corotating_frame,iprimary_grav_ans
+ real, allocatable         :: r(:),den(:),pres(:),temp(:),enitab(:),Xfrac(:),Yfrac(:),mu(:),m(:)
+ logical                   :: use_corotating_frame,iprimary_grav_ans,gwinspiral
  character(len=20)         :: filename = 'binary.in'
  character(len=100)        :: densityfile,dumpname
  type(inopts), allocatable :: db(:)
-
 
  if (nptmass > 3) then
     call fatal('moddump_binary','Number of sink particles > 3')
@@ -178,6 +180,7 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
        hacc = 0.
        hsoft = 0.
        use_corotating_frame = .false.
+       gwinspiral = .false.
 
        call reset_centreofmass(npart,xyzh,vxyzu,nptmass,xyzmh_ptmass,vxyz_ptmass)
        call delete_dead_or_accreted_particles(npart,npartoftype)  !removes the dead or accreted particles for a correct total mass computation
@@ -206,6 +209,8 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
           call prompt('Enter softening length for companion', hsoft, 0.)
        endif
        call prompt('Do you want to transform to a corotating frame and simulate corotating binary?', use_corotating_frame)
+       if (.not. use_corotating_frame) call prompt('Do you want to add gravitational radiation reaction?', gwinspiral)
+       if (gwinspiral) iexternalforce = iext_gwinspiral
 
        ! set the binary
        if (use_corotating_frame) then
@@ -251,7 +256,8 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
 
           ! Move star 1 particles to avoid getting overwritten when reading second dump file.
           if (2*nstar1 > maxp) then  ! Check if particle array is large enough to provide particle-copying buffer
-             call fatal('moddump_binary','Two times number of particles in star 1 exceeds MAXP. Need to compile with larger MAXP')
+             call fatal('moddump_binary','Two times number of particles in star 1 > array size. Run with --maxp=N '//&
+                        'where N is desired number of particles')
           endif
           if (nstar1 > nstar2) then ! Move ith particle of star 1 to nstar1+i
              do i=1,nstar1
@@ -301,6 +307,11 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
              vxyz_ptmass(1:3,nptmass1+nptmass2) = vxyz2_stash(1:3)
           endif
 
+          if (gwinspiral) then
+             Nstar_gw(1) = nstar2
+             Nstar_gw(2) = nstar1
+          endif
+
        else
           nptmass = nptmass1 + 1
           xyzmh_ptmass(1:3,nptmass) = xyzmh2_stash(1:3)
@@ -308,6 +319,8 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
           xyzmh_ptmass(4,nptmass) = m2
           xyzmh_ptmass(ihacc,nptmass) = hacc
           xyzmh_ptmass(ihsoft,nptmass) = hsoft
+
+          if (gwinspiral) Nstar_gw(1) = npart
        endif
 
        if (nptmass1 == 1) then
@@ -331,12 +344,12 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
        call prompt('Enter mass of the created point mass core', mcut)
        call prompt('Enter softening length of the point mass', hsoft_default)
 
-       call read_mesa(densityfile,den,r,pres,m,enitab,temp,X_in,Z_in,Xfrac,Yfrac,Mstar,ierr,cgsunits=.false.)
+       call read_mesa(densityfile,den,r,pres,m,enitab,temp,X_in,Z_in,Xfrac,Yfrac,mu,Mstar,ierr,cgsunits=.false.)
        rcut = yinterp(r,m,mcut)
 
        irhomax = 1
        do i=1,npart
-          rhopart = rhoh(xyzh(4,i), massoftype(igas))
+          rhopart = rho(i)
           if (rhopart > rhomax) then
              rhomax = rhopart
              irhomax = i
@@ -598,9 +611,9 @@ subroutine set_sinkproperties(xyzmh_ptmass)
  use prompting,  only:prompt
  use dim,        only:nsinkproperties
  use io,         only:iprint
+ real, intent(inout) :: xyzmh_ptmass(:,:)
  integer :: i,j,iselect,ioption
  real    :: fac,var
- real,    intent(inout) :: xyzmh_ptmass(:,:)
  character(len=100)        :: dumpname
 
  do i = 1,nptmass
@@ -647,10 +660,10 @@ subroutine transform_from_corotating_to_inertial_frame(xyzh,vxyzu,npart,nptmass,
            omega_corotate,xyzmh_ptmass,vxyz_ptmass)
  use options,     only:iexternalforce
  use vectorutils, only:cross_product3D
- integer, intent(in) :: npart,nptmass
- real, intent(in) :: omega_corotate,xyzh(:,:),xyzmh_ptmass(:,:)
- real, intent(inout) :: vxyzu(:,:),vxyz_ptmass(:,:)
- real, dimension(3) :: omega_vec,omegacrossr
+ integer, intent(in)    :: npart,nptmass
+ real,    intent(in)    :: omega_corotate,xyzh(:,:),xyzmh_ptmass(:,:)
+ real,    intent(inout) :: vxyzu(:,:),vxyz_ptmass(:,:)
+ real :: omega_vec(3),omegacrossr(3)
  integer :: i
 
  iexternalforce = 0

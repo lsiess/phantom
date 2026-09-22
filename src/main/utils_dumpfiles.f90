@@ -1,6 +1,6 @@
 !--------------------------------------------------------------------------!
 ! The Phantom Smoothed Particle Hydrodynamics code, by Daniel Price et al. !
-! Copyright (c) 2007-2024 The Authors (see AUTHORS)                        !
+! Copyright (c) 2007-2026 The Authors (see AUTHORS)                        !
 ! See LICENCE file for usage and distribution conditions                   !
 ! http://phantomsph.github.io/                                             !
 !--------------------------------------------------------------------------!
@@ -30,6 +30,7 @@ module dump_utils
  public :: read_array_from_file
  public :: write_block_header, write_array
  public :: read_block_header, read_array
+ public :: read_global_block_header
  public :: print_arrays_in_file
  integer, parameter, public :: lentag = 16    ! tag length
  integer, parameter, public :: lenid  = 100
@@ -142,7 +143,8 @@ module dump_utils
   module procedure write_array_int1, &
    write_array_int4,  write_array_int8, &
    write_array_real4, write_array_real4arr, &
-   write_array_real8, write_array_real8arr
+   write_array_real8, write_array_real8arr, &
+   write_array_int4arr
  end interface write_array
 
  ! generic interface for writing arrays to file
@@ -150,7 +152,8 @@ module dump_utils
   module procedure read_array_int1, &
    read_array_int4, read_array_int8, &
    read_array_real4, read_array_real4arr, &
-   read_array_real8, read_array_real8arr
+   read_array_real8, read_array_real8arr, &
+   read_array_int4arr
  end interface read_array
 
  ! generic interface for reading arrays from dumpfile
@@ -168,8 +171,8 @@ contains
 !--------------------------------------------------------------------
 function get_dumpname(filename,id)
  character(len=*), intent(in) :: filename
- character(len=len_trim(filename)+8) :: get_dumpname
  integer,          intent(in) :: id
+ character(len=len_trim(filename)+8) :: get_dumpname
 
  write(get_dumpname,"(a,a5,i3.3)") trim(filename),'_part',id+1
 
@@ -259,8 +262,8 @@ end subroutine skip_headerblock
 !+
 !---------------------------------------------------------------------
 elemental function tag(label)
- character(len=lentag) :: tag
  character(len=*), intent(in) :: label
+ character(len=lentag) :: tag
 
  tag = adjustl(label)
 
@@ -1255,7 +1258,7 @@ end function get_error_text
 !+
 !-------------------------------------------------------
 subroutine read_header(iunit,hdr,ierr,singleprec,tagged)
- integer,      intent(in) :: iunit
+ integer,      intent(in)  :: iunit
  type(dump_h), intent(out) :: hdr
  integer,      intent(out) :: ierr
  logical,      intent(in), optional :: singleprec
@@ -1607,11 +1610,11 @@ end subroutine write_header
 !+
 !---------------------------------------------------------------------
 subroutine write_array_int1(ib,iarr,my_tag,len,ikind,ipass,iunit,nums,nerr,func)
- integer(kind=1),  intent(in) :: iarr(:)
- character(len=*), intent(in) :: my_tag
- integer, intent(in)    :: ib,len,ikind,ipass,iunit
- integer, intent(inout) :: nums(:,:)
- integer, intent(inout) :: nerr
+ integer(kind=1),  intent(in)    :: iarr(:)
+ character(len=*), intent(in)    :: my_tag
+ integer,          intent(in)    :: ib,len,ikind,ipass,iunit
+ integer,          intent(inout) :: nums(:,:)
+ integer,          intent(inout) :: nerr
  !procedure(integer(kind=1)), pointer, optional :: func
  interface
   integer(kind=1) pure function func(x)
@@ -1646,11 +1649,11 @@ end subroutine write_array_int1
 !+
 !---------------------------------------------------------------------
 subroutine write_array_int4(ib,iarr,my_tag,len,ikind,ipass,iunit,nums,nerr,func)
- integer(kind=4),  intent(in) :: iarr(:)
- character(len=*), intent(in) :: my_tag
- integer, intent(in)    :: ib,len,ikind,ipass,iunit
- integer, intent(inout) :: nums(:,:)
- integer, intent(inout) :: nerr
+ integer(kind=4),  intent(in)    :: iarr(:)
+ character(len=*), intent(in)    :: my_tag
+ integer,          intent(in)    :: ib,len,ikind,ipass,iunit
+ integer,          intent(inout) :: nums(:,:)
+ integer,          intent(inout) :: nerr
  !procedure(integer(kind=1)), pointer, optional :: func
  interface
   integer(kind=4) pure function func(x)
@@ -1685,11 +1688,11 @@ end subroutine write_array_int4
 !+
 !---------------------------------------------------------------------
 subroutine write_array_int8(ib,iarr,my_tag,len,ikind,ipass,iunit,nums,nerr,func)
- integer(kind=8),  intent(in) :: iarr(:)
- character(len=*), intent(in) :: my_tag
- integer, intent(in)    :: ib,len,ikind,ipass,iunit
- integer, intent(inout) :: nums(:,:)
- integer, intent(inout) :: nerr
+ integer(kind=8),  intent(in)    :: iarr(:)
+ character(len=*), intent(in)    :: my_tag
+ integer,          intent(in)    :: ib,len,ikind,ipass,iunit
+ integer,          intent(inout) :: nums(:,:)
+ integer,          intent(inout) :: nerr
  !procedure(integer(kind=1)), pointer, optional :: func
  interface
   integer(kind=8) pure function func(x)
@@ -1720,15 +1723,54 @@ end subroutine write_array_int8
 
 !---------------------------------------------------------------------
 !+
+!  Write multidimensional real*4 array arr(len1,len2)
+!  to block header (ipass=1) or to file (ipass=2)
+!+
+!---------------------------------------------------------------------
+subroutine write_array_int4arr(ib,iarr,my_tag,len1,len2,ikind,ipass,iunit,nums,nerr,index)
+ integer(kind=4),  intent(in)    :: iarr(:,:)
+ character(len=*), intent(in)    :: my_tag(:)
+ integer,          intent(in)    :: ib,len1,len2,ikind,ipass,iunit
+ integer,          intent(inout) :: nums(:,:)
+ integer,          intent(inout) :: nerr
+ integer,          intent(in), optional :: index
+ integer :: j,i,istart,iend,ierr
+
+ ierr = 0
+ if (present(index)) then
+    istart = index
+    iend   = index
+ else
+    istart = 1
+    iend   = len1
+ endif
+ ! check if kind matches
+ if (ikind==i_int4) then
+    !print*,ipass,' WRITING ',my_tag(istart:iend),' as ',i_int4
+    if (ipass==1) then
+       nums(i_int4,ib) = nums(i_int4,ib) + (iend - istart) + 1
+    elseif (ipass==2) then
+       do j=istart,iend
+          write(iunit,iostat=ierr) tag(my_tag(j))
+          write(iunit,iostat=ierr) (iarr(j,i),i=1,len2)
+       enddo
+    endif
+ endif
+ if (ierr /= 0) nerr = nerr + 1
+
+end subroutine write_array_int4arr
+
+!---------------------------------------------------------------------
+!+
 !  Write real*4 array to block header (ipass=1) or to file (ipass=2)
 !+
 !---------------------------------------------------------------------
 subroutine write_array_real4(ib,arr,my_tag,len,ikind,ipass,iunit,nums,nerr,func,use_kind,singleprec)
- real(kind=4),     intent(in) :: arr(:)
- character(len=*), intent(in) :: my_tag
- integer, intent(in)    :: ib,len,ikind,ipass,iunit
- integer, intent(inout) :: nums(:,:)
- integer, intent(inout) :: nerr
+ real(kind=4),     intent(in)    :: arr(:)
+ character(len=*), intent(in)    :: my_tag
+ integer,          intent(in)    :: ib,len,ikind,ipass,iunit
+ integer,          intent(inout) :: nums(:,:)
+ integer,          intent(inout) :: nerr
  interface
   real(kind=4) pure function func(x)
    real(kind=4), intent(in) :: x
@@ -1770,11 +1812,11 @@ end subroutine write_array_real4
 !+
 !---------------------------------------------------------------------
 subroutine write_array_real8(ib,arr,my_tag,len,ikind,ipass,iunit,nums,nerr,func,use_kind,singleprec)
- real(kind=8),     intent(in) :: arr(:)
- character(len=*), intent(in) :: my_tag
- integer, intent(in)    :: ib,len,ikind,ipass,iunit
- integer, intent(inout) :: nums(:,:)
- integer, intent(inout) :: nerr
+ real(kind=8),     intent(in)    :: arr(:)
+ character(len=*), intent(in)    :: my_tag
+ integer,          intent(in)    :: ib,len,ikind,ipass,iunit
+ integer,          intent(inout) :: nums(:,:)
+ integer,          intent(inout) :: nerr
  interface
   real(kind=8) pure function func(x)
    real(kind=8), intent(in) :: x
@@ -1831,13 +1873,13 @@ end subroutine write_array_real8
 !+
 !---------------------------------------------------------------------
 subroutine write_array_real4arr(ib,arr,my_tag,len1,len2,ikind,ipass,iunit,nums,nerr,use_kind,index,singleprec)
- real(kind=4),     intent(in) :: arr(:,:)
- character(len=*), intent(in) :: my_tag(:)
- integer, intent(in)    :: ib,len1,len2,ikind,ipass,iunit
- integer, intent(inout) :: nums(:,:)
- integer, intent(inout) :: nerr
- integer, intent(in), optional :: use_kind,index
- logical, intent(in), optional :: singleprec
+ real(kind=4),     intent(in)    :: arr(:,:)
+ character(len=*), intent(in)    :: my_tag(:)
+ integer,          intent(in)    :: ib,len1,len2,ikind,ipass,iunit
+ integer,          intent(inout) :: nums(:,:)
+ integer,          intent(inout) :: nerr
+ integer,          intent(in), optional :: use_kind,index
+ logical,          intent(in), optional :: singleprec
  integer :: j,i,imatch,istart,iend,ierr
 
  ierr = 0
@@ -1877,13 +1919,13 @@ end subroutine write_array_real4arr
 !+
 !---------------------------------------------------------------------
 subroutine write_array_real8arr(ib,arr,my_tag,len1,len2,ikind,ipass,iunit,nums,nerr,use_kind,index,singleprec)
- real(kind=8),     intent(in) :: arr(:,:)
- character(len=*), intent(in) :: my_tag(:)
- integer, intent(in)    :: ib,len1,len2,ikind,ipass,iunit
- integer, intent(inout) :: nums(:,:)
- integer, intent(inout) :: nerr
- integer, intent(in), optional :: use_kind,index
- logical, intent(in), optional :: singleprec
+ real(kind=8),     intent(in)    :: arr(:,:)
+ character(len=*), intent(in)    :: my_tag(:)
+ integer,          intent(in)    :: ib,len1,len2,ikind,ipass,iunit
+ integer,          intent(inout) :: nums(:,:)
+ integer,          intent(inout) :: nerr
+ integer,          intent(in), optional :: use_kind,index
+ logical,          intent(in), optional :: singleprec
  integer :: j,i,imatch,istart,iend,ierr
  logical :: use_singleprec
 
@@ -1968,6 +2010,26 @@ subroutine read_block_header(nblocks,number,nums,iunit,ierr)
  enddo
 
 end subroutine read_block_header
+
+!--------------------------------------------------------------------
+!+
+!  read the number of blocks from the header
+!+
+!--------------------------------------------------------------------
+subroutine read_global_block_header(nblocks,narraylengths,hdr,iunit,ierr)
+ integer,      intent(out) :: nblocks,narraylengths
+ type(dump_h), intent(in)  :: hdr
+ integer,      intent(in)  :: iunit
+ integer,      intent(out) :: ierr
+ integer :: number
+ integer :: ierr1
+
+ call extract('nblocks',nblocks,hdr,ierr1,default=1)
+ if (ierr1 /= 0) write(*,*) 'number of MPI blocks not read: assuming 1'
+ read (iunit,iostat=ierr) number
+ narraylengths = number/nblocks
+
+end subroutine read_global_block_header
 
 !--------------------------------------------------------------------
 !+
@@ -2155,6 +2217,46 @@ end subroutine read_array_int8
 
 !--------------------------------------------------------------------
 !+
+!  Routine for extracting multi-d int*8 array from
+!  main block in dump files
+!+
+!--------------------------------------------------------------------
+subroutine read_array_int4arr(iarr,arr_tag,got_arr,ikind,i1,i2,noffset,iunit,tag,matched,ierr)
+ integer(kind=4),  intent(inout) :: iarr(:,:)
+ character(len=*), intent(in)    :: arr_tag(:),tag
+ logical,          intent(inout) :: got_arr(:)
+ integer,          intent(in)    :: ikind,i1,i2,noffset,iunit
+ logical,          intent(inout) :: matched
+ integer,          intent(out)   :: ierr
+ integer         :: i,j,nread
+ integer(kind=4) :: dum
+ logical         :: match_datatype
+ integer(kind=4), allocatable :: dummyi4(:)
+
+ if (matched) return
+ match_datatype = (ikind==i_int4)
+
+ do j=1,min(size(iarr(:,1)),size(arr_tag))
+    if (match_tag(tag,arr_tag(j)) .and. .not.matched) then
+       matched    = .true.
+       if (match_datatype) then
+          got_arr(j) = .true.
+          nread = i2-i1+1
+          allocate(dummyi4(nread)) ! to avoid seg fault with ifort
+          read(iunit,iostat=ierr) (dum,i=1,noffset),dummyi4(1:nread)
+          iarr(j,i1:i2) = dummyi4(:)
+          deallocate(dummyi4)
+       else
+          print*,'ERROR: wrong datatype for '//trim(tag)//' (is not int4)'
+          read(iunit,iostat=ierr)
+       endif
+    endif
+ enddo
+
+end subroutine read_array_int4arr
+
+!--------------------------------------------------------------------
+!+
 !  Routine for extracting real*4 array from main block in dump files
 !+
 !--------------------------------------------------------------------
@@ -2212,7 +2314,7 @@ subroutine read_array_real4arr(arr,arr_tag,got_arr,ikind,i1,i2,noffset,iunit,tag
  if (matched .or. ikind < i_real) return
  match_datatype = (ikind==i_real4 .or. (kind(0.)==4 .and. ikind==i_real))
 
- do j=1,min(size(arr(:,1)),size(arr_tag))
+ do j=1,min(size(arr,dim=1),size(arr_tag))
     if (match_tag(tag,arr_tag(j)) .and. .not.matched) then
        matched    = .true.
        if (match_datatype) then
@@ -2320,7 +2422,7 @@ subroutine read_array_real8arr(arr,arr_tag,got_arr,ikind,i1,i2,noffset,iunit,tag
  if (matched .or. ikind < i_real) return
  match_datatype = (ikind==i_real8 .or. (kind(0.)==8 .and. ikind==i_real))
 
- do j=1,min(size(arr(:,1)),size(arr_tag))
+ do j=1,min(size(arr,dim=1),size(arr_tag))
     if (match_tag(tag,arr_tag(j)) .and. .not.matched) then
        matched    = .true.
        if (match_datatype) then
@@ -2358,11 +2460,11 @@ end subroutine read_array_real8arr
 !+
 !-----------------------------------------------------
 subroutine open_dumpfile_rh(iunit,filename,nblocks,narraylengths,ierr,singleprec,id)
- integer,          intent(in)  :: iunit
- character(len=*), intent(in)  :: filename
- integer,          intent(out) :: nblocks,narraylengths,ierr
+ integer,              intent(in)  :: iunit
+ character(len=*),     intent(in)  :: filename
+ integer,              intent(out) :: nblocks,narraylengths,ierr
  character(len=lenid), intent(out), optional :: id
- logical,          intent(in),      optional :: singleprec
+ logical,              intent(in),  optional :: singleprec
  character(len=lenid)  :: fileid
  character(len=lentag) :: tagarr(maxphead)
  integer :: intarr(maxphead)
@@ -2413,13 +2515,13 @@ end subroutine open_dumpfile_rh
 !+
 !-----------------------------------------------------
 subroutine read_array_from_file_r8(iunit,filename,tag,array,ierr,use_block,iprint_in)
- integer,               intent(in) :: iunit
- character(len=*),      intent(in) :: filename
- character(len=*),      intent(in) :: tag
- real(kind=8),          intent(out) :: array(:)
- integer, intent(out) :: ierr
- integer, intent(in), optional :: use_block
- logical, intent(in), optional :: iprint_in
+ integer,          intent(in)  :: iunit
+ character(len=*), intent(in)  :: filename
+ character(len=*), intent(in)  :: tag
+ real(kind=8),     intent(out) :: array(:)
+ integer,          intent(out) :: ierr
+ integer,          intent(in), optional :: use_block
+ logical,          intent(in), optional :: iprint_in
  integer, parameter :: maxarraylengths = 12
  integer(kind=8) :: number8(maxarraylengths)
  integer :: i,j,k,iblock,nums(ndatatypes,maxarraylengths)
@@ -2485,13 +2587,13 @@ end subroutine read_array_from_file_r8
 !+
 !-----------------------------------------------------
 subroutine read_array_from_file_r4(iunit,filename,tag,array,ierr,use_block,iprint_in)
- integer,               intent(in) :: iunit
- character(len=*),      intent(in) :: filename
- character(len=*),      intent(in) :: tag
- real(kind=4), intent(out) :: array(:)
- integer, intent(out) :: ierr
- integer, intent(in), optional :: use_block
- logical, intent(in), optional :: iprint_in
+ integer,          intent(in)  :: iunit
+ character(len=*), intent(in)  :: filename
+ character(len=*), intent(in)  :: tag
+ real(kind=4),     intent(out) :: array(:)
+ integer,          intent(out) :: ierr
+ integer,          intent(in), optional :: use_block
+ logical,          intent(in), optional :: iprint_in
  integer, parameter :: maxarraylengths = 12
  integer(kind=8) :: number8(maxarraylengths)
  integer :: i,j,k,iblock,nums(ndatatypes,maxarraylengths)

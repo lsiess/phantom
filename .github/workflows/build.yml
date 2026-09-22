@@ -1,20 +1,12 @@
 name: build
 
 on:
-  push:
-    branches: [ master ]
-    paths-ignore:
-      - 'docs/**'
-      - 'README.md'
-  pull_request:
-    branches: [ master ]
-    paths-ignore:
-      - 'docs/**'
-      - 'README.md'
+  workflow_call:
 
 env:
   OMP_STACKSIZE: 512M
   SPLASH_DIR: ${{ github.workspace }}/splash
+  MCFOST_DIR: ${{ github.workspace }}/mcfost
   PHANTOM_DIR: ${{ github.workspace }}
   WEB_USER: github
   WEB_SERVER: data.phantom.cloud.edu.au
@@ -49,8 +41,10 @@ jobs:
       fail-fast: false
       matrix:
         system:
+          - aocc
           - gfortran
           - ifort
+          - ifx
         batch: ${{ fromJson(needs.matrix_prep.outputs.batch) }}
 
     name: build (batch ${{ matrix.batch }}/${{ needs.matrix_prep.outputs.nbatch }}, SYSTEM=${{ matrix.system }})
@@ -65,11 +59,11 @@ jobs:
     - name: Update package list
       run: sudo apt-get update
 
-    - name: Setup Intel compiler
-      if: matrix.system == 'ifort'
-      uses: fortran-lang/setup-fortran@v1
+    - name: Setup Fortran compiler
+      if: matrix.system == 'aocc' || matrix.system == 'ifort' || matrix.system == 'ifx'
+      uses: fortran-lang/setup-fortran@main
       with:
-          compiler: intel-classic
+        compiler: ${{ matrix.system == 'ifort' && 'intel-classic' || (matrix.system == 'ifx' && 'intel' || 'aocc') }}
 
     - name: Install numpy and matplotlib for analysis unit tests
       run: |
@@ -79,63 +73,37 @@ jobs:
     - name: "Clone phantom"
       uses: actions/checkout@v4
 
-    - name: "Grab a copy of splash source code"
+    - name: "Grab a copy of splash source code for analysis utils"
       uses: actions/checkout@v4
       with:
         repository: danieljprice/splash
         path: splash
+
+    - name: "Grab a copy of mcfost source code for analysis utils"
+      uses: actions/checkout@v4
+      with:
+        repository: danieljprice/mcfost
+        path: mcfost
 
     - name: "Create logs directory"
       if: github.event_name == 'schedule'
       run: mkdir logs
 
     - name: "Run buildbot.sh"
-      run: ./buildbot.sh --maxdim 17000000 --url http://${WEB_SERVER}/${BUILD_LOG_DIR} --parallel ${{ matrix.batch }} ${{ env.NPARALLEL }}
+      run: ./buildbot.sh --url http://${WEB_SERVER}/${BUILD_LOG_DIR} --parallel ${{ matrix.batch }} ${{ env.NPARALLEL }}
       working-directory: scripts
       env:
         SYSTEM: ${{ matrix.system }}
         RETURN_ERR: yes
 
-    - name: logs/build-failures-${{ matrix.system }}.txt
-      if: always()
+    - name: Summary of build failures with SYSTEM=${{ matrix.system }}
+      if: success() || failure()
       run: cat logs/build-failures-${{ matrix.system }}.txt || true
 
-    - name: logs/setup-failures-${{ matrix.system }}.txt
-      if: always()
+    - name: Summary of setup failures with SYSTEM=${{ matrix.system }}
+      if: success() || failure()
       run: cat logs/setup-failures-${{ matrix.system }}.txt || true
 
-    - name: logs/analysis-failures-${{ matrix.system }}.txt
-      if: always()
+    - name: Summary of analysis failures with SYSTEM=${{ matrix.system }}
+      if: success() || failure()
       run: cat logs/analysis-failures-${{ matrix.system }}.txt || true
-
-    - name: logs/make-*-${{ matrix.system }}.txt
-      if: always()
-      run: |
-        echo
-        for item in $(ls logs/make-*-${{ matrix.system }}.txt); do
-          echo ::group::"${item}"
-          cat $item
-          echo ::endgroup::
-        done
-
-  # Gather results into a dummy job that will fail if the previous job fails
-  gather_results:
-    if: ${{ always() && github.event_name != 'schedule' }}
-    needs:
-    - build
-
-    # This name matches the branch protection requirement
-    name: build
-
-    # Always run on github runner; no need to use custom runner for the check
-    runs-on: ubuntu-latest
-
-    steps:
-    - name: Check all builds succeeded
-      run: |
-        if [[ "${{ needs.build.result }}" == "success" ]]; then
-          echo "All build succeeded"
-        else
-          echo "At least one build failed"
-          exit 1
-        fi

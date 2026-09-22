@@ -8,12 +8,12 @@ This section contains the basic user guide for Phantom.
 
    config
    setups
-   relaxation
    infile
    qscript
    sweeps
    analysis
    moddump
+   moddump-recipes
    utils
    dumpfile
    hdf5

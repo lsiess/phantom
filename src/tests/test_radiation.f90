@@ -1,6 +1,6 @@
 !--------------------------------------------------------------------------!
 ! The Phantom Smoothed Particle Hydrodynamics code, by Daniel Price et al. !
-! Copyright (c) 2007-2024 The Authors (see AUTHORS)                        !
+! Copyright (c) 2007-2026 The Authors (see AUTHORS)                        !
 ! See LICENCE file for usage and distribution conditions                   !
 ! http://phantomsph.github.io/                                             !
 !--------------------------------------------------------------------------!
@@ -17,8 +17,8 @@ module testradiation
 !
 ! :Runtime parameters: None
 !
-! :Dependencies: boundary, deriv, dim, eos, io, kernel, linklist,
-!   mpidomain, mpiutils, options, part, physcon, radiation_implicit,
+! :Dependencies: boundary, deriv, dim, eos, io, kernel, mpidomain,
+!   mpiutils, neighkdtree, options, part, physcon, radiation_implicit,
 !   radiation_utils, readwrite_dumps, step_lf_global, testutils, timestep,
 !   unifdis, units
 !
@@ -40,9 +40,8 @@ subroutine test_radiation(ntests,npass)
  use physcon, only:solarm,au
  use units,   only:set_units
  use dim,     only:do_radiation,periodic,mpi
- use options, only:implicit_radiation
  use io,      only:iverbose
- use radiation_implicit, only:tol_rad
+ use radiation_utils, only:implicit_radiation,tol_rad
  integer, intent(inout) :: ntests,npass
 
  if (.not.do_radiation) then
@@ -81,15 +80,14 @@ end subroutine test_radiation
 !+
 !----------------------------------------------------
 subroutine test_exchange_terms(ntests,npass,use_implicit)
- use radiation_utils, only:update_radenergy,kappa_cgs
+ use radiation_utils, only:update_radenergy,kappa_cgs,exchange_radiation_energy
  use units,      only:set_units,unit_ergg,unit_density,unit_opacity,utime
  use physcon,    only:au,solarm,seconds
  use dim,        only:maxp,periodic
- use options,    only:exchange_radiation_energy
  use io,         only:iverbose
- use part,       only:init_part,npart,rhoh,xyzh,fxyzu,vxyzu,massoftype,igas,&
-                      iphase,maxphase,isetphase,rhoh,drad,&
-                      npartoftype,rad,radprop,maxvxyzu,luminosity
+ use part,       only:init_part,npart,rho,xyzh,fxyzu,vxyzu,massoftype,igas,&
+                      iphase,maxphase,isetphase,drad,&
+                      npartoftype,rad,radprop,maxvxyzu,luminosity,init_rho_from_h
  use kernel,     only:hfact_default
  use unifdis,    only:set_unifdis
  use eos,        only:gmw,gamma,polyk,iopacity_type
@@ -97,16 +95,17 @@ subroutine test_exchange_terms(ntests,npass,use_implicit)
  use mpiutils,   only:reduceall_mpi
  use mpidomain,  only:i_belong
  use radiation_implicit, only:do_radiation_implicit
- use linklist,   only:set_linklist
- real :: psep,hfact
- real :: pmassi,rhozero,totmass
+ use neighkdtree,        only:build_tree
  integer, intent(inout) :: ntests,npass
  logical, intent(in)    :: use_implicit
+ real :: psep,hfact
+ real :: pmassi,rhozero,totmass
  real :: dt,t,physrho,rhoi,maxt,laste
- integer :: i,nerr(1),ndiff(1),ncheck,ierrmax,ierr,itest
+ integer :: i,nerr(1),ndiff(1),ncheck,ierrmax,ierr,itest,N_implicit_steps
  integer(kind=8) :: nptot
  logical, parameter :: write_output = .false.
  character(len=12) :: string,filestr
+ real :: step,log_start
 
  call init_part()
  iverbose = 0
@@ -140,8 +139,9 @@ subroutine test_exchange_terms(ntests,npass,use_implicit)
  npartoftype(:) = 0
  npartoftype(1) = npart
  pmassi = massoftype(igas)
+ call init_rho_from_h()
 
- if (use_implicit) call set_linklist(npart,npart,xyzh,vxyzu)
+ if (use_implicit) call build_tree(npart,npart,xyzh,vxyzu)
  !
  ! first version of the test: set gas temperature high and radiation temperature low
  ! so that gas cools towards radiation temperature (itest=1)
@@ -150,7 +150,7 @@ subroutine test_exchange_terms(ntests,npass,use_implicit)
  !
  do itest = 1,2
     do i=1,npart
-       rhoi              = rhoh(xyzh(4,i),pmassi)
+       rhoi              = rho(i)
        rad(iradxi,i)     = 1e12/(unit_ergg*unit_density)/rhoi
        radprop(ikappa,i) = kappa_cgs/unit_opacity
        if (itest==2) then
@@ -170,21 +170,31 @@ subroutine test_exchange_terms(ntests,npass,use_implicit)
     endif
     maxt = 5e-7*seconds
     t = 0.
-    rhoi    = rhoh(xyzh(4,1),pmassi)
+    rhoi    = rho(1)
     physrho = rhoi*unit_density
     i = 0
     ndiff = 0
     ncheck = 0
     ierrmax = 0
+
+    ! logarithmically spaced time steps for implicit
+    if (use_implicit) then
+       N_implicit_steps = 40
+       log_start = log10(1.d-18*seconds/utime)
+       step = (log10(maxt/utime) - log_start) / real(N_implicit_steps - 1)
+    endif
+
     do while(t < maxt/utime)
        dt = max(1d-18*seconds/utime,0.05d0*t)
-       !  dt = maxt/utime
+       if (t + dt > maxt/utime) dt = maxt/utime - t
        if (use_implicit) then
-          if (i > 1) dt = 0.05*maxt/utime ! use large timesteps for implicit version
+          if (i >1) dt = min(0.05*maxt/utime, 10.d0**(log_start + (i - 1) * step) - t)
+          if (t + dt > maxt/utime) dt = maxt/utime - t  ! take last step to maxt
           call do_radiation_implicit(dt,npart,rad,xyzh,vxyzu,radprop,drad,ierr)
           call checkvalbuf(ierr,0,0,'no errors from implicit solver',ndiff(1),ncheck,ierrmax)
        else
-          call update_radenergy(1,xyzh,fxyzu,vxyzu,rad,radprop,dt)
+          if (t + dt > maxt/utime) dt = maxt/utime - t  ! take last step to maxt
+          call update_radenergy(1,fxyzu,vxyzu,rho,rad,radprop,dt)
        endif
        t = t + dt
        if (mod(i,10)==0 .or. use_implicit) then
@@ -221,11 +231,12 @@ subroutine test_implicit_matches_explicit(ntests,npass)
  use part,     only:npart,xyzh,vxyzu,rad,radprop,drad,&
                     xyzh_label,init_part,radprop_label
  use boundary, only:xmin,xmax,ymin,ymax,zmin,zmax
- use options,  only:implicit_radiation,tolh
+ use options,  only:tolh
  use physcon,  only:pi
  use deriv,    only:get_derivs_global
  use io,       only:iverbose
  use timestep, only:dtmax
+ use radiation_utils,    only:implicit_radiation
  use radiation_implicit, only:do_radiation_implicit
  integer, intent(inout) :: ntests,npass
  real(kind=kind(radprop)), allocatable :: flux_explicit(:,:)
@@ -283,7 +294,7 @@ end subroutine test_implicit_matches_explicit
 !+
 !---------------------------------------------------------
 subroutine test_radiation_diffusion(ntests,npass)
- use part,            only:npart,xyzh,rhoh,vxyzu,&
+ use part,            only:npart,xyzh,rho,vxyzu,&
                            rad,radprop,drad,ifluxx,maxvxyzu,fxyzu,init_part
  use boundary,        only:xmin,xmax
  use physcon,         only:pi
@@ -291,7 +302,7 @@ subroutine test_radiation_diffusion(ntests,npass)
  use deriv,           only:get_derivs_global
  use step_lf_global,  only:init_step,step
  use timestep,        only:dtmax
- use options,         only:implicit_radiation,limit_radiation_flux,implicit_radiation_store_drad
+ use radiation_utils, only:implicit_radiation,limit_radiation_flux,implicit_radiation_store_drad
  use mpiutils,        only:reduceall_mpi
  integer, intent(inout) :: ntests,npass
  real :: rhoi,dtext,pmassi,dt,t,kappa_code
@@ -329,7 +340,7 @@ subroutine test_radiation_diffusion(ntests,npass)
 
  l0 = 2*pi/(xmax-xmin)
  do i=1,npart
-    rhoi = rhoh(xyzh(4,i),pmassi)
+    rhoi = rho(i)
     D0  = c_code*(1./3)/kappa_code/rhoi
     exact_grE  =  xi0*rho0*0.1*l0   *cos(xyzh(1,i)*l0)
     exact_DgrF = -xi0*D0  *0.1*l0*l0*sin(xyzh(1,i)*l0)
@@ -392,7 +403,7 @@ subroutine test_radiation_diffusion(ntests,npass)
           tol_xi = 3.5e-4
        endif
        do j = 1,npart
-          rhoi = rhoh(xyzh(4,j),pmassi)
+          rhoi = rho(j)
           D0  = c_code*(1./3)/kappa_code/rhoi
           exact_xi = xi0*(1.+0.1*sin(xyzh(1,j)*l0)*exp(-l0*l0*t*D0))
           write (string,"(a,i3.3,a)") 'xi(t_', i, ')'
@@ -426,7 +437,7 @@ subroutine setup_radiation_diffusion_problem_sinusoid(kappa_code,c_code,xi0,rho0
  use io,              only:id,master
  use eos,             only:gamma,gmw,iopacity_type
  use part,            only:npart,hfact,xyzh,vxyzu,massoftype,igas,periodic,&
-                           iphase,maxphase,isetphase,rhoh,npartoftype,&
+                           iphase,maxphase,isetphase,npartoftype,&
                            rad,radprop,ifluxx,maxvxyzu
  use units,           only:unit_opacity,get_c_code,unit_ergg,get_radconst_code
  use physcon,         only:Rg,pi,seconds

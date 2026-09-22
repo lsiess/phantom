@@ -1,6 +1,6 @@
 !--------------------------------------------------------------------------!
 ! The Phantom Smoothed Particle Hydrodynamics code, by Daniel Price et al. !
-! Copyright (c) 2007-2024 The Authors (see AUTHORS)                        !
+! Copyright (c) 2007-2026 The Authors (see AUTHORS)                        !
 ! See LICENCE file for usage and distribution conditions                   !
 ! http://phantomsph.github.io/                                             !
 !--------------------------------------------------------------------------!
@@ -17,7 +17,8 @@ module extern_gr
 !
 ! :Runtime parameters: None
 !
-! :Dependencies: eos, io, metric_tools, part, physcon, timestep, utils_gr
+! :Dependencies: eos, io, metric, metric_tools, part, physcon, timestep,
+!   utils_gr
 !
  implicit none
 
@@ -36,6 +37,8 @@ contains
 !---------------------------------------------------------------
 subroutine get_grforce(xyzhi,metrici,metricderivsi,veli,densi,ui,pi,fexti,dtf)
  use io, only:iprint,fatal,error
+ use metric_tools, only:imetric,imet_binarybh
+ !use metric,       only:metric_params
  real, intent(in)  :: xyzhi(4),metrici(:,:,:),metricderivsi(0:3,0:3,3),veli(3),densi,ui,pi
  real, intent(out) :: fexti(3)
  real, intent(out), optional :: dtf
@@ -43,9 +46,13 @@ subroutine get_grforce(xyzhi,metrici,metricderivsi,veli,densi,ui,pi,fexti,dtf)
 
  call forcegr(xyzhi(1:3),metrici,metricderivsi,veli,densi,ui,pi,fexti,ierr)
  if (ierr > 0) then
-    write(iprint,*) 'x,y,z = ',xyzhi(1:3)
+    write(iprint,*) 'x,y,z = ',xyzhi(1:3),' r = ',sqrt(dot_product(xyzhi(1:3),xyzhi(1:3)))
+    !if (imetric==imet_binarybh) then
+    !   print*,' distance from bh1 = ',sqrt(dot_product(xyzhi(1:3)-metric_params(1:3),xyzhi(1:3)-metric_params(1:3)))
+    !   print*,' distance from bh2 = ',sqrt(dot_product(xyzhi(1:3)-metric_params(4:6),xyzhi(1:3)-metric_params(4:6)))
+    !endif
     call error('get_u0 in extern_gr','1/sqrt(-v_mu v^mu) ---> non-negative: v_mu v^mu')
-    call fatal('get_grforce','could not compute forcegr at r = ',val=sqrt(dot_product(xyzhi(1:3),xyzhi(1:3))) )
+    call fatal('get_grforce','particle inside bh? could not compute forcegr at r = ',val=sqrt(dot_product(xyzhi(1:3),xyzhi(1:3))) )
  endif
 
  if (present(dtf)) call dt_grforce(xyzhi,fexti,dtf)
@@ -58,28 +65,45 @@ end subroutine get_grforce
 !  gradients on all particles
 !+
 !---------------------------------------------------------------
-subroutine get_grforce_all(npart,xyzh,metrics,metricderivs,vxyzu,dens,fext,dtexternal)
+subroutine get_grforce_all(npart,xyzh,metrics,metricderivs,vxyzu,fext,dtexternal,use_sink,dens)
  use timestep, only:C_force
  use eos,      only:ieos,get_pressure
  use part,     only:isdead_or_accreted
- integer, intent(in) :: npart
- real, intent(in)    :: xyzh(:,:), metrics(:,:,:,:), metricderivs(:,:,:,:), dens(:)
- real, intent(inout) :: vxyzu(:,:)
- real, intent(out)   :: fext(:,:), dtexternal
+ integer, intent(in)    :: npart
+ real,    intent(in)    :: xyzh(:,:), metrics(:,:,:,:), metricderivs(:,:,:,:)
+ real,    intent(inout) :: vxyzu(:,:)
+ real,    intent(out)   :: fext(:,:), dtexternal
+ real,    intent(in), optional :: dens(:)
+ logical, intent(in), optional :: use_sink ! we pick the data from the xyzh array and assume u=0 for this case
  integer :: i
- real    :: dtf,pi
+ real    :: dtf,pi,densi
+ real    :: xyzhi(4),vxyzui(4)
 
  dtexternal = huge(dtexternal)
 
  !$omp parallel do default(none) &
- !$omp shared(npart,xyzh,metrics,metricderivs,vxyzu,dens,fext,ieos,C_force) &
- !$omp private(i,dtf,pi) &
+ !$omp shared(npart,xyzh,metrics,metricderivs,vxyzu,dens,fext,ieos,C_force,use_sink) &
+ !$omp private(i,dtf,pi,xyzhi,vxyzui,densi) &
  !$omp reduction(min:dtexternal)
  do i=1,npart
-    if (.not.isdead_or_accreted(xyzh(4,i))) then
-       pi = get_pressure(ieos,xyzh(:,i),dens(i),vxyzu(:,i))
-       call get_grforce(xyzh(:,i),metrics(:,:,:,i),metricderivs(:,:,:,i),vxyzu(1:3,i),dens(i),vxyzu(4,i),pi,fext(1:3,i),dtf)
+    if (present(use_sink)) then
+
+       xyzhi(1:3)  = xyzh(1:3,i)
+       xyzhi(4)    = xyzh(5,i) ! save smoothing length, h
+       vxyzui(1:3) = vxyzu(1:3,i)
+       vxyzui(4)   = 0.
+       pi = 0.
+       densi = 1.
+       call get_grforce(xyzhi,metrics(:,:,:,i),metricderivs(:,:,:,i),vxyzui(1:3),densi,vxyzui(4),pi,fext(1:3,i),dtf)
        dtexternal = min(dtexternal,C_force*dtf)
+
+    else
+
+       if (.not.isdead_or_accreted(xyzh(4,i))) then
+          pi = get_pressure(ieos,xyzh(:,i),dens(i),vxyzu(:,i))
+          call get_grforce(xyzh(:,i),metrics(:,:,:,i),metricderivs(:,:,:,i),vxyzu(1:3,i),dens(i),vxyzu(4,i),pi,fext(1:3,i),dtf)
+          dtexternal = min(dtexternal,C_force*dtf)
+       endif
     endif
  enddo
  !$omp end parallel do
@@ -94,10 +118,11 @@ end subroutine get_grforce_all
 !---------------------------------------------------------------------------
 subroutine dt_grforce(xyzh,fext,dtf)
  use physcon,      only:pi
- use metric_tools, only:imetric,imet_schwarzschild,imet_kerr
+ use metric_tools, only:imetric,imet_schwarzschild,imet_kerr,imet_rn
+ use metric,       only:mass1
  real, intent(in)  :: xyzh(4),fext(3)
  real, intent(out) :: dtf
- real :: r,r2,dtf1,dtf2,f2i
+ real :: r,r2,dtf1,dtf2,f2i,omega
  integer, parameter :: steps_per_orbit = 100
 
  f2i = fext(1)*fext(1) + fext(2)*fext(2) + fext(3)*fext(3)
@@ -108,10 +133,11 @@ subroutine dt_grforce(xyzh,fext,dtf)
  endif
 
  select case (imetric)
- case (imet_schwarzschild,imet_kerr)
+ case (imet_schwarzschild,imet_kerr,imet_rn)
     r2   = xyzh(1)*xyzh(1) + xyzh(2)*xyzh(2) + xyzh(3)*xyzh(3)
     r    = sqrt(r2)
-    dtf2 = (2.*pi*sqrt(r*r2))/steps_per_orbit
+    omega = sqrt(mass1/(r2*r))
+    dtf2 = (2.*pi/(omega + epsilon(omega)))/steps_per_orbit
  case default
     dtf2 = huge(dtf2)
  end select
@@ -239,9 +265,9 @@ end subroutine update_grforce_leapfrog
 subroutine get_tmunu_all(npart,xyzh,metrics,vxyzu,metricderivs,dens,tmunus)
  use eos,  only:ieos,get_pressure
  use part, only:isdead_or_accreted
- integer, intent(in) :: npart
- real, intent(in)    :: xyzh(:,:), metrics(:,:,:,:), metricderivs(:,:,:,:), dens(:)
- real, intent(inout) :: vxyzu(:,:),tmunus(:,:,:)
+ integer, intent(in)    :: npart
+ real,    intent(in)    :: xyzh(:,:), metrics(:,:,:,:), metricderivs(:,:,:,:), dens(:)
+ real,    intent(inout) :: vxyzu(:,:),tmunus(:,:,:)
  real                :: pi
  integer             :: i
 
@@ -268,8 +294,8 @@ end subroutine get_tmunu_all
 subroutine get_tmunu(x,metrici,v,dens,u,p,tmunu)
  use metric_tools, only:unpack_metric
  use utils_gr,     only:get_u0
- real,    intent(in)  :: x(3),metrici(:,:,:),v(3),dens,u,p
- real,    intent(out) :: tmunu(0:3,0:3)
+ real, intent(in)  :: x(3),metrici(:,:,:),v(3),dens,u,p
+ real, intent(out) :: tmunu(0:3,0:3)
  real                 :: w,v4(0:3),uzero,u_upper(0:3),u_lower(0:3)
  real                 :: gcov(0:3,0:3), gcon(0:3,0:3)
  real                 :: gammaijdown(1:3,1:3),betadown(3),alpha
@@ -329,8 +355,8 @@ end subroutine get_tmunu
 subroutine get_tmunu_exact(x,metrici,metricderivsi,v,dens,u,p,tmunu)
  use metric_tools,     only:unpack_metric
  use utils_gr,         only:get_sqrtg
- real,    intent(in)  :: x(3),metrici(:,:,:),metricderivsi(0:3,0:3,3),v(3),dens,u,p
- real,    intent(out) :: tmunu(0:3,0:3)
+ real, intent(in)  :: x(3),metrici(:,:,:),metricderivsi(0:3,0:3,3),v(3),dens,u,p
+ real, intent(out) :: tmunu(0:3,0:3)
  real                 :: w,v4(0:3),vcov(3),lorentz
  real                 :: gcov(0:3,0:3), gcon(0:3,0:3)
  real                 :: gammaijdown(1:3,1:3),betadown(3),alpha
@@ -383,9 +409,9 @@ end subroutine get_tmunu_exact
 subroutine get_tmunu_all_exact(npart,xyzh,metrics,vxyzu,metricderivs,dens,tmunus)
  use eos,         only:ieos,get_pressure
  use part,        only:isdead_or_accreted
- integer, intent(in) :: npart
- real, intent(in)    :: xyzh(:,:), metrics(:,:,:,:), metricderivs(:,:,:,:), dens(:)
- real, intent(inout) :: vxyzu(:,:),tmunus(:,:,:)
+ integer, intent(in)    :: npart
+ real,    intent(in)    :: xyzh(:,:), metrics(:,:,:,:), metricderivs(:,:,:,:), dens(:)
+ real,    intent(inout) :: vxyzu(:,:),tmunus(:,:,:)
  real                :: pi
  integer             :: i
  logical             :: firstpart

@@ -1,6 +1,6 @@
 !--------------------------------------------------------------------------!
 ! The Phantom Smoothed Particle Hydrodynamics code, by Daniel Price et al. !
-! Copyright (c) 2007-2024 The Authors (see AUTHORS)                        !
+! Copyright (c) 2007-2026 The Authors (see AUTHORS)                        !
 ! See LICENCE file for usage and distribution conditions                   !
 ! http://phantomsph.github.io/                                             !
 !--------------------------------------------------------------------------!
@@ -14,9 +14,10 @@ module checksetup
 !
 ! :Runtime parameters: None
 !
-! :Dependencies: HIIRegion, boundary, boundary_dyn, centreofmass, dim,
-!   dust, eos, externalforces, io, metric_tools, nicil, options, part,
-!   physcon, ptmass, ptmass_radiation, sortutils, timestep, units, utils_gr
+! :Dependencies: HIIRegion, apr, boundary, boundary_dyn, centreofmass, dim,
+!   dust, dust_formation, eos, externalforces, inject, io, metric,
+!   metric_tools, nicil, options, part, physcon, ptmass, ptmass_radiation,
+!   sortutils, timestep, units, utils_gr
 !
  implicit none
  public :: check_setup
@@ -37,18 +38,19 @@ contains
 !+
 !------------------------------------------------------------------
 subroutine check_setup(nerror,nwarn,restart)
- use dim,  only:maxp,maxvxyzu,periodic,use_dust,ndim,mhd,use_dustgrowth,h2chemistry, &
-                do_radiation,n_nden_phantom,mhd_nonideal,do_nucleation,do_condensation,use_krome
+ use dim,  only:maxp,maxvxyzu,periodic,use_dust,ndim,mhd,use_dustgrowth,do_condensation, &
+                do_radiation,n_nden_phantom,mhd_nonideal,do_nucleation,use_krome,ind_timesteps,use_apr
  use part, only:xyzh,massoftype,hfact,vxyzu,npart,npartoftype,nptmass,gravity, &
                 iphase,maxphase,isetphase,labeltype,igas,maxtypes,&
                 idust,xyzmh_ptmass,vxyz_ptmass,iboundary,isdeadh,ll,ideadhead,&
                 kill_particle,shuffle_part,iamtype,iamdust,Bxyz,rad,radprop, &
-                remove_particle_from_npartoftype,ien_type,ien_etotal,gr
- use eos,             only:gamma,polyk,eos_is_non_ideal
+                remove_particle_from_npartoftype,ien_type,ien_etotal,gr,eos_vars,itemp
+ use eos,             only:gamma,polyk,eos_requires_polyk,ieos_helmholtz
  use centreofmass,    only:get_centreofmass
- use options,         only:ieos,icooling,iexternalforce,use_dustfrac,use_hybrid
+ use apr,             only:sync_aprmassoftype
+ use options,         only:ieos,iexternalforce,use_dustfrac,use_hybrid
  use io,              only:id,master
- use externalforces,  only:accrete_particles,update_externalforce,accradius1,iext_star,iext_corotate
+ use externalforces,  only:accrete_particles,update_externalforce,accradius1,iext_star
  use timestep,        only:time
  use units,           only:G_is_unity,get_G_code,set_units
  use boundary,        only:xmin,xmax,ymin,ymax,zmin,zmax
@@ -56,6 +58,8 @@ subroutine check_setup(nerror,nwarn,restart)
  use nicil,           only:n_nden
  use metric_tools,    only:imetric,imet_minkowski
  use physcon,         only:au,solarm
+ use dust,            only:drag_implicit
+ use inject,          only:inject_type
  integer, intent(out) :: nerror,nwarn
  logical, intent(in), optional :: restart
  integer      :: i,nbad,itype,iu,ndead
@@ -75,6 +79,10 @@ subroutine check_setup(nerror,nwarn,restart)
     dorestart = .false.
  endif
 
+ if (size(xyzh,dim=2) /= maxp) then
+    print*,'ERROR: size of array xyzh /= maxp (',size(xyzh,dim=2),'/=',maxp,')'
+    nerror = nerror + 1
+ endif
  if (npart > maxp) then
     print*,'ERROR: npart (',npart,') > maxp (',maxp,')'
     nerror = nerror + 1
@@ -105,7 +113,7 @@ subroutine check_setup(nerror,nwarn,restart)
        nerror = nerror + 1
     endif
  else
-    if (polyk < tiny(0.) .and. ieos /= 2 .and. ieos /= 5 .and. ieos /= 17 .and. ieos/= 22) then
+    if (polyk < tiny(0.) .and. eos_requires_polyk(ieos)) then
        print*,'WARNING! polyk = ',polyk,' in setup, speed of sound will be zero in equation of state'
        nwarn = nwarn + 1
     endif
@@ -120,7 +128,7 @@ subroutine check_setup(nerror,nwarn,restart)
  elseif (npart==0 .and. nptmass==0) then
     if (id==master) print*,'WARNING! setup: npart = 0 (and no sink particles either)'
     nwarn = nwarn + 1
- elseif (npart==0) then
+ elseif (npart==0 .and. inject_type /= 'wind') then
     if (id==master) print*,'WARNING! setup contains no SPH particles (but has ',nptmass,' point masses)'
     nwarn = nwarn + 1
  endif
@@ -239,17 +247,43 @@ subroutine check_setup(nerror,nwarn,restart)
        nerror = nerror + 1
     endif
  else
-    if (abs(gamma-1.) > tiny(gamma) .and. (ieos /= 2 .and. ieos /= 5 .and. ieos /=9 .and. ieos /= 17 .and. ieos /=22)) then
+    if (abs(gamma-1.) > tiny(gamma) .and. (ieos /= 2 .and. ieos /= 5 .and. ieos /=9 .and. ieos /=22)) then
        print*,'*** ERROR: using isothermal EOS, but gamma = ',gamma
        gamma = 1.
        print*,'*** Resetting gamma to 1, gamma = ',gamma
        nwarn = nwarn + 1
     endif
  endif
+ !
+ !--check that temperature guess is set if using Helmholtz EOS
+ !
+ if (ieos==ieos_helmholtz) then
+    nbad = 0
+    do i=1,npart
+       if (eos_vars(itemp,i) <= 0.) then
+          nbad = nbad + 1
+          if (nbad <= 10) print*,' particle ',i,' temperature guess = ',eos_vars(itemp,i)
+       endif
+    enddo
+    if (nbad > 0) then
+       print*,'ERROR: Using Helmholtz EOS but temperature guess not set on ',nbad,' of ',npart,' particles'
+       nerror = nerror + 1
+    endif
+ endif
 !
 !--check that mass of each type has been set
 !
  do itype=1,maxtypes
+    if (isnan(massoftype(itype))) then
+       print*,'WARNING: massoftype = NaN for '//trim(labeltype(itype))//' particles'
+       nwarn = nwarn + 1
+       massoftype(itype) = 0.
+    endif
+    if (massoftype(itype) > huge(massoftype(itype))) then
+       print*,'WARNING: massoftype = Infinity for '//trim(labeltype(itype))//' particles'
+       nerror = nerror + 1
+       massoftype(itype) = 0.
+    endif
     if (npartoftype(itype) > 0 .and. abs(massoftype(itype)) < tiny(0.)) then
        print*,'WARNING: npartoftype > 0 for '//trim(labeltype(itype))//' particles but massoftype = 0'
        nwarn = nwarn + 1
@@ -374,6 +408,10 @@ subroutine check_setup(nerror,nwarn,restart)
        if (id==master) print*,'ERROR: dust particles present but -DDUST is not set'
        nerror = nerror + 1
     endif
+    if (use_dust .and. drag_implicit .and. ind_timesteps) then
+       if (id==master) print*,'ERROR: implicit drag does not work with individual timesteps, please recompile with IND_TIMESTEPS=no'
+       nerror = nerror + 1
+    endif
     if (use_dustfrac) then
        call get_environment_variable('PHANTOM_RESTART_ONEFLUID',string)
        if (index(string,'yes') > 0) then
@@ -410,6 +448,10 @@ subroutine check_setup(nerror,nwarn,restart)
 !
  if (gr) call check_gr(npart,nerror,xyzh,vxyzu)
 !
+!--check sink GR setup
+!
+ if (gr) call check_gr(nptmass,nerror,xyzmh_ptmass,vxyz_ptmass)
+!
 !--check radiation setup
 !
  if (do_radiation) call check_setup_radiation(npart,nerror,nwarn,radprop,rad)
@@ -425,6 +467,9 @@ subroutine check_setup(nerror,nwarn,restart)
 !--check condensation nucleation arrays
 !
  if (do_condensation) call check_setup_condensation(npart,nerror)
+!--check wind radiation setup
+!
+ call check_setup_wind_radiation(nerror)
 !
 !--check point mass setup
 !
@@ -432,27 +477,24 @@ subroutine check_setup(nerror,nwarn,restart)
 !
 !--check centre of mass
 !
+ call sync_aprmassoftype()
  call get_centreofmass(xcom,vcom,npart,xyzh,vxyzu,nptmass,xyzmh_ptmass,vxyz_ptmass)
 !
 !--check Forward symplectic integration method imcompatiblity
 !
- call check_vdep_extf (nwarn,iexternalforce)
+ call check_vdep_extf(nwarn,iexternalforce)
 !
 !--check Regularization imcompatibility
 !
- call check_regnbody (nerror)
+ call check_regnbody(nerror)
 !
 !--check HII region expansion feedback
 !
- call check_HIIRegion (nerror)
-
- if (.not.h2chemistry .and. maxvxyzu >= 4 .and. icooling == 3 .and. iexternalforce/=iext_corotate .and. nptmass==0) then
-    if (dot_product(xcom,xcom) >  1.e-2) then
-       print*,'ERROR: Gammie (2001) cooling (icooling=3) assumes Omega = 1./r^1.5'
-       print*,'                but the centre of mass is not at the origin!'
-       nerror = nerror + 1
-    endif
- endif
+ call check_HIIRegion(nerror)
+!
+!--check cooling prescriptions
+!
+ call check_cooling(xcom,vcom,nerror)
 
  if (nerror==0 .and. nwarn==0) then
 !
@@ -536,7 +578,7 @@ end function in_range
 subroutine check_setup_ptmass(nerror,nwarn,hmin)
  use dim,  only:maxptmass
  use part, only:nptmass,xyzmh_ptmass,ihacc,ihsoft,gr,iTeff,sinks_have_luminosity,&
-                ilum,iJ2,ispinx,ispinz,iReff,linklist_ptmass
+                ilum,iJ2,ispinx,ispinz,iReff
  use ptmass_radiation, only:isink_radiation
  use ptmass, only:use_fourthorder
  integer, intent(inout) :: nerror,nwarn
@@ -548,12 +590,6 @@ subroutine check_setup_ptmass(nerror,nwarn,hmin)
 
  isoblate = .false.
 
- if (gr .and. nptmass > 0) then
-    print*,' ERROR: nptmass = ',nptmass, ' should be = 0 for GR'
-    nwarn = nwarn + 1
-    return
- endif
-
  if (nptmass < 0) then
     print*,' ERROR: nptmass = ',nptmass, ' should be >= 0 '
     nerror = nerror + 1
@@ -564,6 +600,11 @@ subroutine check_setup_ptmass(nerror,nwarn,hmin)
     return
  endif
 
+ !
+ !  check for NaNs in sink particle arrays
+ !
+ call check_NaN(nptmass,xyzmh_ptmass,'xyzmh_ptmass',nerror)
+ call check_NaN(nptmass,xyzmh_ptmass,'vxyz_ptmass',nerror)
  !
  !  check that sinks have not been placed on top of each other
  !  or within each others accretion radii
@@ -595,7 +636,6 @@ subroutine check_setup_ptmass(nerror,nwarn,hmin)
        print*,' ERROR: sink ',i,' mass = ',xyzmh_ptmass(4,i)
     elseif (xyzmh_ptmass(4,i) < 0.) then
        print*,' Sink ',i,' has previously merged with another sink'
-       print*,' Connected to sink : ',linklist_ptmass(i)
        n = n + 1
     endif
  enddo
@@ -663,10 +703,12 @@ subroutine check_setup_ptmass(nerror,nwarn,hmin)
     return
  endif
  if (sinks_have_luminosity(nptmass,xyzmh_ptmass)) then
-    if (any(xyzmh_ptmass(iTeff,1:nptmass) < 100.)) then
-       print*,'WARNING: sink particle temperature less than 100K'
-       nwarn = nwarn + 1
-    endif
+    do i = 1,nptmass
+       if (xyzmh_ptmass(iTeff,i) < 100. .and. xyzmh_ptmass(ilum,i) > 1e-15) then
+          print*,'WARNING: sink particle temperature less than 100K - sink #',i
+          nwarn = nwarn + 1
+       endif
+    enddo
  endif
 
 end subroutine check_setup_ptmass
@@ -703,6 +745,37 @@ subroutine check_setup_growth(npart,nerror)
  call check_NaN(npart,dustprop,'dust properties (dustprop array)',nerror)
 
 end subroutine check_setup_growth
+
+!-----------------------------------------------------------------------
+!+
+! check wind radiation setup is sensible
+!+
+!-----------------------------------------------------------------------
+subroutine check_setup_wind_radiation(nerror)
+ use dim,              only:itau_alloc
+ use dust_formation,   only:idust_opacity
+ use ptmass_radiation, only:iget_tdust,isink_radiation,iray_resolution
+ use part,             only:xyzmh_ptmass,iwalpha,nptmass
+
+ integer, intent(inout) :: nerror
+ real :: alpha_rad
+
+ alpha_rad = sum(xyzmh_ptmass(iwalpha,1:nptmass))
+ if (((isink_radiation == 1 .or. isink_radiation == 3 ) .and. idust_opacity == 0 ) &
+     .and. alpha_rad < 1.d-10 .and. itau_alloc == 0) then
+    print *,'ERROR: no radiation pressure force, adapt isink_radiation/idust_opacity or change sink iwalpha value'
+    nerror = nerror+1
+ endif
+ if ((isink_radiation == 2 .or. isink_radiation == 3) .and. idust_opacity == 0 ) then
+    print *,'Error: dust opacity not used, change isink_radiation or idust_opacity'
+    nerror = nerror+1
+ endif
+ if (iget_tdust > 2 .and. iray_resolution < 0 ) then
+    print *,'ERROR: To get dust temperature with Attenuation or Lucy, set iray_resolution >= 0'
+    nerror = nerror+1
+ endif
+
+end subroutine check_setup_wind_radiation
 
 !------------------------------------------------------------------
 !+
@@ -891,7 +964,8 @@ end subroutine check_setup_dustfrac
 !+
 !------------------------------------------------------------------
 subroutine check_gr(npart,nerror,xyzh,vxyzu)
- use metric_tools, only:pack_metric,unpack_metric
+ use metric_tools, only:pack_metric,unpack_metric,imet_rn,imetric
+ use metric,       only:charge,mass1
  use utils_gr,     only:get_u0
  use part,         only:isdead_or_accreted,ien_type,ien_entropy,ien_etotal,ien_entropy_s
  use units,        only:in_geometric_units,get_G_code,get_c_code
@@ -936,6 +1010,16 @@ subroutine check_gr(npart,nerror,xyzh,vxyzu)
     nerror = nerror + 1
  endif
 
+ if (imetric==imet_rn) then
+    if (abs(mass1-1.) > epsilon(mass1)) then
+       print*, ' mass1 in code units shall be unity for proper interpretation'
+       nerror = nerror + 1
+    endif
+ elseif (abs(charge) > 0.) then
+    print*,' charge should be zero for this metric'
+    nerror = nerror + 1
+ endif
+
 end subroutine check_gr
 
 !------------------------------------------------------------------
@@ -947,20 +1031,20 @@ end subroutine check_gr
 !+
 !------------------------------------------------------------------
 subroutine check_for_identical_positions(npart,xyzh,nbad)
- use sortutils, only:indexxfunc,r2func
+ use sortutils, only:sort_by_radius
  use part,      only:maxphase,maxp,iphase,igas,iamtype,isdead_or_accreted,&
-                     apr_level
+                     apr_level,use_apr
  integer, intent(in)  :: npart
  real,    intent(in)  :: xyzh(:,:)
  integer, intent(out) :: nbad
- integer :: i,j,itypei,itypej
+ integer :: i,j,itypei,itypej,mybad
  real    :: dx(3),dx2
  integer, allocatable :: index(:)
  !
  ! sort particles by radius
  !
  allocate(index(npart))
- call indexxfunc(npart,r2func,xyzh,index)
+ call sort_by_radius(npart,xyzh,index)
  !
  ! check for identical positions. Stop checking as soon as non-identical
  ! positions are found.
@@ -971,12 +1055,13 @@ subroutine check_for_identical_positions(npart,xyzh,nbad)
  !$omp parallel do default(none) &
  !$omp shared(npart,xyzh,index,maxphase,maxp,iphase,apr_level) &
  !$omp firstprivate(itypei,itypej) &
- !$omp private(i,j,dx,dx2) &
- !$omp reduction(+:nbad)
+ !$omp private(i,j,dx,dx2,mybad) &
+ !$omp shared(nbad)
  do i=1,npart
     if (.not.isdead_or_accreted(xyzh(4,index(i)))) then
        j = i+1
        dx2 = 0.
+       mybad = 0
        if (maxphase==maxp) itypei = iamtype(iphase(index(i)))
        do while (dx2 < epsilon(dx2) .and. j < npart)
           if (isdead_or_accreted(xyzh(4,index(j)))) exit
@@ -984,15 +1069,26 @@ subroutine check_for_identical_positions(npart,xyzh,nbad)
           if (maxphase==maxp) itypej = iamtype(iphase(index(j)))
           dx2 = dot_product(dx,dx)
           if (dx2 < epsilon(dx2) .and. itypei==itypej) then
-             nbad = nbad + 1
-             if (nbad <= 10) then
+             mybad = mybad + 1
+             if (nbad <= 10 .and. mybad <= 1) then
+                !$omp critical
                 print*,'WARNING: particles of same type at same position: '
-                print*,' ',index(i),':',xyzh(1:3,index(i)),apr_level(i)
-                print*,' ',index(j),':',xyzh(1:3,index(j)),apr_level(j)
+                if (use_apr) then
+                   print*,' ',index(i),':',xyzh(1:3,index(i)),apr_level(i)
+                   print*,' ',index(j),':',xyzh(1:3,index(j)),apr_level(j)
+                else
+                   print*,' ',index(i),':',xyzh(1:3,index(i))
+                   print*,' ',index(j),':',xyzh(1:3,index(j))
+                endif
+                !$omp end critical
              endif
           endif
           j = j + 1
        enddo
+       if (mybad > 0) then
+          !$omp atomic
+          nbad = nbad + 1
+       endif
     endif
  enddo
  !$omp end parallel do
@@ -1056,6 +1152,34 @@ subroutine check_setup_radiation(npart,nerror,nwarn,radprop,rad)
 
 end subroutine check_setup_radiation
 
+!------------------------------------------------------------------
+!+
+! check cooling prescriptions do not conflict
+!+
+!------------------------------------------------------------------
+subroutine check_cooling(xcom,vcom,nerror)
+ use options,         only:icooling,iexternalforce
+ use dim,             only:h2chemistry,ndim,maxvxyzu
+ use externalforces,  only:iext_corotate
+ use part,            only:nptmass
+ use eos,             only:ipdv_heating,ishock_heating,eos_allows_shock_and_work,ieos
+ integer, intent(inout) :: nerror
+ real,    intent(in)    :: xcom(ndim),vcom(ndim)
+
+ if (.not.h2chemistry .and. maxvxyzu >= 4 .and. icooling == 3 .and. iexternalforce/=iext_corotate .and. nptmass==0) then
+    if (dot_product(xcom,xcom) >  1.e-2) then
+       print*,'ERROR: Gammie (2001) cooling (icooling=3) assumes Omega = 1./r^1.5'
+       print*,'                but the centre of mass is not at the origin!'
+       nerror = nerror + 1
+    endif
+ endif
+ !cooling requires adiabatic eos (e.g. ieos=2)
+ if (icooling > 0 .and. .not. eos_allows_shock_and_work(ieos)) nerror = nerror+1
+ !cooling requires shock and work contributions
+ if (icooling > 0 .and. (ipdv_heating <= 0 .or. ishock_heating <= 0)) nerror = nerror+1
+
+end subroutine check_cooling
+
 subroutine check_vdep_extf(nwarn,iexternalforce)
  use externalforces, only:is_velocity_dependent
  use ptmass,         only:use_fourthorder
@@ -1070,7 +1194,6 @@ subroutine check_vdep_extf(nwarn,iexternalforce)
     endif
     use_fourthorder = .false.
  endif
-
 end subroutine check_vdep_extf
 
 subroutine check_regnbody (nerror)
@@ -1085,10 +1208,15 @@ end subroutine check_regnbody
 subroutine check_HIIRegion(nerror)
  use HIIRegion, only:iH2R
  use eos,       only:ieos
- use dim,       only:gr,mpi
+ use dim,       only:gr,mpi,periodic
+ use options,   only:icooling
  integer, intent(inout) :: nerror
  if (iH2R > 0 .and. ieos/=21 .and. ieos/=22) then
     print "(/,a,/)", "Error: If HII activated, eos == 21 or 22 is mandatory..."
+    nerror = nerror + 1
+ endif
+ if (iH2R > 0 .and. ieos==22 .and. icooling==0) then
+    print "(/,a,/)", "Error: ieos==22 need cooling at edges of HII Region"
     nerror = nerror + 1
  endif
  if (iH2R > 0 .and. gr) then
@@ -1099,7 +1227,10 @@ subroutine check_HIIRegion(nerror)
     print "(/,a,/)", "Error: MPI is not compatible with HII Region"
     nerror = nerror + 1
  endif
+ if (iH2R > 0 .and. periodic) then
+    print "(/,a,/)", "Error: PERIODIC is not compatible with HII Region"
+    nerror = nerror + 1
+ endif
 end subroutine check_HIIRegion
-
 
 end module checksetup

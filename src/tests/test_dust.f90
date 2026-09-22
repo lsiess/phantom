@@ -1,6 +1,6 @@
 !--------------------------------------------------------------------------!
 ! The Phantom Smoothed Particle Hydrodynamics code, by Daniel Price et al. !
-! Copyright (c) 2007-2024 The Authors (see AUTHORS)                        !
+! Copyright (c) 2007-2026 The Authors (see AUTHORS)                        !
 ! See LICENCE file for usage and distribution conditions                   !
 ! http://phantomsph.github.io/                                             !
 !--------------------------------------------------------------------------!
@@ -263,7 +263,7 @@ subroutine test_dustybox(ntests,npass)
     vd = 0.5*(1. + deltav)
     fd = K_code(1)*(vg - vd)
     if (write_output) then
-       write(filename,"(a,1pe8.2,a)") 'dustybox_t',t,'.out'
+       write(filename,"(a,1pe9.2,a)") 'dustybox_t',t,'.out'
        open(unit=lu,file=filename,status='replace')
        print "(a)",' writing '//trim(filename)
     endif
@@ -313,7 +313,7 @@ end subroutine test_dustybox
 subroutine test_dustydiffuse(ntests,npass)
  use dim,       only:periodic,maxtypes,mhd,use_dust,maxdustsmall
  use part,      only:init_part,hfact,npart,npartoftype,massoftype,igas,dustfrac,ddustevol,dustevol,&
-                     xyzh,vxyzu,fext,fxyzu,set_particle_type,rhoh,ndusttypes,ndustsmall
+                     xyzh,vxyzu,fext,fxyzu,set_particle_type,ndusttypes,ndustsmall
  use kernel,    only:hfact_default
  use eos,       only:gamma,polyk,ieos
  use dust,      only:K_code,idrag
@@ -333,7 +333,7 @@ subroutine test_dustydiffuse(ntests,npass)
  real    :: deltax,rhozero,totmass,dt,time,tmax
  real    :: epstot,epsi(maxdustsmall),rc,rc2,r2,A,B,eta
  real    :: erri,exact,errl2,term,tol
- real,allocatable   :: ddustevol_prev(:,:)
+ real, allocatable   :: ddustevol_prev(:,:)
  logical, parameter :: do_output = .false.
  real,    parameter :: t_write(5) = (/0.1,0.3,1.0,3.0,10.0/)
 
@@ -501,7 +501,7 @@ end subroutine test_dustydiffuse
 subroutine test_drag(ntests,npass)
  use dim,         only:periodic,maxtypes,maxvxyzu,maxdustlarge,use_dustgrowth
  use part,        only:init_part,hfact,npart,npartoftype,massoftype,igas,&
-                       xyzh,vxyzu,fext,fxyzu,set_particle_type,rhoh,dustprop,&
+                       xyzh,vxyzu,fext,fxyzu,set_particle_type,dustprop,&
                        idust,iphase,iamtype,ndusttypes,grainsize,graindens
  use options,     only:use_dustfrac
  use eos,         only:polyk,ieos
@@ -676,11 +676,11 @@ subroutine test_epsteinstokes(ntests,npass)
  do j=1,nrhopts
     rhogas = rhomin*10**((j-1)*drho)/unit_density
     if (write_output) then
-       write(filename,"(a,1pe8.2,a)") 'ts-rho',rhogas*unit_density,'.out'
+       write(filename,"(a,1pe9.2,a)") 'ts-rho',rhogas*unit_density,'.out'
        open(unit=lu,file=filename,status='replace')
        print "(a)",' writing '//trim(filename)
     endif
-    write(filename,"(a,1pe8.2)") 'rho=',rhogas*unit_density
+    write(filename,"(a,1pe9.2)") 'rho=',rhogas*unit_density
     ncheck = 0
     nfailed = 0
     errmax = 0.
@@ -743,8 +743,8 @@ end subroutine test_epsteinstokes
 subroutine write_file(time,xyzh,dustfrac,npart)
  use dim,  only:maxp
  use part, only:ndusttypes
- real, intent(in)     :: time
- real, intent(in)    :: xyzh(:,:),dustfrac(:,:)
+ real,    intent(in) :: time
+ real,    intent(in) :: xyzh(:,:),dustfrac(:,:)
  integer, intent(in) :: npart
  character(len=30)   :: filename,str1,str2,fmt1
  integer :: i,lu

@@ -1,6 +1,6 @@
 !--------------------------------------------------------------------------!
 ! The Phantom Smoothed Particle Hydrodynamics code, by Daniel Price et al. !
-! Copyright (c) 2007-2024 The Authors (see AUTHORS)                        !
+! Copyright (c) 2007-2026 The Authors (see AUTHORS)                        !
 ! See LICENCE file for usage and distribution conditions                   !
 ! http://phantomsph.github.io/                                             !
 !--------------------------------------------------------------------------!
@@ -14,38 +14,43 @@ module relaxem
 !
 ! :Runtime parameters: None
 !
-! :Dependencies: boundary, deriv, dim, eos, kernel, mpidomain, options,
-!   part
+! :Dependencies: boundary, deriv, dim, eos, io, kernel, mpidomain, options,
+!   part, utils_apr
 !
+ use utils_apr, only:split_dir
  implicit none
 
 contains
 
 ! Subroutine to relax the new set of particles to a reference particle distribution
-subroutine relax_particles(npart,n_ref,xyzh_ref,force_ref,nrelax,relaxlist)
+subroutine relax_particles(npart,n_ref,xyzh_ref,force_ref,rho_ref,nrelax,relaxlist)
  use deriv,     only:get_derivs_global
- use dim,       only:mpi
+ use dim,       only:gr,mpi
  use io,        only:error
- integer,           intent(in)    :: npart,n_ref,nrelax
- real,              intent(in)    :: force_ref(3,n_ref),xyzh_ref(4,n_ref)
- integer,           intent(in)    :: relaxlist(1:nrelax)
+ use part,      only:rho
+
+ integer, intent(in) :: npart,n_ref,nrelax
+ real,    intent(in) :: force_ref(3,n_ref),xyzh_ref(4,n_ref),rho_ref(n_ref)
+ integer, intent(in) :: relaxlist(1:nrelax)
  real,  allocatable :: a_ref(:,:)
  real :: ke,maxshift,ke_init,shuffle_tol
  logical :: converged
  integer :: ishift,nshifts
 
- write(*,"(/,70('-'),/,/,2x,a,/,/)") 'APR: time to relax ...'
+ if (split_dir /= 2) write(*,"(/,70('-'),/,/,2x,a,/,/)") 'APR: time to relax ...'
  if (mpi) then
     call error('APR','relax_particles is not compatible with MPI')
     return
  endif
 
- write(*,"(1x,1(a,i8,a,i8,a))") 'Relaxing',nrelax,' particles the heavenly way from',n_ref,' references.'
+ if (split_dir /= 2) write(*,"(1x,1(a,i8,a,i8,a))") &
+'Relaxing',nrelax,' particles the heavenly way from',n_ref,' references.'
 
  ! Initialise for the loop
  converged = .false.
  ishift = 0
  nshifts = 50
+ if (split_dir /= 2) nshifts = 2
  shuffle_tol = 0.05
 
  ! a_ref stores the accelerations at the locations of the new particles as interpolated from the old ones
@@ -57,15 +62,16 @@ subroutine relax_particles(npart,n_ref,xyzh_ref,force_ref,nrelax,relaxlist)
     call get_derivs_global()
 
     ! These are the accelerations at the locations of the new particles, interpolated from the parents
-    call get_reference_accelerations(npart,a_ref,n_ref,xyzh_ref,force_ref,nrelax,relaxlist)
+    call get_reference_accelerations(npart,a_ref,n_ref,xyzh_ref,force_ref,rho_ref,nrelax,relaxlist)
 
     ! Shift the particles by minimising the difference between the acceleration at the new particles and
     ! the interpolated values (i.e. what they do have minus what they should have)
-    call shift_particles(npart,a_ref,nrelax,relaxlist,ke,maxshift)
+    call shift_particles(npart,a_ref,nrelax,relaxlist,ke,maxshift,rho)
 
     if (ishift == 0) ke_init = ke
 
-    write(*,"(1x,1(a,f5.1,a,i3,a))") 'shuffle decreased to ',ke/ke_init*100.,'% of initial with',ishift,' shifts'
+    if (split_dir /= 2) write(*,"(1x,1(a,f5.1,a,i3,a))") &
+        'shuffle decreased to ',ke/ke_init*100.,'% of initial with',ishift,' shifts'
 
     ! Todo: cut-off criteria
     if (ishift >= nshifts .or. (ke/ke_init < shuffle_tol)) converged = .true.
@@ -76,7 +82,7 @@ subroutine relax_particles(npart,n_ref,xyzh_ref,force_ref,nrelax,relaxlist)
  ! Tidy up
  deallocate(a_ref)
 
- write(*,"(/,/,2x,a,/,/,70('-'))") 'APR: relaxing finished.'
+ if (split_dir /= 2) write(*,"(/,/,2x,a,/,/,70('-'))") 'APR: relaxing finished.'
 
 end subroutine relax_particles
 
@@ -88,26 +94,25 @@ end subroutine relax_particles
 !----------------------------------------------------------------
 
 subroutine get_reference_accelerations(npart,a_ref,n_ref,xyzh_ref,&
-  force_ref,nrelax,relaxlist)
- use part,         only:xyzh,aprmassoftype,igas,apr_level,rhoh
+  force_ref,rho_ref,nrelax,relaxlist)
+ use part,         only:xyzh
  use dim,          only:periodic
  use kernel,       only:wkern,grkern,radkern2,cnormk
  use boundary,     only:dxbound,dybound,dzbound
- integer, intent(in) :: npart,n_ref,nrelax
- real,    intent(in) :: force_ref(3,n_ref),xyzh_ref(4,n_ref)
- integer, intent(in) :: relaxlist(nrelax)
+ integer, intent(in)  :: npart,n_ref,nrelax
+ real,    intent(in)  :: force_ref(3,n_ref),xyzh_ref(4,n_ref),rho_ref(n_ref)
+ integer, intent(in)  :: relaxlist(nrelax)
  real,    intent(out) :: a_ref(3,npart)
- real :: xi,yi,zi,rij(3),h21,qj2,rij2,rhoj,h31,mass_ref,pmassi
+ real :: xi,yi,zi,rij(3),h21,qj2,rij2,rhoj,h31
  integer :: i,j,k
 
  a_ref(:,:) = 0.
 
  ! Over the new set of particles that are to be shuffled
  !$omp parallel do schedule(guided) default (none) &
- !$omp shared(xyzh,xyzh_ref,npart,n_ref,force_ref,a_ref,relaxlist) &
- !$omp shared(nrelax,apr_level,dxbound,dybound,dzbound) &
- !$omp shared(mass_ref,aprmassoftype) &
- !$omp private(i,j,xi,yi,zi,rij,h21,h31,rhoj,rij2,qj2,pmassi)
+ !$omp shared(xyzh,xyzh_ref,npart,n_ref,force_ref,rho_ref,a_ref,relaxlist) &
+ !$omp shared(nrelax,dxbound,dybound,dzbound) &
+ !$omp private(i,j,xi,yi,zi,rij,h21,h31,rhoj,rij2,qj2)
 
  over_new: do k = 1,nrelax
     if (relaxlist(k) == 0) cycle over_new
@@ -115,14 +120,12 @@ subroutine get_reference_accelerations(npart,a_ref,n_ref,xyzh_ref,&
     xi = xyzh(1,i)
     yi = xyzh(2,i)
     zi = xyzh(3,i)
-    pmassi = aprmassoftype(igas,apr_level(i))
 
     ! Over the reference set of particles to which we are matching the accelerations
     over_reference: do j = 1,n_ref  ! later this should only be over active particles
        rij(1) = xyzh_ref(1,j) - xi
        rij(2) = xyzh_ref(2,j) - yi
        rij(3) = xyzh_ref(3,j) - zi
-       mass_ref = aprmassoftype(igas,apr_level(j))   ! TBD: fix this to allow for dust
 
        if (periodic) then
           if (abs(rij(1)) > 0.5*dxbound) rij(1) = rij(1) - dxbound*SIGN(1.0,rij(1))
@@ -132,7 +135,7 @@ subroutine get_reference_accelerations(npart,a_ref,n_ref,xyzh_ref,&
 
        h21 = 1./(xyzh_ref(4,j))**2
        h31 = 1./(xyzh_ref(4,j))**3
-       rhoj = rhoh(xyzh_ref(4,j),mass_ref)
+       rhoj = rho_ref(j)
 
        rij2 = dot_product(rij,rij)
        qj2  = rij2*h21
@@ -156,21 +159,19 @@ end subroutine get_reference_accelerations
 !+
 !----------------------------------------------------------------
 
-subroutine shift_particles(npart,a_ref,nrelax,relaxlist,ke,maxshift)
- use dim,      only:periodic
- use part,     only:xyzh,vxyzu,fxyzu,igas,aprmassoftype,rhoh, &
-                     apr_level
+subroutine shift_particles(npart,a_ref,nrelax,relaxlist,ke,maxshift,rho)
+ use dim,      only:periodic,gr
+ use part,     only:xyzh,vxyzu,fxyzu,fext
  use eos,      only:get_spsound
  use options,  only:ieos
  use boundary, only:cross_boundary
- use mpidomain, only: isperiodic
- integer, intent(in)     :: npart,nrelax
- real,    intent(in)     :: a_ref(3,npart)
- integer, intent(in)     :: relaxlist(nrelax)
- real,    intent(out)    :: ke,maxshift
- real :: hi,rhoi,cs,dti,dx(3),vi(3),err,pri,limit_bound
- real :: pmassi
- integer :: nlargeshift,i,ncross,j,m
+ use mpidomain, only:isperiodic
+ integer, intent(in)  :: npart,nrelax
+ real,    intent(in)  :: a_ref(3,npart),rho(:)
+ integer, intent(in)  :: relaxlist(nrelax)
+ real,    intent(out) :: ke,maxshift
+ real :: hi,rhoi,cs,dti,dx(3),vi(3),err,limit_bound
+ integer :: nlargeshift,i,ncross,j
 
  ke = 0.
  nlargeshift = 0
@@ -180,23 +181,27 @@ subroutine shift_particles(npart,a_ref,nrelax,relaxlist,ke,maxshift)
 
  !$omp parallel do schedule(guided) default(none) &
  !$omp shared(npart,xyzh,vxyzu,fxyzu,ieos,a_ref,maxshift) &
- !$omp shared(apr_level,aprmassoftype) &
+ !$omp shared(split_dir,fext,rho) &
  !$omp shared(isperiodic,ncross,relaxlist,nrelax) &
- !$omp private(i,dx,dti,cs,rhoi,hi,vi,err,pri,m,pmassi) &
+ !$omp private(i,dx,dti,cs,rhoi,hi,vi,err) &
  !$omp reduction(+:nlargeshift,ke)
  do j=1,nrelax
     if (relaxlist(j) == 0) cycle
     i = relaxlist(j)
     hi = xyzh(4,i)
-    pmassi = aprmassoftype(igas,apr_level(i))
-    rhoi = rhoh(hi,pmassi)
+    rhoi = rho(i)
     cs = get_spsound(ieos,xyzh(:,i),rhoi,vxyzu(:,i))
     dti = 0.3*hi/cs   ! h/cs
+    if (split_dir == 2) dti = 0.1*hi/cs   ! h/cs
 
-    dx  = 0.5*dti**2*(fxyzu(1:3,i) - a_ref(1:3,i))
+    dx  = 0.5*dti**2*(fxyzu(1:3,i) + fext(1:3,i) - a_ref(1:3,i))
     if (sqrt(dot_product(dx,dx)) > maxshift) maxshift = sqrt(dot_product(dx,dx))
-    if (dot_product(dx,dx) > hi**2) then
-
+    if (split_dir == 2) then
+       do while (dot_product(dx,dx) > hi**2)
+          dti = 0.1*dti
+          dx  = 0.5*dti**2*(fxyzu(1:3,i) + fext(1:3,i) - a_ref(1:3,i))
+       enddo
+    elseif (dot_product(dx,dx) > hi**2) then
        dx = dx / sqrt(dot_product(dx,dx)) * hi  ! Avoid large shift in particle position !check with what James has done
        nlargeshift = nlargeshift + 1
     endif
@@ -220,7 +225,6 @@ subroutine shift_particles(npart,a_ref,nrelax,relaxlist,ke,maxshift)
  !$omp end parallel do
  if (nlargeshift > 0) print*,'Warning: Restricted dx for ', nlargeshift, 'particles'
 
-
 end subroutine shift_particles
 
 !----------------------------------------------------------------
@@ -233,8 +237,8 @@ end subroutine shift_particles
 
 subroutine check_for_pairing(nrelax,relaxlist,pair_distance)
  use part, only:xyzh
- integer, intent(in) :: nrelax,relaxlist(nrelax)
- real, intent(out)   :: pair_distance
+ integer, intent(in)  :: nrelax,relaxlist(nrelax)
+ real,    intent(out) :: pair_distance
  real :: dx(3), dx_mag
  integer :: ii,jj
 

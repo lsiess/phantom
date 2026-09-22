@@ -1,6 +1,6 @@
 !--------------------------------------------------------------------------!
 ! The Phantom Smoothed Particle Hydrodynamics code, by Daniel Price et al. !
-! Copyright (c) 2007-2024 The Authors (see AUTHORS)                        !
+! Copyright (c) 2007-2026 The Authors (see AUTHORS)                        !
 ! See LICENCE file for usage and distribution conditions                   !
 ! http://phantomsph.github.io/                                             !
 !--------------------------------------------------------------------------!
@@ -10,15 +10,15 @@ module utils_gr
 !
 ! :References: Liptai & Price (2019), MNRAS 485, 819-842
 !
-! :Owner: David Liptai
+! :Owner: Spencer Magnall
 !
 ! :Runtime parameters: None
 !
-! :Dependencies: io, metric, metric_tools, part
+! :Dependencies: io, metric, metric_tools
 !
  implicit none
 
- public :: dot_product_gr, get_u0, get_bigv, rho2dens, h2dens, get_geodesic_accel, get_sqrtg, get_sqrt_gamma
+ public :: dot_product_gr, get_u0, get_bigv, rho2dens, get_geodesic_accel, get_sqrtg, get_sqrt_gamma
  public :: perturb_metric
 
  private
@@ -86,34 +86,15 @@ end subroutine get_bigv
 
 !----------------------------------------------------------------
 !+
-!  get density in the fluid rest frame (primitive dens) from
-!  the conserved density rho* (stored as the smoothing length)
+!  get primitive rest-frame density (dens) from conserved rho
+!  (kernel-summed mass density in Phantom)
 !+
 !----------------------------------------------------------------
-subroutine h2dens(dens,xyzh,metrici,v)
- use part, only: rhoh,massoftype,igas
- real, intent(in) :: xyzh(1:4),metrici(:,:,:),v(1:3)
- real, intent(out):: dens
- real :: rho, h, xyz(1:3)
-
- xyz = xyzh(1:3)
- h   = xyzh(4)
- rho = rhoh(h,massoftype(igas))
- call rho2dens(dens,rho,xyz,metrici,v)
-
-end subroutine h2dens
-
-!----------------------------------------------------------------
-!+
-!  get density in the fluid rest frame (primitive dens) from
-!  the conserved density rho*
-!+
-!----------------------------------------------------------------
-subroutine rho2dens(dens,rho,position,metrici,v)
+subroutine rho2dens(dens,rho,metrici,v)
  use metric_tools, only:unpack_metric
  use io,           only:error
- real, intent(in) :: rho,position(1:3),metrici(:,:,:),v(1:3)
- real, intent(out):: dens
+ real, intent(in)  :: rho,metrici(:,:,:),v(1:3)
+ real, intent(out) :: dens
  integer :: ierror
  real :: gcov(0:3,0:3), sqrtg, U0
 
@@ -134,9 +115,9 @@ end subroutine rho2dens
 !----------------------------------------------------------------
 subroutine get_geodesic_accel(axyz,npart,vxyz,metrics,metricderivs)
  use metric_tools, only:unpack_metric
- integer, intent(in) :: npart
- real, intent(in)    :: vxyz(:,:), metrics(:,:,:,:), metricderivs(:,:,:,:)
- real, intent(out)   :: axyz(3,npart)
+ integer, intent(in)  :: npart
+ real,    intent(in)  :: vxyz(:,:), metrics(:,:,:,:), metricderivs(:,:,:,:)
+ real,    intent(out) :: axyz(3,npart)
  real :: gcon(0:3,0:3), v(0:3), gderiv(0:3,0:3,0:3), a(3)
  integer :: i,lambda,mu,sigma
 
@@ -169,8 +150,8 @@ end subroutine get_geodesic_accel
 !+
 !----------------------------------------------------------------
 subroutine get_sqrtg(gcov, sqrtg)
- use metric, only: metric_type
- real, intent(in) :: gcov(0:3,0:3)
+ use metric_tools, only:imetric,imet_binarybh,imet_et
+ real, intent(in)  :: gcov(0:3,0:3)
  real, intent(out) :: sqrtg
  real :: det
  real :: a11,a12,a13,a14
@@ -178,8 +159,7 @@ subroutine get_sqrtg(gcov, sqrtg)
  real :: a31,a32,a33,a34
  real :: a41,a42,a43,a44
 
-
- if (metric_type == 'et') then
+ if (imetric == imet_et .or. imetric == imet_binarybh) then
 
     a11 = gcov(0,0)
     a21 = gcov(1,0)
@@ -213,7 +193,6 @@ subroutine get_sqrtg(gcov, sqrtg)
     sqrtg = 1.
  endif
 
-
 end subroutine get_sqrtg
 
 !----------------------------------------------------------------
@@ -222,7 +201,7 @@ end subroutine get_sqrtg
 !+
 !----------------------------------------------------------------
 subroutine get_sqrt_gamma(gcov,sqrt_gamma)
- use metric, only: metric_type
+ use metric, only:metric_type
  real, intent(in)  :: gcov(0:3,0:3)
  real, intent(out) :: sqrt_gamma
  real :: a11,a12,a13
@@ -261,9 +240,9 @@ end subroutine get_sqrt_gamma
 !+
 !----------------------------------------------------------------
 subroutine perturb_metric(phi,gcovper,gcov)
- real, intent(in) :: phi
+ real, intent(in)  :: phi
  real, intent(out) :: gcovper(0:3,0:3)
- real, optional, intent(in) :: gcov(0:3,0:3)
+ real, intent(in), optional :: gcov(0:3,0:3)
 
  if (present(gcov)) then
     gcovper = gcov

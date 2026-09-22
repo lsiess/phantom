@@ -1,6 +1,6 @@
 !--------------------------------------------------------------------------!
 ! The Phantom Smoothed Particle Hydrodynamics code, by Daniel Price et al. !
-! Copyright (c) 2007-2024 The Authors (see AUTHORS)                        !
+! Copyright (c) 2007-2026 The Authors (see AUTHORS)                        !
 ! See LICENCE file for usage and distribution conditions                   !
 ! http://phantomsph.github.io/                                             !
 !--------------------------------------------------------------------------!
@@ -19,24 +19,23 @@ module tmunu2grid
  implicit none
 
 contains
-subroutine get_tmunugrid_all(npart,xyzh,vxyzu,tmunus)
- use einsteintk_utils, only: dxgrid, gridorigin,gridsize,tmunugrid,rhostargrid
- use interpolations3D, only: interpolate3D,interpolate3D_vecexact
+subroutine get_tmunugrid_all(npart,xyzh,vxyzu,rho,tmunus)
+ use einsteintk_utils, only:dxgrid, gridorigin,gridsize,tmunugrid,rhostargrid
+ use interpolations3D, only:interpolate3D,interpolate3D_vecexact
  use boundary,         only: xmin,ymin,zmin,xmax,ymax,zmax
- use part, only: massoftype,igas,rhoh
- integer, intent(in) :: npart
- real, intent(in)    ::  vxyzu(:,:), tmunus(:,:,:)
- real, intent(inout) ::  xyzh(:,:)
- real                      :: weight,h,rho,pmass
+ use part, only:massoftype,igas
+ integer, intent(in)    :: npart
+ real,    intent(in)    :: vxyzu(:,:), tmunus(:,:,:),rho(:)
+ real,    intent(inout) :: xyzh(:,:)
+ real                      :: weight,h,rhoi,pmass
  real                      :: weights(npart)
  real                      :: xmininterp(3)
  integer                   :: ngrid(3)
- real,allocatable          :: datsmooth(:,:,:,:), dat(:,:)
+ real, allocatable          :: datsmooth(:,:,:,:), dat(:,:)
  integer                   :: nnodes,i,k,j, ilower, iupper, jlower, jupper, klower, kupper
  logical                   :: normalise, vertexcen,periodicx,periodicy,periodicz
  real                      :: totalmass
  integer                   :: itype(npart),ilendat
-
 
  ! total mass of the particles
  totalmass = npart*massoftype(igas)
@@ -53,9 +52,9 @@ subroutine get_tmunugrid_all(npart,xyzh,vxyzu,tmunus)
  h = xyzh(4,1)
  ! Get pmass
  pmass = massoftype(igas)
- ! Get density
- rho = rhoh(h,pmass)
- call get_weight(pmass,h,rho,weight)
+ ! Get density from kernel sum
+ rhoi = rho(1)
+ call get_weight(pmass,h,rhoi,weight)
 
  weights = weight
  itype = 1
@@ -149,21 +148,22 @@ subroutine get_particle_domain(gridorigin,xmin,xmax,dxgrid,ilower,iupper)
  ! domain but the upper is not; can't have both?
 end subroutine get_particle_domain
 
-subroutine interpolate_to_grid(gridarray,dat)
- use einsteintk_utils, only: dxgrid, gridorigin
- use interpolations3D, only: interpolate3D
+subroutine interpolate_to_grid(gridarray,dat,rho)
+ use einsteintk_utils, only:dxgrid, gridorigin
+ use interpolations3D, only:interpolate3D
  use boundary,         only: xmin,ymin,zmin,xmax,ymax,zmax
- use part, only:npart,xyzh,massoftype,igas,rhoh
- real                      :: weight,h,rho,pmass
+ use part, only:npart,xyzh,massoftype,igas
+ real, intent(out) :: gridarray(:,:,:) ! Grid array to interpolate a quantity to
+ real                      :: weight,h,rhoi,pmass
  real                      :: xmininterp(3)
  integer                   :: ngrid(3)
  integer                   :: nnodes,i, ilower, iupper, jlower, jupper, klower, kupper
  logical                   :: normalise, vertexcen,periodicx, periodicy, periodicz
- real, dimension(npart)    :: weights
- integer, dimension(npart) :: itype
- real, intent(out) :: gridarray(:,:,:) ! Grid array to interpolate a quantity to
+ real :: weights(npart)
+ integer :: itype(npart)
  ! GRID MUST BE RESTRICTED WITH UPPER AND LOWER INDICIES
  real, intent(in) :: dat(:)            ! The particle data to interpolate to grid
+ real, intent(in) :: rho(:)
  real, allocatable :: interparray(:,:,:)
 
  xmininterp(1) =  xmin - dxgrid(1)!- 0.5*dxgrid(1)
@@ -195,9 +195,9 @@ subroutine interpolate_to_grid(gridarray,dat)
     h = xyzh(4,i)
     ! Get pmass
     pmass = massoftype(igas)
-    ! Get density
-    rho = rhoh(h,pmass)
-    call get_weight(pmass,h,rho,weight)
+    ! Get density from kernel sum
+    rhoi = rho(i)
+    call get_weight(pmass,h,rhoi,weight)
     weights(i) = weight
  enddo
  itype   = igas
@@ -214,7 +214,7 @@ end subroutine interpolate_to_grid
 
 subroutine check_conserved_dens(rhostargrid,cfac)
  use part, only:npart,massoftype,igas
- use einsteintk_utils, only: dxgrid, gridorigin
+ use einsteintk_utils, only:dxgrid, gridorigin
  use boundary,         only:xmin,xmax,ymin,ymax,zmin,zmax
  real, intent(in)  :: rhostargrid(:,:,:)
  real, intent(out) :: cfac
@@ -248,7 +248,7 @@ end subroutine check_conserved_dens
 
 subroutine check_conserved_p(pgrid,cfac)
  use part, only:npart,massoftype,igas
- use einsteintk_utils, only: dxgrid, gridorigin
+ use einsteintk_utils, only:dxgrid, gridorigin
  use boundary,         only:xmin,xmax,ymin,ymax,zmin,zmax
  real, intent(in)  :: pgrid(:,:,:)
  real, intent(out) :: cfac
