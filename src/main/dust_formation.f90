@@ -285,7 +285,7 @@ subroutine read_options_dust_formation(db,nerr)
  type(inopts), intent(inout) :: db(:)
  integer,      intent(inout) :: nerr
 
- call read_inopt(idust_opacity,'idust_opacity',db,errcount=nerr,min=0,max=2)
+ call read_inopt(idust_opacity,'idust_opacity',db,errcount=nerr,min=0,max=3)
  ! bowen opacity
  if (idust_opacity == 1) then
     call read_inopt(kappa_gas,'kappa_gas',db,errcount=nerr,min=0.)
