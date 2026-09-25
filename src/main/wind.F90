@@ -1146,7 +1146,7 @@ subroutine save_windprofile (params,rout,rfill,tend,tcross,tfill,filename,isink)
     dust_array_1D(:,:) = dust_tmp(:,1:writeline)
     deallocate(dust_tmp)
  endif
- deallocate(state%dust_array)
+ if (allocated(state%dust_array)) deallocate(state%dust_array)
 
 end subroutine save_windprofile
 
@@ -1167,7 +1167,7 @@ subroutine filewrite_header(iunit,nwrite)
     write(iunit,'('// adjustl(fmt) //'(a12))') 't','r','v','T','c','p','u','rho','alpha','a',&
          'mu','gamma','r_ol','r_qu','r_py','r_ir','r_rs','r_carb','f_ol','f_qu','f_py','f_ir','f_rs','f_carb',&
          'tau_lucy','kappa','tau','Tdust'
- elseif (idust_opacity == 3) then
+ else
     nwrite = 12
     write(fmt,*) nwrite
     write(iunit,'('// adjustl(fmt) //'(a12))') 't','r','v','T','c','p','u','rho','alpha','a',&
