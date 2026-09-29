@@ -306,10 +306,10 @@ module part
                        ifir    = 10, &
                        ifsc    = 11, &
                        ifcarb  = 12, &
-                       icmu    = 13, &
-                       icgamma = 14, &
-                       ickappa = 15, &
-                       icalpha = 16
+                       icmu    = 13, & !mean molecular ewight
+                       icgamma = 14, & !polytropic index
+                       ickappa = 15, & !opacity
+                       icalpha = 16    !Eddington factor 
 !
 !--KROME variables
 !

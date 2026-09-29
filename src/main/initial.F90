@@ -392,7 +392,7 @@ subroutine initialise_physics_modules(dumpfile,infile,time,ierr)
     vxyzu(1:3,:) = 0.
  endif
 
- ! initialise nucleation array, optical depth array, and Lucy optical depth array
+ ! initialise nucleation/condensation array, optical depth array, and Lucy optical depth array
  if (abs(time) <= tiny(0.)) then
     ! initialise nucleation array at the start of the run only
     if (do_nucleation .or. do_condensation) call init_dust_formation

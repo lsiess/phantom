@@ -191,7 +191,7 @@ subroutine network(T,rho_cgs,mu,gamma,wind_CO_ratio,pH_tot,fol,fpy,fqu,fir,fsc,f
 !       real :: v1
  integer :: j
  real, dimension(nMolecules)    :: pmol  !, nmol=0.
- real                           :: pelm(nElements)
+ real                           :: pelm(nElements),fac
 
        pelm = 0.
        pmol = 0.
@@ -211,24 +211,25 @@ subroutine network(T,rho_cgs,mu,gamma,wind_CO_ratio,pH_tot,fol,fpy,fqu,fir,fsc,f
 
       if (present(abundance)) then
       !convert the pressure of the molecules in number density
+         fac = patm/(kboltz*T)
          do j=1,ncols-9
-            abundance(j) = max(1.d-50,pmol(j)*patm/(kboltz*T))  !*patm
+            abundance(j) = max(1.d-50,pmol(j)*fac)  !*patm
          enddo
 
          !convert the pressure of the elements in number density
-         abundance(70) = max(1.d-50,pelm(iH)*patm/(kboltz*T)) !*patm
-         abundance(71) = max(1.d-50,pelm(iHe)*patm/(kboltz*T)) !*patm
-         abundance(72) = max(1.d-50,pelm(iC)*patm/(kboltz*T)) !*patm
-         abundance(73) = max(1.d-50,pelm(iOx)*patm/(kboltz*T)) !*patm
-         abundance(74) = max(1.d-50,pelm(iN)*patm/(kboltz*T)) !*patm
-         abundance(75) = max(1.d-50,pelm(iSi)*patm/(kboltz*T)) !*patm
-         abundance(76) = max(1.d-50,pelm(iS)*patm/(kboltz*T)) !*patm
-         abundance(77) = max(1.d-50,pelm(iFe)*patm/(kboltz*T)) !*patm
-         abundance(78) = max(1.d-50,pelm(iMg)*patm/(kboltz*T)) !*patm
+         abundance(70) = max(1.d-50,pelm(iH)*fac) !*patm
+         abundance(71) = max(1.d-50,pelm(iHe)*fac) !*patm
+         abundance(72) = max(1.d-50,pelm(iC)*fac) !*patm
+         abundance(73) = max(1.d-50,pelm(iOx)*fac) !*patm
+         abundance(74) = max(1.d-50,pelm(iN)*fac) !*patm
+         abundance(75) = max(1.d-50,pelm(iSi)*fac) !*patm
+         abundance(76) = max(1.d-50,pelm(iS)*fac) !*patm
+         abundance(77) = max(1.d-50,pelm(iFe)*fac) !*patm
+         abundance(78) = max(1.d-50,pelm(iMg)*fac) !*patm
 
-         !abundance(iH2O) = abundance(iH2O) - (3.*fol + 2.*fpy + fqu) * eps(iSi)*patm *pH_tot/(kboltz*T)
-         !abundance(iSiO) = abundance(iSiO) - (fol + fpy + fqu) * eps(iSi)*patm * pH_tot/(kboltz*T)
-         !abundance(78) = abundance(78) - (2.*fol + fpy) * eps(iSi)*patm * pH_tot/(kboltz*T)
+         !abundance(iH2O) = abundance(iH2O) - (3.*fol + 2.*fpy + fqu) * eps(iSi)*fac *pH_tot
+         !abundance(iSiO) = abundance(iSiO) - (fol + fpy + fqu) * eps(iSi)*fac * pH_tot
+         !abundance(78) = abundance(78) - (2.*fol + fpy) * eps(iSi)*fac * pH_tot
          !if (abundance(iH2O) < 0.0) abundance(iH2O) = 0.0
          !if (abundance(iSiO) < 0.0) abundance(iSiO) = 0.0
          !if (abundance(78) < 0.0)   abundance(78) = 0.0
@@ -252,7 +253,7 @@ subroutine chemical_equilibrium(rho_cgs,T,pmol,pelm,mu,gamma,&
  real, dimension(nMolecules)    :: pmol_old
  real    :: Kd(nMolecules+1), err(nElements) !, pH_tot !, a, b, c, d !LUIS err
  real    :: pelm_old(nElements)
- integer :: i, nit, rndnmbr
+ integer :: i, nit, ipass
 
  pelm_old = 0.
  pmol_old = 0.
@@ -269,256 +270,258 @@ subroutine chemical_equilibrium(rho_cgs,T,pmol,pelm,mu,gamma,&
  enddo
  Kd(iTiS) = calc_Kd_TiS(T)
 
- err     = 1.
- nit     = 0
- rndnmbr = 0
+ err   = 1.
+ nit   = 0
+ ipass = 0
 
- do while (maxval(err) > 1.e-6)
+do while (maxval(err) > 1.e-6)
 
- pelm_old(:) = pelm(:)
+   pelm_old(:) = pelm(:)
 
- if (wind_CO_ratio < 1.0) then
- if (rndnmbr == 0) then
-    pelm(iOx) = newton_method(4.*(pelm(iN)**2*Kd(iN2O4)+pelm(iH)**2*pelm(iS)*Kd(iH2SO4)), &
-                         3.*(pelm(iH)*pelm(iN)*Kd(iHNO3)+pelm(iN)*Kd(iNO3)+pelm(iS)*Kd(iSO3)), &
-                         2.*(Kd(iO2)+pelm(iC)*Kd(iCO2)+pelm(iH)*pelm(iN)*Kd(iHNO2) &
-                             +pelm(iN)*Kd(iNO2)+pelm(iH)**2*pelm(iMg)*Kd(iMgO2H2)+pelm(iSi)*Kd(iSiO2) &
-                             +pelm(iFe)*pelm(iH)**2*Kd(iFeO2H2)+pelm(iS)*Kd(iSO2)), &
-                         1.+pelm(iH)*Kd(iOH)+pelm(iH)**2*Kd(iH2O)+pelm(iC)*pelm(iH)*Kd(iCOH) &
-                         +pelm(iC)**2*Kd(iC2O)+pelm(iC)*pelm(iH)**2*Kd(iH2CO)+pelm(iN)*Kd(iNO) &
-                         +pelm(iC)*pelm(iN)*Kd(iNCO)+pelm(iC)*pelm(iH)*pelm(iN)*Kd(iHCNO)+pelm(iH)*pelm(iN)*Kd(iHNO) &
-                         +pelm(iN)**2*Kd(iN2O)+pelm(iH)*pelm(iMg)*Kd(iMgOH)+pelm(iMg)*Kd(iMgO)+pelm(iFe)*Kd(iFeO) &
-                         +pelm(iC)*pelm(iS)*Kd(iCOS)+pelm(iS)*Kd(iSO), &
-                         (eps(iC)+eps(iSi)*(1.+4.*fol+3.*fpy+2.*fqu)-eps(iOx))*pH_tot, & !Quitar fol a la molecula, no el elemento
-                          eps(iOx)*pH_tot) !pmol(iCO)  = eps(iC)*pH_tot, pmol(iSiO) = eps(iSi)*pH_tot
-                 rndnmbr = rndnmbr + 1
- else !rndnmbr
-    pelm(iOx) = newton_method(4.*(pelm(iN)**2*Kd(iN2O4)+pelm(iH)**2*pelm(iS)*Kd(iH2SO4)), &
-                         3.*(pelm(iH)*pelm(iN)*Kd(iHNO3)+pelm(iN)*Kd(iNO3)+pelm(iS)*Kd(iSO3)), &
-                         2.*(Kd(iO2)+pelm(iC)*Kd(iCO2)+pelm(iH)*pelm(iN)*Kd(iHNO2) &
-                             +pelm(iN)*Kd(iNO2)+pelm(iH)**2*pelm(iMg)*Kd(iMgO2H2)+pelm(iSi)*Kd(iSiO2) &
-                             +pelm(iFe)*pelm(iH)**2*Kd(iFeO2H2)+pelm(iS)*Kd(iSO2)), &
-                         1.+pelm(iC)*Kd(iCO)+pelm(iSi)*Kd(iSiO)+pelm(iH)*Kd(iOH)+pelm(iH)**2*Kd(iH2O)+pelm(iC)*pelm(iH)*Kd(iCOH) &
-                         +pelm(iC)**2*Kd(iC2O)+pelm(iC)*pelm(iH)**2*Kd(iH2CO)+pelm(iN)*Kd(iNO) &
-                         +pelm(iC)*pelm(iN)*Kd(iNCO)+pelm(iC)*pelm(iH)*pelm(iN)*Kd(iHCNO)+pelm(iH)*pelm(iN)*Kd(iHNO) &
-                         +pelm(iN)**2*Kd(iN2O)+pelm(iH)*pelm(iMg)*Kd(iMgOH)+pelm(iMg)*Kd(iMgO)+pelm(iFe)*Kd(iFeO) &
-                         +pelm(iC)*pelm(iS)*Kd(iCOS)+pelm(iS)*Kd(iSO), &
-                         (eps(iSi)*(4.*fol+3.*fpy+2.*fqu)-eps(iOx))*pH_tot, &
-                         eps(iOx)*pH_tot)
- endif !rndnmbr
- ! pelm(iC) = newton_method(0., &
- !            0., &
- !            2.*(Kd(iC2)+pelm(iH)*Kd(iC2H)+pelm(iOx)*Kd(iC2O)+pelm(iH)**2*Kd(iC2H2)+pelm(iH)**4*Kd(iC2H4) &
- !            +pelm(iN)*Kd(iC2N)+pelm(iN)**2*Kd(iC2N2)), &
- !            1.+pelm(iH)*Kd(iCH)+pelm(iOx)*Kd(iCO)+pelm(iOx)*pelm(iH)*Kd(iCOH)+pelm(iOx)**2*Kd(iCO2) &
- !            +pelm(iH)**2*Kd(iCH2)+pelm(iOx)*pelm(iH)**2*Kd(iH2CO)+pelm(iH)**3*Kd(iCH3)+pelm(iH)**4*Kd(iCH4) &
- !            +pelm(iN)*Kd(iCN)+pelm(iN)*pelm(iH)*Kd(iHCN)+pelm(iOx)*pelm(iN)*Kd(iNCO) &
- !            +pelm(iOx)*pelm(iH)*pelm(iN)*Kd(iHCNO)+pelm(iSi)*Kd(iSiC)+pelm(iSi)**2*Kd(iSi2C) &
- !            +pelm(iOx)*pelm(iS)*Kd(iCOS)+pelm(iS)*Kd(iCS)+pelm(iS)**2*Kd(iCS2), &
- !            (fcarb-1.0)*eps(iC)*pH_tot,eps(iC)*pH_tot)
- pelm(iC) = solve_q(2.*(Kd(iC2)+pelm(iH)*Kd(iC2H)+pelm(iOx)*Kd(iC2O)+pelm(iH)**2*Kd(iC2H2)+pelm(iH)**4*Kd(iC2H4) &
-            +pelm(iN)*Kd(iC2N)+pelm(iN)**2*Kd(iC2N2)), &
-            1.+pelm(iH)*Kd(iCH)+pelm(iOx)*Kd(iCO)+pelm(iOx)*pelm(iH)*Kd(iCOH)+pelm(iOx)**2*Kd(iCO2) &
-            +pelm(iH)**2*Kd(iCH2)+pelm(iOx)*pelm(iH)**2*Kd(iH2CO)+pelm(iH)**3*Kd(iCH3)+pelm(iH)**4*Kd(iCH4) &
-            +pelm(iN)*Kd(iCN)+pelm(iN)*pelm(iH)*Kd(iHCN)+pelm(iOx)*pelm(iN)*Kd(iNCO) &
-            +pelm(iOx)*pelm(iH)*pelm(iN)*Kd(iHCNO)+pelm(iSi)*Kd(iSiC)+pelm(iSi)**2*Kd(iSi2C) &
-            +pelm(iOx)*pelm(iS)*Kd(iCOS)+pelm(iS)*Kd(iCS)+pelm(iS)**2*Kd(iCS2), &
-            (fcarb-1.0)*eps(iC)*pH_tot)
+   if (wind_CO_ratio < 1.0) then
+      if (ipass == 0) then
+         pelm(iOx) = newton_method(4.*(pelm(iN)**2*Kd(iN2O4)+pelm(iH)**2*pelm(iS)*Kd(iH2SO4)), &
+                              3.*(pelm(iH)*pelm(iN)*Kd(iHNO3)+pelm(iN)*Kd(iNO3)+pelm(iS)*Kd(iSO3)), &
+                              2.*(Kd(iO2)+pelm(iC)*Kd(iCO2)+pelm(iH)*pelm(iN)*Kd(iHNO2) &
+                                 +pelm(iN)*Kd(iNO2)+pelm(iH)**2*pelm(iMg)*Kd(iMgO2H2)+pelm(iSi)*Kd(iSiO2) &
+                                 +pelm(iFe)*pelm(iH)**2*Kd(iFeO2H2)+pelm(iS)*Kd(iSO2)), &
+                              1.+pelm(iH)*Kd(iOH)+pelm(iH)**2*Kd(iH2O)+pelm(iC)*pelm(iH)*Kd(iCOH) &
+                              +pelm(iC)**2*Kd(iC2O)+pelm(iC)*pelm(iH)**2*Kd(iH2CO)+pelm(iN)*Kd(iNO) &
+                              +pelm(iC)*pelm(iN)*Kd(iNCO)+pelm(iC)*pelm(iH)*pelm(iN)*Kd(iHCNO)+pelm(iH)*pelm(iN)*Kd(iHNO) &
+                              +pelm(iN)**2*Kd(iN2O)+pelm(iH)*pelm(iMg)*Kd(iMgOH)+pelm(iMg)*Kd(iMgO)+pelm(iFe)*Kd(iFeO) &
+                              +pelm(iC)*pelm(iS)*Kd(iCOS)+pelm(iS)*Kd(iSO), &
+                              (eps(iC)+eps(iSi)*(1.+4.*fol+3.*fpy+2.*fqu)-eps(iOx))*pH_tot, & !Quitar fol a la molecula, no el elemento
+                              eps(iOx)*pH_tot) !pmol(iCO)  = eps(iC)*pH_tot, pmol(iSiO) = eps(iSi)*pH_tot
+         ipass = ipass + 1
+      else !ipass
+         pelm(iOx) = newton_method(4.*(pelm(iN)**2*Kd(iN2O4)+pelm(iH)**2*pelm(iS)*Kd(iH2SO4)), &
+                              3.*(pelm(iH)*pelm(iN)*Kd(iHNO3)+pelm(iN)*Kd(iNO3)+pelm(iS)*Kd(iSO3)), &
+                              2.*(Kd(iO2)+pelm(iC)*Kd(iCO2)+pelm(iH)*pelm(iN)*Kd(iHNO2) &
+                                 +pelm(iN)*Kd(iNO2)+pelm(iH)**2*pelm(iMg)*Kd(iMgO2H2)+pelm(iSi)*Kd(iSiO2) &
+                                 +pelm(iFe)*pelm(iH)**2*Kd(iFeO2H2)+pelm(iS)*Kd(iSO2)), &
+                              1.+pelm(iC)*Kd(iCO)+pelm(iSi)*Kd(iSiO)+pelm(iH)*Kd(iOH)+pelm(iH)**2*Kd(iH2O)&
+                              +pelm(iC)*pelm(iH)*Kd(iCOH) &
+                              +pelm(iC)**2*Kd(iC2O)+pelm(iC)*pelm(iH)**2*Kd(iH2CO)+pelm(iN)*Kd(iNO) &
+                              +pelm(iC)*pelm(iN)*Kd(iNCO)+pelm(iC)*pelm(iH)*pelm(iN)*Kd(iHCNO)+pelm(iH)*pelm(iN)*Kd(iHNO) &
+                              +pelm(iN)**2*Kd(iN2O)+pelm(iH)*pelm(iMg)*Kd(iMgOH)+pelm(iMg)*Kd(iMgO)+pelm(iFe)*Kd(iFeO) &
+                              +pelm(iC)*pelm(iS)*Kd(iCOS)+pelm(iS)*Kd(iSO), &
+                              (eps(iSi)*(4.*fol+3.*fpy+2.*fqu)-eps(iOx))*pH_tot, &
+                              eps(iOx)*pH_tot)
+      endif !ipass
+      ! pelm(iC) = newton_method(0., &
+      !            0., &
+      !            2.*(Kd(iC2)+pelm(iH)*Kd(iC2H)+pelm(iOx)*Kd(iC2O)+pelm(iH)**2*Kd(iC2H2)+pelm(iH)**4*Kd(iC2H4) &
+      !            +pelm(iN)*Kd(iC2N)+pelm(iN)**2*Kd(iC2N2)), &
+      !            1.+pelm(iH)*Kd(iCH)+pelm(iOx)*Kd(iCO)+pelm(iOx)*pelm(iH)*Kd(iCOH)+pelm(iOx)**2*Kd(iCO2) &
+      !            +pelm(iH)**2*Kd(iCH2)+pelm(iOx)*pelm(iH)**2*Kd(iH2CO)+pelm(iH)**3*Kd(iCH3)+pelm(iH)**4*Kd(iCH4) &
+      !            +pelm(iN)*Kd(iCN)+pelm(iN)*pelm(iH)*Kd(iHCN)+pelm(iOx)*pelm(iN)*Kd(iNCO) &
+      !            +pelm(iOx)*pelm(iH)*pelm(iN)*Kd(iHCNO)+pelm(iSi)*Kd(iSiC)+pelm(iSi)**2*Kd(iSi2C) &
+      !            +pelm(iOx)*pelm(iS)*Kd(iCOS)+pelm(iS)*Kd(iCS)+pelm(iS)**2*Kd(iCS2), &
+      !            (fcarb-1.0)*eps(iC)*pH_tot,eps(iC)*pH_tot)
+      pelm(iC) = solve_q(2.*(Kd(iC2)+pelm(iH)*Kd(iC2H)+pelm(iOx)*Kd(iC2O)+pelm(iH)**2*Kd(iC2H2)+pelm(iH)**4*Kd(iC2H4) &
+                  +pelm(iN)*Kd(iC2N)+pelm(iN)**2*Kd(iC2N2)), &
+                  1.+pelm(iH)*Kd(iCH)+pelm(iOx)*Kd(iCO)+pelm(iOx)*pelm(iH)*Kd(iCOH)+pelm(iOx)**2*Kd(iCO2) &
+                  +pelm(iH)**2*Kd(iCH2)+pelm(iOx)*pelm(iH)**2*Kd(iH2CO)+pelm(iH)**3*Kd(iCH3)+pelm(iH)**4*Kd(iCH4) &
+                  +pelm(iN)*Kd(iCN)+pelm(iN)*pelm(iH)*Kd(iHCN)+pelm(iOx)*pelm(iN)*Kd(iNCO) &
+                  +pelm(iOx)*pelm(iH)*pelm(iN)*Kd(iHCNO)+pelm(iSi)*Kd(iSiC)+pelm(iSi)**2*Kd(iSi2C) &
+                  +pelm(iOx)*pelm(iS)*Kd(iCOS)+pelm(iS)*Kd(iCS)+pelm(iS)**2*Kd(iCS2), &
+                  (fcarb-1.0)*eps(iC)*pH_tot)
 
-else !%% wind_CO is larger than 1.0
-  if (rndnmbr == 0) then
-   ! pelm(iC) = newton_method(0., &
-   !          0., &
-   !          2.*(Kd(iC2)+pelm(iH)*Kd(iC2H)+pelm(iOx)*Kd(iC2O)+pelm(iH)**2*Kd(iC2H2)+pelm(iH)**4*Kd(iC2H4) &
-   !          +pelm(iN)*Kd(iC2N)+pelm(iN)**2*Kd(iC2N2)), &
-   !          1.+pelm(iH)*Kd(iCH)+pelm(iOx)*pelm(iH)*Kd(iCOH)+pelm(iOx)**2*Kd(iCO2) &
-   !          +pelm(iH)**2*Kd(iCH2)+pelm(iOx)*pelm(iH)**2*Kd(iH2CO)+pelm(iH)**3*Kd(iCH3)+pelm(iH)**4*Kd(iCH4) &
-   !          +pelm(iN)*Kd(iCN)+pelm(iN)*pelm(iH)*Kd(iHCN)+pelm(iOx)*pelm(iN)*Kd(iNCO) &
-   !          +pelm(iOx)*pelm(iH)*pelm(iN)*Kd(iHCNO)+pelm(iSi)*Kd(iSiC)+pelm(iSi)**2*Kd(iSi2C) &
-   !          +pelm(iOx)*pelm(iS)*Kd(iCOS)+pelm(iS)*Kd(iCS)+pelm(iS)**2*Kd(iCS2), &
-   !          (eps(iOx)+(fcarb-1.0)*eps(iC))*pH_tot, & !pmol(iCO)  = eps(iOx)*pH_tot
-   !          eps(iC)*pH_tot)
-   pelm(iC) = solve_q(2.*(Kd(iC2)+pelm(iH)*Kd(iC2H)+pelm(iOx)*Kd(iC2O)+pelm(iH)**2*Kd(iC2H2)+pelm(iH)**4*Kd(iC2H4) &
-            +pelm(iN)*Kd(iC2N)+pelm(iN)**2*Kd(iC2N2)), &
-            1.+pelm(iH)*Kd(iCH)+pelm(iOx)*pelm(iH)*Kd(iCOH)+pelm(iOx)**2*Kd(iCO2) &
-            +pelm(iH)**2*Kd(iCH2)+pelm(iOx)*pelm(iH)**2*Kd(iH2CO)+pelm(iH)**3*Kd(iCH3)+pelm(iH)**4*Kd(iCH4) &
-            +pelm(iN)*Kd(iCN)+pelm(iN)*pelm(iH)*Kd(iHCN)+pelm(iOx)*pelm(iN)*Kd(iNCO) &
-            +pelm(iOx)*pelm(iH)*pelm(iN)*Kd(iHCNO)+pelm(iSi)*Kd(iSiC)+pelm(iSi)**2*Kd(iSi2C) &
-            +pelm(iOx)*pelm(iS)*Kd(iCOS)+pelm(iS)*Kd(iCS)+pelm(iS)**2*Kd(iCS2), &
-            (eps(iOx)+(fcarb-1.0)*eps(iC))*pH_tot)
+   else !%% wind_CO is larger than 1.0
+      if (ipass == 0) then
+         ! pelm(iC) = newton_method(0., &
+         !          0., &
+         !          2.*(Kd(iC2)+pelm(iH)*Kd(iC2H)+pelm(iOx)*Kd(iC2O)+pelm(iH)**2*Kd(iC2H2)+pelm(iH)**4*Kd(iC2H4) &
+         !          +pelm(iN)*Kd(iC2N)+pelm(iN)**2*Kd(iC2N2)), &
+         !          1.+pelm(iH)*Kd(iCH)+pelm(iOx)*pelm(iH)*Kd(iCOH)+pelm(iOx)**2*Kd(iCO2) &
+         !          +pelm(iH)**2*Kd(iCH2)+pelm(iOx)*pelm(iH)**2*Kd(iH2CO)+pelm(iH)**3*Kd(iCH3)+pelm(iH)**4*Kd(iCH4) &
+         !          +pelm(iN)*Kd(iCN)+pelm(iN)*pelm(iH)*Kd(iHCN)+pelm(iOx)*pelm(iN)*Kd(iNCO) &
+         !          +pelm(iOx)*pelm(iH)*pelm(iN)*Kd(iHCNO)+pelm(iSi)*Kd(iSiC)+pelm(iSi)**2*Kd(iSi2C) &
+         !          +pelm(iOx)*pelm(iS)*Kd(iCOS)+pelm(iS)*Kd(iCS)+pelm(iS)**2*Kd(iCS2), &
+         !          (eps(iOx)+(fcarb-1.0)*eps(iC))*pH_tot, & !pmol(iCO)  = eps(iOx)*pH_tot
+         !          eps(iC)*pH_tot)
+         pelm(iC) = solve_q(2.*(Kd(iC2)+pelm(iH)*Kd(iC2H)+pelm(iOx)*Kd(iC2O)+pelm(iH)**2*Kd(iC2H2)+pelm(iH)**4*Kd(iC2H4) &
+                  +pelm(iN)*Kd(iC2N)+pelm(iN)**2*Kd(iC2N2)), &
+                  1.+pelm(iH)*Kd(iCH)+pelm(iOx)*pelm(iH)*Kd(iCOH)+pelm(iOx)**2*Kd(iCO2) &
+                  +pelm(iH)**2*Kd(iCH2)+pelm(iOx)*pelm(iH)**2*Kd(iH2CO)+pelm(iH)**3*Kd(iCH3)+pelm(iH)**4*Kd(iCH4) &
+                  +pelm(iN)*Kd(iCN)+pelm(iN)*pelm(iH)*Kd(iHCN)+pelm(iOx)*pelm(iN)*Kd(iNCO) &
+                  +pelm(iOx)*pelm(iH)*pelm(iN)*Kd(iHCNO)+pelm(iSi)*Kd(iSiC)+pelm(iSi)**2*Kd(iSi2C) &
+                  +pelm(iOx)*pelm(iS)*Kd(iCOS)+pelm(iS)*Kd(iCS)+pelm(iS)**2*Kd(iCS2), &
+                  (eps(iOx)+(fcarb-1.0)*eps(iC))*pH_tot)
 
-            rndnmbr = rndnmbr + 1
+         ipass = ipass + 1
 
-  else
+      else
 
-   ! pelm(iC) = newton_method(0., &
-   !          0., &
-   !          2.*(Kd(iC2)+pelm(iH)*Kd(iC2H)+pelm(iOx)*Kd(iC2O)+pelm(iH)**2*Kd(iC2H2)+pelm(iH)**4*Kd(iC2H4) &
-   !          +pelm(iN)*Kd(iC2N)+pelm(iN)**2*Kd(iC2N2)), &
-   !          1.+pelm(iH)*Kd(iCH)+pelm(iOx)*Kd(iCO)+pelm(iOx)*pelm(iH)*Kd(iCOH)+pelm(iOx)**2*Kd(iCO2) &
-   !          +pelm(iH)**2*Kd(iCH2)+pelm(iOx)*pelm(iH)**2*Kd(iH2CO)+pelm(iH)**3*Kd(iCH3)+pelm(iH)**4*Kd(iCH4) &
-   !          +pelm(iN)*Kd(iCN)+pelm(iN)*pelm(iH)*Kd(iHCN)+pelm(iOx)*pelm(iN)*Kd(iNCO) &
-   !          +pelm(iOx)*pelm(iH)*pelm(iN)*Kd(iHCNO)+pelm(iSi)*Kd(iSiC)+pelm(iSi)**2*Kd(iSi2C) &
-   !          +pelm(iOx)*pelm(iS)*Kd(iCOS)+pelm(iS)*Kd(iCS)+pelm(iS)**2*Kd(iCS2), &
-   !          (fcarb-1.0)*eps(iC)*pH_tot,eps(iC)*pH_tot)
-   pelm(iC) = solve_q(2.*(Kd(iC2)+pelm(iH)*Kd(iC2H)+pelm(iOx)*Kd(iC2O)+pelm(iH)**2*Kd(iC2H2)+pelm(iH)**4*Kd(iC2H4) &
-            +pelm(iN)*Kd(iC2N)+pelm(iN)**2*Kd(iC2N2)), &
-            1.+pelm(iH)*Kd(iCH)+pelm(iOx)*Kd(iCO)+pelm(iOx)*pelm(iH)*Kd(iCOH)+pelm(iOx)**2*Kd(iCO2) &
-            +pelm(iH)**2*Kd(iCH2)+pelm(iOx)*pelm(iH)**2*Kd(iH2CO)+pelm(iH)**3*Kd(iCH3)+pelm(iH)**4*Kd(iCH4) &
-            +pelm(iN)*Kd(iCN)+pelm(iN)*pelm(iH)*Kd(iHCN)+pelm(iOx)*pelm(iN)*Kd(iNCO) &
-            +pelm(iOx)*pelm(iH)*pelm(iN)*Kd(iHCNO)+pelm(iSi)*Kd(iSiC)+pelm(iSi)**2*Kd(iSi2C) &
-            +pelm(iOx)*pelm(iS)*Kd(iCOS)+pelm(iS)*Kd(iCS)+pelm(iS)**2*Kd(iCS2), &
-            (fcarb-1.0)*eps(iC)*pH_tot)
-  endif  !rndnmbr
+         ! pelm(iC) = newton_method(0., &
+         !          0., &
+         !          2.*(Kd(iC2)+pelm(iH)*Kd(iC2H)+pelm(iOx)*Kd(iC2O)+pelm(iH)**2*Kd(iC2H2)+pelm(iH)**4*Kd(iC2H4) &
+         !          +pelm(iN)*Kd(iC2N)+pelm(iN)**2*Kd(iC2N2)), &
+         !          1.+pelm(iH)*Kd(iCH)+pelm(iOx)*Kd(iCO)+pelm(iOx)*pelm(iH)*Kd(iCOH)+pelm(iOx)**2*Kd(iCO2) &
+         !          +pelm(iH)**2*Kd(iCH2)+pelm(iOx)*pelm(iH)**2*Kd(iH2CO)+pelm(iH)**3*Kd(iCH3)+pelm(iH)**4*Kd(iCH4) &
+         !          +pelm(iN)*Kd(iCN)+pelm(iN)*pelm(iH)*Kd(iHCN)+pelm(iOx)*pelm(iN)*Kd(iNCO) &
+         !          +pelm(iOx)*pelm(iH)*pelm(iN)*Kd(iHCNO)+pelm(iSi)*Kd(iSiC)+pelm(iSi)**2*Kd(iSi2C) &
+         !          +pelm(iOx)*pelm(iS)*Kd(iCOS)+pelm(iS)*Kd(iCS)+pelm(iS)**2*Kd(iCS2), &
+         !          (fcarb-1.0)*eps(iC)*pH_tot,eps(iC)*pH_tot)
+         pelm(iC) = solve_q(2.*(Kd(iC2)+pelm(iH)*Kd(iC2H)+pelm(iOx)*Kd(iC2O)+pelm(iH)**2*Kd(iC2H2)+pelm(iH)**4*Kd(iC2H4) &
+                  +pelm(iN)*Kd(iC2N)+pelm(iN)**2*Kd(iC2N2)), &
+                  1.+pelm(iH)*Kd(iCH)+pelm(iOx)*Kd(iCO)+pelm(iOx)*pelm(iH)*Kd(iCOH)+pelm(iOx)**2*Kd(iCO2) &
+                  +pelm(iH)**2*Kd(iCH2)+pelm(iOx)*pelm(iH)**2*Kd(iH2CO)+pelm(iH)**3*Kd(iCH3)+pelm(iH)**4*Kd(iCH4) &
+                  +pelm(iN)*Kd(iCN)+pelm(iN)*pelm(iH)*Kd(iHCN)+pelm(iOx)*pelm(iN)*Kd(iNCO) &
+                  +pelm(iOx)*pelm(iH)*pelm(iN)*Kd(iHCNO)+pelm(iSi)*Kd(iSiC)+pelm(iSi)**2*Kd(iSi2C) &
+                  +pelm(iOx)*pelm(iS)*Kd(iCOS)+pelm(iS)*Kd(iCS)+pelm(iS)**2*Kd(iCS2), &
+                  (fcarb-1.0)*eps(iC)*pH_tot)
+      endif  !ipass
 
-  pelm(iOx) = newton_method(4.*(pelm(iN)**2*Kd(iN2O4)+pelm(iH)**2*pelm(iS)*Kd(iH2SO4)), &
-                         3.*(pelm(iH)*pelm(iN)*Kd(iHNO3)+pelm(iN)*Kd(iNO3)+pelm(iS)*Kd(iSO3)), &
-                         2.*(Kd(iO2)+pelm(iC)*Kd(iCO2)+pelm(iH)*pelm(iN)*Kd(iHNO2) &
-                             +pelm(iN)*Kd(iNO2)+pelm(iH)**2*pelm(iMg)*Kd(iMgO2H2)+pelm(iSi)*Kd(iSiO2) &
-                             +pelm(iFe)*pelm(iH)**2*Kd(iFeO2H2)+pelm(iS)*Kd(iSO2)), &
-                         1.+pelm(iC)*Kd(iCO)+pelm(iSi)*Kd(iSiO)+pelm(iH)*Kd(iOH)+pelm(iH)**2*Kd(iH2O)+pelm(iC)*pelm(iH)*Kd(iCOH) &
-                         +pelm(iC)**2*Kd(iC2O)+pelm(iC)*pelm(iH)**2*Kd(iH2CO)+pelm(iN)*Kd(iNO) &
-                         +pelm(iC)*pelm(iN)*Kd(iNCO)+pelm(iC)*pelm(iH)*pelm(iN)*Kd(iHCNO)+pelm(iH)*pelm(iN)*Kd(iHNO) &
-                         +pelm(iN)**2*Kd(iN2O)+pelm(iH)*pelm(iMg)*Kd(iMgOH)+pelm(iMg)*Kd(iMgO)+pelm(iFe)*Kd(iFeO) &
-                         +pelm(iC)*pelm(iS)*Kd(iCOS)+pelm(iS)*Kd(iSO), &
-                         (eps(iSi)*(4.*fol+3.*fpy+2.*fqu)-eps(iOx))*pH_tot, &
-                         eps(iOx)*pH_tot)
-endif !wind_CO
-
-
- ! pelm(iN) = newton_method(0., 0., &
- !            2.*(Kd(iN2)+pelm(iC)**2*Kd(iC2N2) &
- !            +pelm(iOx)*Kd(iN2O) &
- !            +pelm(iOx)**4*Kd(iN2O4)), &
- !            1.+pelm(iH)*Kd(iNH)+pelm(iOx)*Kd(iNO)+pelm(iC)*Kd(iCN)+pelm(iC)*pelm(iH)*Kd(iHCN) &
- !            +pelm(iOx)*pelm(iC)*Kd(iNCO)+pelm(iC)*pelm(iOx)*pelm(iH)*Kd(iHCNO)+pelm(iC)**2*Kd(iC2N) &
- !            +pelm(iOx)*pelm(iH)*Kd(iHNO)+pelm(iOx)**2*pelm(iH)*Kd(iHNO2) &
- !            +pelm(iOx)**3*pelm(iH)*Kd(iHNO3)+pelm(iH)**2*Kd(iNH2)+pelm(iH)**3*Kd(iNH3) &
- !            +pelm(iOx)**2*Kd(iNO2)+pelm(iOx)**3*Kd(iNO3)+pelm(iMg)*Kd(iMgN) &
- !            +pelm(iSi)*Kd(iSiN) &
- !            +pelm(iS)*Kd(iSN), &
- !            -eps(iN)*pH_tot,eps(iN)*pH_tot)
- pelm(iN) = solve_q(2.*(Kd(iN2)+pelm(iC)**2*Kd(iC2N2) &
-            +pelm(iOx)*Kd(iN2O) &
-            +pelm(iOx)**4*Kd(iN2O4)), &
-            1.+pelm(iH)*Kd(iNH)+pelm(iOx)*Kd(iNO)+pelm(iC)*Kd(iCN)+pelm(iC)*pelm(iH)*Kd(iHCN) &
-            +pelm(iOx)*pelm(iC)*Kd(iNCO)+pelm(iC)*pelm(iOx)*pelm(iH)*Kd(iHCNO)+pelm(iC)**2*Kd(iC2N) &
-            +pelm(iOx)*pelm(iH)*Kd(iHNO)+pelm(iOx)**2*pelm(iH)*Kd(iHNO2) &
-            +pelm(iOx)**3*pelm(iH)*Kd(iHNO3)+pelm(iH)**2*Kd(iNH2)+pelm(iH)**3*Kd(iNH3) &
-            +pelm(iOx)**2*Kd(iNO2)+pelm(iOx)**3*Kd(iNO3)+pelm(iMg)*Kd(iMgN) &
-            +pelm(iSi)*Kd(iSiN) &
-            +pelm(iS)*Kd(iSN), &
-            -eps(iN)*pH_tot)
-
- pelm(iMg) = (eps(iMg)-(2.*fol+fpy)*eps(iSi))*pH_tot/(1.+pelm(iH)*Kd(iMgH)+pelm(iOx)*pelm(iH)*Kd(iMgOH) &
-             +pelm(iOx)**2*pelm(iH)**2*Kd(iMgO2H2)+pelm(iN)*Kd(iMgN) &
-             +pelm(iOx)*Kd(iMgO)+pelm(iS)*Kd(iMgS))
+      pelm(iOx) = newton_method(4.*(pelm(iN)**2*Kd(iN2O4)+pelm(iH)**2*pelm(iS)*Kd(iH2SO4)), &
+                              3.*(pelm(iH)*pelm(iN)*Kd(iHNO3)+pelm(iN)*Kd(iNO3)+pelm(iS)*Kd(iSO3)), &
+                              2.*(Kd(iO2)+pelm(iC)*Kd(iCO2)+pelm(iH)*pelm(iN)*Kd(iHNO2) &
+                                 +pelm(iN)*Kd(iNO2)+pelm(iH)**2*pelm(iMg)*Kd(iMgO2H2)+pelm(iSi)*Kd(iSiO2) &
+                                 +pelm(iFe)*pelm(iH)**2*Kd(iFeO2H2)+pelm(iS)*Kd(iSO2)), &
+                              1.+pelm(iC)*Kd(iCO)+pelm(iSi)*Kd(iSiO)+pelm(iH)*Kd(iOH)+pelm(iH)**2*Kd(iH2O)&
+                              +pelm(iC)*pelm(iH)*Kd(iCOH) &
+                              +pelm(iC)**2*Kd(iC2O)+pelm(iC)*pelm(iH)**2*Kd(iH2CO)+pelm(iN)*Kd(iNO) &
+                              +pelm(iC)*pelm(iN)*Kd(iNCO)+pelm(iC)*pelm(iH)*pelm(iN)*Kd(iHCNO)+pelm(iH)*pelm(iN)*Kd(iHNO) &
+                              +pelm(iN)**2*Kd(iN2O)+pelm(iH)*pelm(iMg)*Kd(iMgOH)+pelm(iMg)*Kd(iMgO)+pelm(iFe)*Kd(iFeO) &
+                              +pelm(iC)*pelm(iS)*Kd(iCOS)+pelm(iS)*Kd(iSO), &
+                              (eps(iSi)*(4.*fol+3.*fpy+2.*fqu)-eps(iOx))*pH_tot, &
+                              eps(iOx)*pH_tot)
+   endif !wind_CO
 
 
- ! pelm(iSi) = newton_method(0., 0., &
- !             2.*(Kd(iSi2)+pelm(iC)*Kd(iSi2C)), &
- !             1.+pelm(iC)*Kd(iSiC)+pelm(iH)*Kd(iSiH)+pelm(iH)**2*Kd(iSiH2) &
- !             +pelm(iH)**3*Kd(iSiH3)+pelm(iH)**4*Kd(iSiH4)+pelm(iN)*Kd(iSiN)+pelm(iOx)*Kd(iSiO) &
- !             +pelm(iOx)**2*Kd(iSiO2) &
- !             +pelm(iS)*Kd(iSiS), &
- !             (fol+fpy+fqu+fsc-1.0)*eps(iSi)*pH_tot, &
- !             eps(iSi)*pH_tot)
- pelm(iSi) = solve_q(2.*(Kd(iSi2)+pelm(iC)*Kd(iSi2C)), &
-             1.+pelm(iC)*Kd(iSiC)+pelm(iH)*Kd(iSiH)+pelm(iH)**2*Kd(iSiH2) &
-             +pelm(iH)**3*Kd(iSiH3)+pelm(iH)**4*Kd(iSiH4)+pelm(iN)*Kd(iSiN)+pelm(iOx)*Kd(iSiO) &
-             +pelm(iOx)**2*Kd(iSiO2) &
-             +pelm(iS)*Kd(iSiS), &
-             (fol+fpy+fqu+fsc-1.0)*eps(iSi)*pH_tot)
+   ! pelm(iN) = newton_method(0., 0., &
+   !            2.*(Kd(iN2)+pelm(iC)**2*Kd(iC2N2) &
+   !            +pelm(iOx)*Kd(iN2O) &
+   !            +pelm(iOx)**4*Kd(iN2O4)), &
+   !            1.+pelm(iH)*Kd(iNH)+pelm(iOx)*Kd(iNO)+pelm(iC)*Kd(iCN)+pelm(iC)*pelm(iH)*Kd(iHCN) &
+   !            +pelm(iOx)*pelm(iC)*Kd(iNCO)+pelm(iC)*pelm(iOx)*pelm(iH)*Kd(iHCNO)+pelm(iC)**2*Kd(iC2N) &
+   !            +pelm(iOx)*pelm(iH)*Kd(iHNO)+pelm(iOx)**2*pelm(iH)*Kd(iHNO2) &
+   !            +pelm(iOx)**3*pelm(iH)*Kd(iHNO3)+pelm(iH)**2*Kd(iNH2)+pelm(iH)**3*Kd(iNH3) &
+   !            +pelm(iOx)**2*Kd(iNO2)+pelm(iOx)**3*Kd(iNO3)+pelm(iMg)*Kd(iMgN) &
+   !            +pelm(iSi)*Kd(iSiN) &
+   !            +pelm(iS)*Kd(iSN), &
+   !            -eps(iN)*pH_tot,eps(iN)*pH_tot)
+   pelm(iN) = solve_q(2.*(Kd(iN2)+pelm(iC)**2*Kd(iC2N2) &
+               +pelm(iOx)*Kd(iN2O) &
+               +pelm(iOx)**4*Kd(iN2O4)), &
+               1.+pelm(iH)*Kd(iNH)+pelm(iOx)*Kd(iNO)+pelm(iC)*Kd(iCN)+pelm(iC)*pelm(iH)*Kd(iHCN) &
+               +pelm(iOx)*pelm(iC)*Kd(iNCO)+pelm(iC)*pelm(iOx)*pelm(iH)*Kd(iHCNO)+pelm(iC)**2*Kd(iC2N) &
+               +pelm(iOx)*pelm(iH)*Kd(iHNO)+pelm(iOx)**2*pelm(iH)*Kd(iHNO2) &
+               +pelm(iOx)**3*pelm(iH)*Kd(iHNO3)+pelm(iH)**2*Kd(iNH2)+pelm(iH)**3*Kd(iNH3) &
+               +pelm(iOx)**2*Kd(iNO2)+pelm(iOx)**3*Kd(iNO3)+pelm(iMg)*Kd(iMgN) &
+               +pelm(iSi)*Kd(iSiN) &
+               +pelm(iS)*Kd(iSN), &
+               -eps(iN)*pH_tot)
+
+   pelm(iMg) = (eps(iMg)-(2.*fol+fpy)*eps(iSi))*pH_tot/(1.+pelm(iH)*Kd(iMgH)+pelm(iOx)*pelm(iH)*Kd(iMgOH) &
+               +pelm(iOx)**2*pelm(iH)**2*Kd(iMgO2H2)+pelm(iN)*Kd(iMgN) &
+               +pelm(iOx)*Kd(iMgO)+pelm(iS)*Kd(iMgS))
 
 
- pelm(iFe) = (1.0 - fir)*eps(iFe)*pH_tot/(1.+pelm(iOx)*Kd(iFeO)+pelm(iOx)**2*pelm(iH)**2*Kd(iFeO2H2) &
-             +pelm(iS)*Kd(iFeS))
+   ! pelm(iSi) = newton_method(0., 0., &
+   !             2.*(Kd(iSi2)+pelm(iC)*Kd(iSi2C)), &
+   !             1.+pelm(iC)*Kd(iSiC)+pelm(iH)*Kd(iSiH)+pelm(iH)**2*Kd(iSiH2) &
+   !             +pelm(iH)**3*Kd(iSiH3)+pelm(iH)**4*Kd(iSiH4)+pelm(iN)*Kd(iSiN)+pelm(iOx)*Kd(iSiO) &
+   !             +pelm(iOx)**2*Kd(iSiO2) &
+   !             +pelm(iS)*Kd(iSiS), &
+   !             (fol+fpy+fqu+fsc-1.0)*eps(iSi)*pH_tot, &
+   !             eps(iSi)*pH_tot)
+   pelm(iSi) = solve_q(2.*(Kd(iSi2)+pelm(iC)*Kd(iSi2C)), &
+               1.+pelm(iC)*Kd(iSiC)+pelm(iH)*Kd(iSiH)+pelm(iH)**2*Kd(iSiH2) &
+               +pelm(iH)**3*Kd(iSiH3)+pelm(iH)**4*Kd(iSiH4)+pelm(iN)*Kd(iSiN)+pelm(iOx)*Kd(iSiO) &
+               +pelm(iOx)**2*Kd(iSiO2) &
+               +pelm(iS)*Kd(iSiS), &
+               (fol+fpy+fqu+fsc-1.0)*eps(iSi)*pH_tot)
 
- ! pelm(iS) = newton_method(0., 0., 2.*(Kd(iS2)+pelm(iC)*Kd(iCS2)), &
- !            1.+pelm(iOx)*pelm(iC)*Kd(iCOS)+pelm(iC)*Kd(iCS)+pelm(iFe)*Kd(iFeS)+pelm(iH)*Kd(iHS) &
- !            +pelm(iH)**2*Kd(iH2S)+pelm(iOx)**4*pelm(iH)**2*Kd(iH2SO4)+pelm(iMg)*Kd(iMgS)+pelm(iN)*Kd(iSN) &
- !            +pelm(iOx)*Kd(iSO)+pelm(iOx)**2*Kd(iSO2)+pelm(iOx)**3*Kd(iSO3)+pelm(iSi)*Kd(iSiS), &
- !            -eps(iS)*pH_tot,eps(iS)*pH_tot)
- pelm(iS) = solve_q(2.*(Kd(iS2)+pelm(iC)*Kd(iCS2)), &
-            1.+pelm(iOx)*pelm(iC)*Kd(iCOS)+pelm(iC)*Kd(iCS)+pelm(iFe)*Kd(iFeS)+pelm(iH)*Kd(iHS) &
-            +pelm(iH)**2*Kd(iH2S)+pelm(iOx)**4*pelm(iH)**2*Kd(iH2SO4)+pelm(iMg)*Kd(iMgS)+pelm(iN)*Kd(iSN) &
-            +pelm(iOx)*Kd(iSO)+pelm(iOx)**2*Kd(iSO2)+pelm(iOx)**3*Kd(iSO3)+pelm(iSi)*Kd(iSiS), &
-            -eps(iS)*pH_tot)
 
-  err = abs((pelm-pelm_old)/(pelm_old+1.0e-60))
+   pelm(iFe) = (1.0 - fir)*eps(iFe)*pH_tot/(1.+pelm(iOx)*Kd(iFeO)+pelm(iOx)**2*pelm(iH)**2*Kd(iFeO2H2) &
+               +pelm(iS)*Kd(iFeS))
 
-  pmol(iH2)  = Kd(iH2)*pelm(iH)**2
-  pmol(iOH)  = Kd(iOH)*pelm(iOx)*pelm(iH)
-  pmol(iH2O) = Kd(iH2O)*pelm(iOx)*pelm(iH)**2
-  pmol(iCO)  = Kd(iCO)*pelm(iOx)*pelm(iC)
-  pmol(iCO2)  = Kd(iCO2)*pelm(iC)*pelm(iOx)**2
-  pmol(iCH4)  = Kd(iCH4)*pelm(iC)*pelm(iH)**4
-  pmol(iC2H)  = Kd(iC2H)*pelm(iH)*pelm(iC)**2
-  pmol(iC2H2)  = Kd(iC2H2)*pelm(iC)**2*pelm(iH)**2
-  pmol(iN2)  = Kd(iN2)*pelm(iN)**2
-  pmol(iNH3)  = Kd(iNH3)*pelm(iN)*pelm(iH)**3
-  pmol(iCN)  = Kd(iCN)*pelm(iC)*pelm(iN)
-  pmol(iHCN)  = Kd(iHCN)*pelm(iH)*pelm(iC)*pelm(iN)
-  pmol(iSi2)  = Kd(iSi2)*pelm(iSi)**2
-  pmol(iSi3)  = Kd(iSi3)*pelm(iSi)**3
-  pmol(iSiO)  = Kd(iSiO)*pelm(iSi)*pelm(iOx)
-  pmol(iSi2C)  = Kd(iSi2C)*pelm(iSi)**2*pelm(iC)
-  pmol(iSiH4)  = Kd(iSiH4)*pelm(iH)**4*pelm(iSi)
-  pmol(iS2)  = Kd(iS2)*pelm(iS)**2
-  pmol(iHS)  = Kd(iHS)*pelm(iH)*pelm(iS)
-  pmol(iH2S)  = Kd(iH2S)*pelm(iH)**2*pelm(iS)
-  pmol(iSiS)  = Kd(iSiS)*pelm(iSi)*pelm(iS)
-  pmol(iSiH)  = Kd(iSiH)*pelm(iSi)*pelm(iH)
-  pmol(iC2)  = Kd(iC2)*pelm(iC)**2
-  pmol(iO2)  = Kd(iO2)*pelm(iOx)**2
-  pmol(iCH)  = Kd(iCH)*pelm(iH)*pelm(iC)
-  pmol(iCOH)  = Kd(iCOH)*pelm(iOx)*pelm(iC)*pelm(iH)
-  pmol(iC2O)  = Kd(iC2O)*pelm(iOx)*pelm(iC)**2
-  pmol(iCH2)  = Kd(iCH2)*pelm(iH)**2*pelm(iC)
-  pmol(iH2CO)  = Kd(iH2CO)*pelm(iOx)*pelm(iC)*pelm(iH)**2
-  pmol(iCH3)  = Kd(iCH3)*pelm(iH)**3*pelm(iC)
-  pmol(iC2H4)  = Kd(iC2H4)*pelm(iH)**4*pelm(iC)**2
-  pmol(iNH)  = Kd(iNH)*pelm(iN)*pelm(iH)
-  pmol(iNO)  = Kd(iNO)*pelm(iOx)*pelm(iN)
-  pmol(iNCO)  = Kd(iNCO)*pelm(iOx)*pelm(iC)*pelm(iN)
-  pmol(iHCNO)  = Kd(iHCNO)*pelm(iOx)*pelm(iC)*pelm(iH)*pelm(iN)
-  pmol(iC2N)  = Kd(iC2N)*pelm(iN)*pelm(iC)**2
-  pmol(iC2N2)  = Kd(iC2N2)*pelm(iN)**2*pelm(iC)**2
-  pmol(iHNO)  = Kd(iHNO)*pelm(iOx)*pelm(iH)*pelm(iN)
-  pmol(iHNO2)  = Kd(iHNO2)*pelm(iOx)**2*pelm(iH)*pelm(iN)
-  pmol(iHNO3)  = Kd(iHNO3)*pelm(iOx)**3*pelm(iH)*pelm(iN)
-  pmol(iNH2)  = Kd(iNH2)*pelm(iN)*pelm(iH)**2
-  pmol(iNO2)  = Kd(iNO2)*pelm(iN)*pelm(iOx)**2
-  pmol(iNO3)  = Kd(iNO3)*pelm(iN)*pelm(iOx)**3
-  pmol(iN2O)  = Kd(iN2O)*pelm(iN)**2*pelm(iOx)
-  pmol(iN2O4)  = Kd(iN2O4)*pelm(iN)**2*pelm(iOx)**4
-  pmol(iMgH)  = Kd(iMgH)*pelm(iH)*pelm(iMg)
-  pmol(iMgOH)  = Kd(iMgOH)*pelm(iH)*pelm(iMg)*pelm(iOx)
-  pmol(iMgO2H2)  = Kd(iMgO2H2)*pelm(iH)**2*pelm(iMg)*pelm(iOx)**2
-  pmol(iMgN)  = Kd(iMgN)*pelm(iN)*pelm(iMg)
-  pmol(iMgO)  = Kd(iMgO)*pelm(iOx)*pelm(iMg)
-  pmol(iSiC)  = Kd(iSiC)*pelm(iC)*pelm(iSi)
-  pmol(iSiH2)  = Kd(iSiH2)*pelm(iH)**2*pelm(iSi)
-  pmol(iSiH3)  = Kd(iSiH3)*pelm(iH)**3*pelm(iSi)
-  pmol(iSiN)  = Kd(iSiN)*pelm(iN)*pelm(iSi)
-  pmol(iSiO2)  = Kd(iSiO2)*pelm(iOx)**2*pelm(iSi)
-  pmol(iFeO)  = Kd(iFeO)*pelm(iOx)*pelm(iFe)
-  pmol(iFeO2H2)  = Kd(iFeO2H2)*pelm(iH)**2*pelm(iFe)*pelm(iOx)**2
-  pmol(iCOS)  = Kd(iCOS)*pelm(iOx)*pelm(iC)*pelm(iS)
-  pmol(iCS)  = Kd(iCS)*pelm(iS)*pelm(iC)
-  pmol(iCS2)  = Kd(iCS2)*pelm(iC)*pelm(iS)**2
-  pmol(iFeS)  = Kd(iFeS)*pelm(iS)*pelm(iFe)
-  pmol(iH2SO4)  = Kd(iH2SO4)*pelm(iH)**2*pelm(iS)*pelm(iOx)**4
-  pmol(iMgS)  = Kd(iMgS)*pelm(iS)*pelm(iMg)
-  pmol(iSN)  = Kd(iSN)*pelm(iN)*pelm(iS)
-  pmol(iSO)  = Kd(iSO)*pelm(iOx)*pelm(iS)
-  pmol(iSO2)  = Kd(iSO2)*pelm(iOx)**2*pelm(iS)
-  pmol(iSO3)  = Kd(iSO3)*pelm(iOx)**3*pelm(iS)
+   ! pelm(iS) = newton_method(0., 0., 2.*(Kd(iS2)+pelm(iC)*Kd(iCS2)), &
+   !            1.+pelm(iOx)*pelm(iC)*Kd(iCOS)+pelm(iC)*Kd(iCS)+pelm(iFe)*Kd(iFeS)+pelm(iH)*Kd(iHS) &
+   !            +pelm(iH)**2*Kd(iH2S)+pelm(iOx)**4*pelm(iH)**2*Kd(iH2SO4)+pelm(iMg)*Kd(iMgS)+pelm(iN)*Kd(iSN) &
+   !            +pelm(iOx)*Kd(iSO)+pelm(iOx)**2*Kd(iSO2)+pelm(iOx)**3*Kd(iSO3)+pelm(iSi)*Kd(iSiS), &
+   !            -eps(iS)*pH_tot,eps(iS)*pH_tot)
+   pelm(iS) = solve_q(2.*(Kd(iS2)+pelm(iC)*Kd(iCS2)), &
+               1.+pelm(iOx)*pelm(iC)*Kd(iCOS)+pelm(iC)*Kd(iCS)+pelm(iFe)*Kd(iFeS)+pelm(iH)*Kd(iHS) &
+               +pelm(iH)**2*Kd(iH2S)+pelm(iOx)**4*pelm(iH)**2*Kd(iH2SO4)+pelm(iMg)*Kd(iMgS)+pelm(iN)*Kd(iSN) &
+               +pelm(iOx)*Kd(iSO)+pelm(iOx)**2*Kd(iSO2)+pelm(iOx)**3*Kd(iSO3)+pelm(iSi)*Kd(iSiS), &
+               -eps(iS)*pH_tot)
 
-  nit = nit + 1
-  if (nit == 200) exit
+   err = abs((pelm-pelm_old)/(pelm_old+1.0e-60))
 
- enddo
+   pmol(iH2)  = Kd(iH2)*pelm(iH)**2
+   pmol(iOH)  = Kd(iOH)*pelm(iOx)*pelm(iH)
+   pmol(iH2O) = Kd(iH2O)*pelm(iOx)*pelm(iH)**2
+   pmol(iCO)  = Kd(iCO)*pelm(iOx)*pelm(iC)
+   pmol(iCO2)  = Kd(iCO2)*pelm(iC)*pelm(iOx)**2
+   pmol(iCH4)  = Kd(iCH4)*pelm(iC)*pelm(iH)**4
+   pmol(iC2H)  = Kd(iC2H)*pelm(iH)*pelm(iC)**2
+   pmol(iC2H2)  = Kd(iC2H2)*pelm(iC)**2*pelm(iH)**2
+   pmol(iN2)  = Kd(iN2)*pelm(iN)**2
+   pmol(iNH3)  = Kd(iNH3)*pelm(iN)*pelm(iH)**3
+   pmol(iCN)  = Kd(iCN)*pelm(iC)*pelm(iN)
+   pmol(iHCN)  = Kd(iHCN)*pelm(iH)*pelm(iC)*pelm(iN)
+   pmol(iSi2)  = Kd(iSi2)*pelm(iSi)**2
+   pmol(iSi3)  = Kd(iSi3)*pelm(iSi)**3
+   pmol(iSiO)  = Kd(iSiO)*pelm(iSi)*pelm(iOx)
+   pmol(iSi2C)  = Kd(iSi2C)*pelm(iSi)**2*pelm(iC)
+   pmol(iSiH4)  = Kd(iSiH4)*pelm(iH)**4*pelm(iSi)
+   pmol(iS2)  = Kd(iS2)*pelm(iS)**2
+   pmol(iHS)  = Kd(iHS)*pelm(iH)*pelm(iS)
+   pmol(iH2S)  = Kd(iH2S)*pelm(iH)**2*pelm(iS)
+   pmol(iSiS)  = Kd(iSiS)*pelm(iSi)*pelm(iS)
+   pmol(iSiH)  = Kd(iSiH)*pelm(iSi)*pelm(iH)
+   pmol(iC2)  = Kd(iC2)*pelm(iC)**2
+   pmol(iO2)  = Kd(iO2)*pelm(iOx)**2
+   pmol(iCH)  = Kd(iCH)*pelm(iH)*pelm(iC)
+   pmol(iCOH)  = Kd(iCOH)*pelm(iOx)*pelm(iC)*pelm(iH)
+   pmol(iC2O)  = Kd(iC2O)*pelm(iOx)*pelm(iC)**2
+   pmol(iCH2)  = Kd(iCH2)*pelm(iH)**2*pelm(iC)
+   pmol(iH2CO)  = Kd(iH2CO)*pelm(iOx)*pelm(iC)*pelm(iH)**2
+   pmol(iCH3)  = Kd(iCH3)*pelm(iH)**3*pelm(iC)
+   pmol(iC2H4)  = Kd(iC2H4)*pelm(iH)**4*pelm(iC)**2
+   pmol(iNH)  = Kd(iNH)*pelm(iN)*pelm(iH)
+   pmol(iNO)  = Kd(iNO)*pelm(iOx)*pelm(iN)
+   pmol(iNCO)  = Kd(iNCO)*pelm(iOx)*pelm(iC)*pelm(iN)
+   pmol(iHCNO)  = Kd(iHCNO)*pelm(iOx)*pelm(iC)*pelm(iH)*pelm(iN)
+   pmol(iC2N)  = Kd(iC2N)*pelm(iN)*pelm(iC)**2
+   pmol(iC2N2)  = Kd(iC2N2)*pelm(iN)**2*pelm(iC)**2
+   pmol(iHNO)  = Kd(iHNO)*pelm(iOx)*pelm(iH)*pelm(iN)
+   pmol(iHNO2)  = Kd(iHNO2)*pelm(iOx)**2*pelm(iH)*pelm(iN)
+   pmol(iHNO3)  = Kd(iHNO3)*pelm(iOx)**3*pelm(iH)*pelm(iN)
+   pmol(iNH2)  = Kd(iNH2)*pelm(iN)*pelm(iH)**2
+   pmol(iNO2)  = Kd(iNO2)*pelm(iN)*pelm(iOx)**2
+   pmol(iNO3)  = Kd(iNO3)*pelm(iN)*pelm(iOx)**3
+   pmol(iN2O)  = Kd(iN2O)*pelm(iN)**2*pelm(iOx)
+   pmol(iN2O4)  = Kd(iN2O4)*pelm(iN)**2*pelm(iOx)**4
+   pmol(iMgH)  = Kd(iMgH)*pelm(iH)*pelm(iMg)
+   pmol(iMgOH)  = Kd(iMgOH)*pelm(iH)*pelm(iMg)*pelm(iOx)
+   pmol(iMgO2H2)  = Kd(iMgO2H2)*pelm(iH)**2*pelm(iMg)*pelm(iOx)**2
+   pmol(iMgN)  = Kd(iMgN)*pelm(iN)*pelm(iMg)
+   pmol(iMgO)  = Kd(iMgO)*pelm(iOx)*pelm(iMg)
+   pmol(iSiC)  = Kd(iSiC)*pelm(iC)*pelm(iSi)
+   pmol(iSiH2)  = Kd(iSiH2)*pelm(iH)**2*pelm(iSi)
+   pmol(iSiH3)  = Kd(iSiH3)*pelm(iH)**3*pelm(iSi)
+   pmol(iSiN)  = Kd(iSiN)*pelm(iN)*pelm(iSi)
+   pmol(iSiO2)  = Kd(iSiO2)*pelm(iOx)**2*pelm(iSi)
+   pmol(iFeO)  = Kd(iFeO)*pelm(iOx)*pelm(iFe)
+   pmol(iFeO2H2)  = Kd(iFeO2H2)*pelm(iH)**2*pelm(iFe)*pelm(iOx)**2
+   pmol(iCOS)  = Kd(iCOS)*pelm(iOx)*pelm(iC)*pelm(iS)
+   pmol(iCS)  = Kd(iCS)*pelm(iS)*pelm(iC)
+   pmol(iCS2)  = Kd(iCS2)*pelm(iC)*pelm(iS)**2
+   pmol(iFeS)  = Kd(iFeS)*pelm(iS)*pelm(iFe)
+   pmol(iH2SO4)  = Kd(iH2SO4)*pelm(iH)**2*pelm(iS)*pelm(iOx)**4
+   pmol(iMgS)  = Kd(iMgS)*pelm(iS)*pelm(iMg)
+   pmol(iSN)  = Kd(iSN)*pelm(iN)*pelm(iS)
+   pmol(iSO)  = Kd(iSO)*pelm(iOx)*pelm(iS)
+   pmol(iSO2)  = Kd(iSO2)*pelm(iOx)**2*pelm(iS)
+   pmol(iSO3)  = Kd(iSO3)*pelm(iOx)**3*pelm(iS)
+
+   nit = nit + 1
+   if (nit == 200) exit
+
+enddo
 end subroutine chemical_equilibrium
 
 
