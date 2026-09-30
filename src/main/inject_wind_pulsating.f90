@@ -212,6 +212,9 @@ subroutine init_inject(ierr)
 
  n_shells_bnd   = min(iboundary_spheres, nshells)
  n_shells_total = nshells - n_shells_bnd
+ allocate(npart_per_boundary_shell(n_shells_bnd), shell_radii_bnd(n_shells_bnd))
+ allocate(npart_per_shell(n_shells_total), shell_radii_gas(n_shells_total))
+ allocate(delta_r_radial(nshells))
  npart_per_boundary_shell = tmp_n(1:n_shells_bnd)
  shell_radii_bnd          = tmp_r(1:n_shells_bnd)
  npart_per_shell          = tmp_n(n_shells_bnd+1:nshells)

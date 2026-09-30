@@ -28,33 +28,32 @@ module wind_pulsating
  real :: Mstar_cgs, Rstar_cgs, Tstar_cgs, r_inner, Star_gamma, Star_mu, rho_inner_cgs
  real, dimension(:,:), allocatable, public :: stellar_1D
 
+ ! columns of stellar_1D: r, rho, P, u, T
+ integer, parameter :: ncols = 5
+
+ ! default relative change in any quantity before a new profile point is stored
+ real, parameter :: eps_default = 0.01
+
  type stellar_state
-    real :: r, r0, Rstar, rho, P, u, T
-    integer :: nsteps
-    logical :: error
+    real :: r, rho, P, u, T
  end type stellar_state
 
 contains
 
 subroutine setup_star(Mstar_in, Tstar_in, Rstar_in, r_min, mu_in, gamma_in, rho_inner_in, rho_power_in)
- use physcon, only:au, solarm
-
  real, intent(in)           :: Mstar_in, Tstar_in, Rstar_in, r_min, mu_in, gamma_in, rho_inner_in
  real, intent(in), optional :: rho_power_in
 
  Mstar_cgs     = Mstar_in
  Rstar_cgs     = Rstar_in
- Tstar_cgs     = Tstar_in 
+ Tstar_cgs     = Tstar_in
  r_inner       = r_min
  Star_gamma    = gamma_in
  Star_mu       = mu_in
  rho_inner_cgs = rho_inner_in
 
- if (present(rho_power_in)) then
-    rho_power = rho_power_in
- else
-    rho_power = 2.0
- endif
+ rho_power = 2.0
+ if (present(rho_power_in)) rho_power = rho_power_in
 
  print *, "Setting up star with parameters:"
  print *, "Rstar_cgs  :", Rstar_cgs
@@ -83,7 +82,6 @@ end function calc_C_rho
 !-----------------------------------------------------------------------
 real function enclosed_env_mass(r, C_rho)
  use physcon, only:pi
-
  real, intent(in) :: r, C_rho
  real :: exponent
 
@@ -98,19 +96,28 @@ end function enclosed_env_mass
 !
 !-----------------------------------------------------------------------
 real function region_mass(r_a_code, r_b_code)
- use units,   only:udist, umass
- use physcon, only:au
-
+ use units, only:udist, umass
  real, intent(in) :: r_a_code, r_b_code
- real :: r_a_cgs, r_b_cgs, C_rho
+ real :: C_rho
 
- r_a_cgs = r_a_code * udist
- r_b_cgs = r_b_code * udist
- C_rho   = calc_C_rho()
-
- region_mass = (enclosed_env_mass(r_b_cgs, C_rho) - enclosed_env_mass(r_a_cgs, C_rho)) / umass
+ C_rho       = calc_C_rho()
+ region_mass = (enclosed_env_mass(r_b_code*udist, C_rho) - enclosed_env_mass(r_a_code*udist, C_rho)) / umass
 
 end function region_mass
+
+!-----------------------------------------------------------------------
+!
+!  Set u and T from P and rho using the ideal gas law
+!
+!-----------------------------------------------------------------------
+subroutine set_u_and_T(state)
+ use physcon, only:kboltz, mass_proton_cgs
+ type(stellar_state), intent(inout) :: state
+
+ state%u = state%P / (state%rho * (Star_gamma - 1.))
+ state%T = Star_mu * mass_proton_cgs / kboltz * (Star_gamma - 1.) * state%u
+
+end subroutine set_u_and_T
 
 !-----------------------------------------------------------------------
 !
@@ -122,19 +129,12 @@ end function region_mass
 subroutine init_atmosphere(state)
  use physcon, only:kboltz, mass_proton_cgs
  type(stellar_state), intent(out) :: state
- real :: C_rho, rho_outer_cgs
-
- C_rho         = calc_C_rho()
- rho_outer_cgs = C_rho / Rstar_cgs**rho_power
 
  ! Anchor at outer boundary with ideal gas law
  state%r   = Rstar_cgs
- state%r0  = Rstar_cgs
- state%Rstar = Rstar_cgs
- state%rho = rho_outer_cgs
- state%P   = rho_outer_cgs * kboltz * Tstar_cgs / (Star_mu * mass_proton_cgs)
- state%u   = state%P / (state%rho * (Star_gamma - 1.))
- state%T   = Star_mu * mass_proton_cgs / kboltz * (Star_gamma - 1.) * state%u
+ state%rho = calc_C_rho() / Rstar_cgs**rho_power
+ state%P   = state%rho * kboltz * Tstar_cgs / (Star_mu * mass_proton_cgs)
+ call set_u_and_T(state)
 
  print *, ""
  print *, "Outer boundary conditions (integration start):"
@@ -143,9 +143,6 @@ subroutine init_atmosphere(state)
  print *, " P    (outer) :", state%P
  print *, " T    (outer) :", state%T
  print *, ""
-
- state%nsteps = 1
- state%error  = .false.
 
 end subroutine init_atmosphere
 
@@ -156,73 +153,80 @@ end subroutine init_atmosphere
 !
 !-----------------------------------------------------------------------
 subroutine stellar_step(state, r_new)
- use physcon, only:Gg, kboltz, mass_proton_cgs
-
+ use physcon, only:Gg
  type(stellar_state), intent(inout) :: state
  real, intent(in) :: r_new
- real :: dr, r_mid, rho_mid, dP, C_rho, M_enc
+ real :: r_mid, rho_mid, C_rho, M_enc
 
- dr    = r_new - state%r
- r_mid = 0.5 * (state%r + r_new)
-
+ r_mid   = 0.5 * (state%r + r_new)
  C_rho   = calc_C_rho()
  rho_mid = C_rho / r_mid**rho_power
+ M_enc   = Mstar_cgs + enclosed_env_mass(r_mid, C_rho)
 
- M_enc = Mstar_cgs + enclosed_env_mass(r_mid, C_rho)
- dP = -Gg * (M_enc * rho_mid / r_mid**2) * dr
-
+ state%P   = state%P - Gg * (M_enc * rho_mid / r_mid**2) * (r_new - state%r)
  state%r   = r_new
- state%P   = state%P + dP
  state%rho = C_rho / state%r**rho_power
- state%u   = state%P / (state%rho * (Star_gamma - 1.))
- state%T   = Star_mu * mass_proton_cgs / kboltz * (Star_gamma - 1.) * state%u
-
- state%nsteps = state%nsteps + 1
+ call set_u_and_T(state)
 
 end subroutine stellar_step
+
+!-----------------------------------------------------------------------
+!
+!  Pack a stellar state into an array with the column order of stellar_1D
+!
+!-----------------------------------------------------------------------
+function state_to_array(state) result(array)
+ type(stellar_state), intent(in) :: state
+ real :: array(ncols)
+
+ array = [state%r, state%rho, state%P, state%u, state%T]
+
+end function state_to_array
 
 !-----------------------------------------------------------------------
 !
 !  Integrate the hydrostatic equilibrium equation inward from Rstar to r_inner,
 !  then reverse the array so it runs from r_inner to Rstar.
 !
+!  n is the number of integration steps. A point is only stored once any
+!  quantity (r, rho, P, u, T) has changed by more than a relative amount
+!  eps (default eps_default) since the last stored point, so the stored
+!  profile has at most n points. The innermost point is always stored.
+!
 !-----------------------------------------------------------------------
-subroutine calc_stellar_profile(n)
- integer, intent(in) :: n
+subroutine calc_stellar_profile(n, eps_in)
+ integer, intent(in)        :: n
+ real,    intent(in), optional :: eps_in
  type(stellar_state) :: state
- real, dimension(:,:), allocatable :: tmp
- integer :: i
- real :: r_new, dr
+ real, allocatable   :: tmp(:,:)
+ real    :: dr, eps, new(ncols)
+ integer :: i, nstored
+
+ eps = eps_default
+ if (present(eps_in)) eps = eps_in
 
  call init_atmosphere(state)
-
- allocate(tmp(5, n))
+ allocate(tmp(ncols, n))
 
  ! dr is negative — stepping inward
  dr = (r_inner - Rstar_cgs) / real(n-1)
 
- tmp(1, 1) = state%r
- tmp(2, 1) = state%rho
- tmp(3, 1) = state%P
- tmp(4, 1) = state%u
- tmp(5, 1) = state%T
-
+ nstored   = 1
+ tmp(:, 1) = state_to_array(state)
  do i = 2, n
-    r_new = Rstar_cgs + real(i-1) * dr
-    call stellar_step(state, r_new)
-
-    tmp(1, i) = state%r
-    tmp(2, i) = state%rho
-    tmp(3, i) = state%P
-    tmp(4, i) = state%u
-    tmp(5, i) = state%T
+    call stellar_step(state, Rstar_cgs + real(i-1) * dr)
+    new = state_to_array(state)
+    if (i == n .or. any(abs(new - tmp(:, nstored)) > eps * abs(tmp(:, nstored)))) then
+       nstored = nstored + 1
+       tmp(:, nstored) = new
+    endif
  enddo
 
- ! Reverse so stellar_1D runs from r_inner (index 1) to Rstar (index n)
+ ! Reverse so stellar_1D runs from r_inner (index 1) to Rstar (index nstored)
  if (allocated(stellar_1D)) deallocate(stellar_1D)
- allocate(stellar_1D(5, n))
- do i = 1, n
-    stellar_1D(:, i) = tmp(:, n+1-i)
+ allocate(stellar_1D(ncols, nstored))
+ do i = 1, nstored
+    stellar_1D(:, i) = tmp(:, nstored+1-i)
  enddo
  deallocate(tmp)
 
@@ -232,9 +236,10 @@ subroutine calc_stellar_profile(n)
  print *, " rho  (inner) :", stellar_1D(2, 1)
  print *, " P    (inner) :", stellar_1D(3, 1)
  print *, " T    (inner) :", stellar_1D(5, 1)
+ print *, " points stored:", nstored, " of ", n, " integration steps (eps =", eps, ")"
  print *, ""
 
- call save_stellarprofile(n, 'stellar_profile1D.dat')
+ call save_stellarprofile(nstored, 'stellar_profile1D.dat')
 
 end subroutine calc_stellar_profile
 
@@ -247,40 +252,32 @@ subroutine interp_stellar_profile(r, rho, P, u, T)
  use units,       only:udist, unit_density, unit_ergg, unit_pressure
  use table_utils, only:find_nearest_index, interp_1d
  use io,          only:fatal
-
  real, intent(in)  :: r
  real, intent(out) :: rho, P, u, T
- real :: r_cgs
- integer :: indx, n
+ real    :: r_cgs, vals(ncols)
+ integer :: indx, n, j
  character(len=*), parameter :: label = 'interp_stellar_profile'
 
- if (.not. allocated(stellar_1D)) then
-    call fatal(label, 'stellar_1D not allocated. Call setup_star first.')
- endif
+ if (.not. allocated(stellar_1D)) call fatal(label, 'stellar_1D not allocated. Call setup_star first.')
 
  n     = size(stellar_1D, 2)
  r_cgs = r * udist
 
- if (r_cgs <= stellar_1D(1,1)) then
-    rho = stellar_1D(2, 1) / unit_density
-    P   = stellar_1D(3, 1) / unit_pressure
-    u   = stellar_1D(4, 1) / unit_ergg
-    T   = stellar_1D(5, 1)
-    return
+ if (r_cgs <= stellar_1D(1, 1)) then
+    vals = stellar_1D(:, 1)
  elseif (r_cgs >= stellar_1D(1, n)) then
-    rho = stellar_1D(2, n) / unit_density
-    P   = stellar_1D(3, n) / unit_pressure
-    u   = stellar_1D(4, n) / unit_ergg
-    T   = stellar_1D(5, n)
-    return
+    vals = stellar_1D(:, n)
+ else
+    call find_nearest_index(stellar_1D(1,:), r_cgs, indx)
+    do j = 2, ncols
+       vals(j) = interp_1d(r_cgs, stellar_1D(1,indx), stellar_1D(1,indx+1), stellar_1D(j,indx), stellar_1D(j,indx+1))
+    enddo
  endif
 
- call find_nearest_index(stellar_1D(1,:), r_cgs, indx)
-
- rho = interp_1d(r_cgs, stellar_1D(1,indx), stellar_1D(1,indx+1), stellar_1D(2,indx), stellar_1D(2,indx+1)) / unit_density
- P   = interp_1d(r_cgs, stellar_1D(1,indx), stellar_1D(1,indx+1), stellar_1D(3,indx), stellar_1D(3,indx+1)) / unit_pressure
- u   = interp_1d(r_cgs, stellar_1D(1,indx), stellar_1D(1,indx+1), stellar_1D(4,indx), stellar_1D(4,indx+1)) / unit_ergg
- T   = interp_1d(r_cgs, stellar_1D(1,indx), stellar_1D(1,indx+1), stellar_1D(5,indx), stellar_1D(5,indx+1))
+ rho = vals(2) / unit_density
+ P   = vals(3) / unit_pressure
+ u   = vals(4) / unit_ergg
+ T   = vals(5)
 
 end subroutine interp_stellar_profile
 
@@ -290,59 +287,20 @@ end subroutine interp_stellar_profile
 !
 !-----------------------------------------------------------------------
 subroutine save_stellarprofile(n, filename)
- use physcon, only:au
- use io,      only:iverbose
- integer, intent(in) :: n
+ use io, only:iverbose
+ integer,      intent(in) :: n
  character(*), intent(in) :: filename
- integer :: i, nwrite
- integer, parameter :: iunit = 1338
+ integer :: i, iunit
 
- if (iverbose >= 1) then
-    write(*,'("Saving 1D stellar model to ",A)') trim(filename)
- endif
+ if (iverbose >= 1) write(*,'("Saving 1D stellar model to ",A)') trim(filename)
 
- open(unit=iunit, file=filename, status='replace')
- call filewrite_stellar_header(iunit, nwrite)
-
+ open(newunit=iunit, file=filename, status='replace')
+ write(iunit,'(5(a15))') 'r','rho','P','u','T'
  do i = 1, n
-    call filewrite_stellar_state(iunit, nwrite, i)
+    write(iunit,'(5(1x,es14.6E3:))') stellar_1D(:, i)
  enddo
  close(iunit)
 
 end subroutine save_stellarprofile
-
-subroutine filewrite_stellar_header(iunit, nwrite)
- integer, intent(in)  :: iunit
- integer, intent(out) :: nwrite
- character(len=20) :: fmt
-
- nwrite = 5
- write(fmt,*) nwrite
- write(iunit,'('// adjustl(fmt) //'(a15))') 'r','rho','P','u','T'
-
-end subroutine filewrite_stellar_header
-
-subroutine state_to_array(i, array)
- integer, intent(in)  :: i
- real,    intent(out) :: array(:)
-
- array(1) = stellar_1D(1, i)
- array(2) = stellar_1D(2, i)
- array(3) = stellar_1D(3, i)
- array(4) = stellar_1D(4, i)
- array(5) = stellar_1D(5, i)
-
-end subroutine state_to_array
-
-subroutine filewrite_stellar_state(iunit, nwrite, i)
- integer, intent(in) :: iunit, nwrite, i
- real :: array(nwrite)
- character(len=20) :: fmt
-
- call state_to_array(i, array)
- write(fmt,*) nwrite
- write(iunit,'('// adjustl(fmt) //'(1x,es14.6E3:))') array(1:nwrite)
-
-end subroutine filewrite_stellar_state
 
 end module wind_pulsating
