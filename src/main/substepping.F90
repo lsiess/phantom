@@ -1103,7 +1103,7 @@ subroutine cooling_abundances_update(i,pmassi,xyzh,vxyzu,eos_vars,abundance,nucl
  real,         intent(in)    :: dt,pmassi
  integer,      intent(in)    :: i
 
- real :: dudtcool,rhoi,dphot
+ real :: dudtcool,rhoi,dphot,pH2
  real :: abundi(nabn)
 
  dudtcool = 0.
@@ -1136,7 +1136,7 @@ subroutine cooling_abundances_update(i,pmassi,xyzh,vxyzu,eos_vars,abundance,nucl
     eos_vars(imu,i)    = condensation(icmu,i)
     eos_vars(igamma,i) = condensation(icgamma,i)
  elseif (update_muGamma) then
-    call calc_muGamma(rhoi,eos_vars(itemp,i),eos_vars(imu,i),eos_vars(igamma,i),pH,pH_tot)
+    call calc_muGamma(rhoi,eos_vars(itemp,i),eos_vars(imu,i),eos_vars(igamma,i),pH,pH_tot,pH2)
  endif
  !
  ! COOLING

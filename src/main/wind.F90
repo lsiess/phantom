@@ -71,7 +71,7 @@ subroutine setup_wind(params,u_to_T,rsonic,tsonic,stype)
  real,              intent(in)    :: u_to_T
  real,              intent(out)   :: rsonic, tsonic
  real :: tau_lucy_init,time_end,Rst
- real :: rho_cgs, wind_mu,T0!, pH, pH_tot
+ real :: rho_cgs,wind_mu,T0
 
  wind_gamma = gamma
  u_to_temperature_ratio = u_to_T
@@ -83,7 +83,7 @@ subroutine setup_wind(params,u_to_T,rsonic,tsonic,stype)
     rho_cgs      = params%Mdot/(4.*pi*params%Rinject**2*params%vwind)
     wind_gamma   = gamma
     wind_mu      = gmw
-    call init_muGamma(rho_cgs,T0,wind_mu,wind_gamma)
+    if (idust_opacity == 2 .or. idust_opacity == 3) call init_muGamma(rho_cgs,T0,wind_mu,wind_gamma)
     print *,'reset gamma : ',gamma,wind_gamma
     print *,'reset gmw   : ',gmw,wind_mu
     params%Twind = T0
@@ -171,7 +171,7 @@ subroutine init_wind(params,time_end,state,tau_lucy_init)
  state%K2         = 0.
  state%mu         = gmw
  state%gamma      = wind_gamma
- if (idust_opacity == 2 .or. idust_opacity == 3) call init_muGamma(state%rho,state%Tg, state%mu,state%gamma)
+ if (idust_opacity == 2 .or. idust_opacity == 3) call init_muGamma(state%rho,state%Tg,state%mu,state%gamma)
  state%alpha = state%alpha_Edd + params%alpha_rad
  if (idust_opacity == 2) then
     allocate(state%dust_array(n_nucleation))
@@ -225,7 +225,7 @@ subroutine wind_step(params,state)
 
  type(wind_state),  intent(inout) :: state
  type(wind_params), intent(in)    :: params
- real :: rvT(3), dt_next, v_old, dlnQ_dlnT, Q_code, pH, pH_tot
+ real :: rvT(3), dt_next, v_old, dlnQ_dlnT, Q_code, pH, pH_tot, pH2
  real :: alpha_old, kappa_old, rho_old, Q_old, tau_lucy_bounded, mu_old, dt_old
 
  rvT(1) = state%r
@@ -260,14 +260,14 @@ subroutine wind_step(params,state)
     call  dust_growth_condensation(state%Tg, state%rho, state%dt,wind_CO_ratio,&
            dust_array(ifol),dust_array(ifqu),dust_array(ifpy),dust_array(ifir),dust_array(ifsc),dust_array(ifcarb),&
            dust_array(irol),dust_array(irqu),dust_array(irpy),dust_array(irir),dust_array(irsc),dust_array(ircarb),&
-           dust_array(ickappa),dust_array(icmu),dust_array(icgamma))
+           dust_array(ickappa),dust_array(icmu),dust_array(icgamma),pH_tot)
     state%mu    = state%dust_array(icmu)
     state%gamma = state%dust_array(icgamma)
     state%kappa = calc_kappa_dust(state%dust_array(idK3), state%Tdust, state%rho)
     state%dust_array(icalpha) = state%alpha_Edd+params%alpha_rad
  else
     if (idust_opacity == 1) state%kappa = calc_kappa_bowen(state%Tdust)
-    if (update_muGamma) call calc_muGamma(state%rho,state%Tg,state%mu,state%gamma,pH,pH_tot)
+    if (update_muGamma) call calc_muGamma(state%rho,state%Tg,state%mu,state%gamma,pH,pH_tot,pH2)
  endif
 
  if (itau_alloc == 1) then
@@ -384,7 +384,7 @@ subroutine wind_step(params,state)
 
  type(wind_state),  intent(inout) :: state
  type(wind_params), intent(in)    :: params
- real :: rvT(3), dt_next, v_old,dlnQ_dlnT,Q_code,pH,pH_tot
+ real :: rvT(3), dt_next, v_old,dlnQ_dlnT,Q_code,pH,pH_tot,pH2
  real :: alpha_old,kappa_old,rho_old,Q_old,tau_lucy_bounded
 
  kappa_old  = state%kappa
@@ -400,14 +400,14 @@ subroutine wind_step(params,state)
          state%dust_array(ifol),state%dust_array(ifqu),state%dust_array(ifpy),state%dust_array(ifir),&
          state%dust_array(ifsc),state%dust_array(ifcarb),state%dust_array(irol),state%dust_array(irqu),&
          state%dust_array(irpy),state%dust_array(irir),state%dust_array(irsc),state%dust_array(ircarb),&
-         state%dust_array(ickappa),state%dust_array(icmu),state%dust_array(icgamma))
+         state%dust_array(ickappa),state%dust_array(icmu),state%dust_array(icgamma),pH_tot)
     state%mu    = state%dust_array(icmu)
     state%gamma = state%dust_array(icgamma)
     state%kappa = calc_kappa_dust(state%dust_array(idK3), state%Tdust, state%rho)
     state%dust_array(icalpha) = state%alpha_Edd+params%alpha_rad
  else
     if (idust_opacity == 1) state%kappa     = calc_kappa_bowen(state%Tdust)
-    if (update_muGamma) call calc_muGamma(state%rho,state%Tg,state%mu,state%gamma,pH,pH_tot)
+    if (update_muGamma) call calc_muGamma(state%rho,state%Tg,state%mu,state%gamma,pH,pH_tot,pH2)
  endif
 
  if (itau_alloc == 1) then

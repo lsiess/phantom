@@ -84,7 +84,7 @@ subroutine test_cooling_solvers(dumpfile)
 
  integer, parameter :: ndt = 100
  real :: tstart,tlast,dtstep,dti(ndt),tcool
- real :: rho, T_gas, rho_gas, pH, pH2   !rho in code units
+ real :: rho, T_gas, rho_gas   !rho in code units
  real :: mu, gamma
  real :: K2, kappa       !cgs
  real :: Q, dlnQ_dlnT
@@ -127,7 +127,7 @@ subroutine test_cooling_solvers(dumpfile)
 
  call init_cooling_solver(ierr)
  call set_abundances
- call init_muGamma(rho_gas, T_gas, mu, gamma, pH, pH2)
+ call init_muGamma(rho_gas, T_gas, mu, gamma)
 
  print "(29(a,/))", &
       'Select cooling function',&
@@ -293,7 +293,7 @@ end function get_Texact
 subroutine get_rate
 
  real :: T_gas, rho_gas, mu, gamma, nH, nH2, nHe, nCO, nH2O, nOH, kappa_gas
- real :: pH, pH2
+ real :: pH, pH2, pH_tot
  real :: T_dust, v_drift, d2g, a, rho_grain, kappa_dust
  real :: JL
  real :: n_gas
@@ -302,7 +302,7 @@ subroutine get_rate
  rho_gas    = 1.d-15
 
  call set_abundances
- call init_muGamma(rho_gas, T_gas, mu, gamma, pH, pH2)
+ call init_muGamma(rho_gas, T_gas, mu, gamma, pH_tot, pH, pH2)
  nH         = pH  *(patm*MPH(eps, Aw))/(mu*mass_proton_cgs*kboltz*T_gas)
  nH2        = pH2 *(patm*MPH(eps, Aw))/(mu*mass_proton_cgs*kboltz*T_gas)
 

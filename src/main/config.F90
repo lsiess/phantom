@@ -267,6 +267,7 @@ module dim
 !--------------------
 ! Dust formation
 !--------------------
+ integer :: ndust_prop      = 0
  logical :: do_nucleation   = .false.
  logical :: do_condensation = .false.
  logical :: update_muGamma  = .false.

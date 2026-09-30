@@ -63,7 +63,7 @@ subroutine set_abundances
 end subroutine set_abundances
 
 !----------------------------------------------------------------
-subroutine init_muGamma(rho_cgs, T, mu, gamma, pH_tot, pH, pH2)
+subroutine init_muGamma(rho_cgs, T, mu, gamma, ppH_tot, ppH, ppH2)
 !----------------------------------------------------------------
 ! all quantities are in cgs
  use dim, only: do_nucleation,do_condensation
@@ -71,13 +71,18 @@ subroutine init_muGamma(rho_cgs, T, mu, gamma, pH_tot, pH, pH2)
  use chemistry_condensation, only:init_muGamma_condensation
  real, intent(in)              :: rho_cgs
  real, intent(inout)           :: T, mu, gamma
- real, intent(out), optional   :: pH_tot, pH,pH2
+ real, intent(out), optional   :: ppH_tot, ppH, ppH2
+ real :: pH_tot,pH,pH2
 
  if (do_nucleation) then
-    call init_muGamma_moments(rho_cgs, T, mu, gamma)
+    call init_muGamma_moments(rho_cgs,T,mu,gamma)
  elseif (do_condensation) then
-    call init_muGamma_condensation(rho_cgs, T, mu, gamma, pH_tot, pH, pH2)
+    call init_muGamma_condensation(rho_cgs,T,mu,gamma,pH_tot,pH,pH2)
  endif
+ if (present(ppH_tot)) ppH_tot = pH_tot
+ if (present(ppH))     ppH     = pH
+ if (present(ppH2))    ppH2    = pH2
+
 end subroutine init_muGamma
 
 !----------------------------------------------------------------
@@ -89,13 +94,17 @@ subroutine calc_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot, pH2, pressure)
  use chemistry_condensation, only:calc_muGamma_condensation
  real, intent(in)              :: rho_cgs
  real, intent(inout)           :: T, mu, gamma
- real, intent(out)             :: pH, pH_tot
- real, intent(out), optional   :: pH2, pressure
+ real, intent(out)             :: pH, pH_tot, pH2
+ real, intent(out), optional   :: pressure
 
  if (do_nucleation) then
-    call calc_muGamma_moments(rho_cgs, T, mu, gamma, pH, pH_tot)
+    call calc_muGamma_moments(rho_cgs, T, mu, gamma, pH, pH_tot, pH2)
  elseif (do_condensation) then
-    call calc_muGamma_condensation(rho_cgs, T, mu, gamma, pH, pH_tot, pH2, pressure)
+    if (present(pressure)) then
+       call calc_muGamma_condensation(rho_cgs, T, mu, gamma, pH, pH_tot, pH2, pressure)
+    else
+       call calc_muGamma_condensation(rho_cgs, T, mu, gamma, pH, pH_tot, pH2)
+    endif
  endif
 end subroutine calc_muGamma
 
@@ -103,9 +112,10 @@ end subroutine calc_muGamma
 subroutine init_dust_formation
 !----------------------------------------------------------------
 !initialize dust formation arrays
- use dim, only: do_nucleation,do_condensation
- use part,  only:npart,nucleation,n_nucleation,idmu,idgamma,condensation,n_condensation,icgamma
- use eos,   only:gamma,gmw
+ use dim,  only: do_nucleation,do_condensation,ndust_prop
+ use part, only:npart,nucleation,n_nucleation,idmu,idgamma,&
+                condensation,n_condensation,icmu,icgamma
+ use eos,  only:gamma,gmw
  integer :: i
  real :: tmp_nucleation(n_nucleation),tmp_condensation(n_condensation)
 
@@ -114,15 +124,18 @@ subroutine init_dust_formation
  gamma = 5./3.
  !initialize nucleation array
  if (do_nucleation) then
-    tmp_nucleation = 0.
+    ndust_prop              = n_nucleation
+    tmp_nucleation          = 0.
     tmp_nucleation(idmu)    = gmw
     tmp_nucleation(idgamma) = gamma
     do i=1,npart
        nucleation(:,i) = tmp_nucleation(:)
     enddo
  elseif (do_condensation) then
-    tmp_condensation = 0.
-    tmp_condensation(1:6) = a_init_dust !initial dust radius (1nm)
+    ndust_prop                = n_condensation
+    tmp_condensation          = 0.
+    tmp_condensation(1:6)     = a_init_dust !initial dust radius (1nm)
+    tmp_condensation(icmu)    = gmw
     tmp_condensation(icgamma) = gamma
     do i=1,npart
        condensation(:,i) = tmp_condensation(:)
@@ -279,8 +292,9 @@ end subroutine write_options_dust_formation
 !-----------------------------------------------------------------------
 subroutine read_options_dust_formation(db,nerr)
  use io,      only:error
- use dim,     only:nucleation,do_nucleation,inucleation,do_condensation,icondensation,store_dust_temperature
- use eos,      only:ieos
+ use dim,     only:nucleation,do_nucleation,inucleation,condensation,&
+                   do_condensation,icondensation,store_dust_temperature
+ use eos,     only:ieos
  use infile_utils, only:inopts,read_inopt
  type(inopts), intent(inout) :: db(:)
  integer,      intent(inout) :: nerr
@@ -305,12 +319,12 @@ subroutine read_options_dust_formation(db,nerr)
     do_nucleation = .false.
     icondensation = 1
  endif
- if (nucleation .and. idust_opacity == 2) then
+ if ((nucleation .or. condensation) .and. (idust_opacity == 2 .or. idust_opacity == 3)) then
     call read_inopt(kappa_gas,'kappa_gas',db,errcount=nerr,min=0.)
     call read_inopt(wind_CO_ratio,'wind_CO_ratio',db,errcount=nerr,min=0.)
  endif
  if (idust_opacity > 0) store_dust_temperature = .true.
- if (do_nucleation .and. ieos == 5) call error('read_infile','with nucleation you must use ieos = 2')
+ if ((do_nucleation .or. do_condensation) .and. ieos == 5) call error('read_infile','with nucleation you must use ieos = 2')
 
 end subroutine read_options_dust_formation
 

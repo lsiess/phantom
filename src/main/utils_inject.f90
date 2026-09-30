@@ -49,7 +49,7 @@ end function get_neighb_distance
 !-----------------------------------------------------------------------
 subroutine inject_geodesic_sphere(sphere_number,first_particle,ires,r,v,u, &
              npart,npartoftype,xyzh,vxyzu,rho,itype,x0,v0, &
-             isink,JKmuS,rstar,mstar,omega_vec,vwind_terminal)
+             isink,dust_prop,rstar,mstar,omega_vec,vwind_terminal)
  use icosahedron, only:fibonacci_sphere,fibonacci_jets
  use partinject,  only:add_or_update_particle
  use part,        only:hn,massoftype
@@ -60,7 +60,7 @@ subroutine inject_geodesic_sphere(sphere_number,first_particle,ires,r,v,u, &
  real,    intent(inout) :: xyzh(:,:), vxyzu(:,:)
  integer, intent(inout) :: npart, npartoftype(:)
  real,    intent(in), optional :: rstar,mstar,omega_vec(3),vwind_terminal
- real,    intent(in), optional :: JKmuS(:)
+ real,    intent(in), optional :: dust_prop(:)
 
  real :: omega,rotation_speed_crit,wind_rotation_speed,h_sim
  real :: radial_unit_vector(3),radial_unit_vector_rotated(3),omega_axis(3)
@@ -127,7 +127,7 @@ subroutine inject_geodesic_sphere(sphere_number,first_particle,ires,r,v,u, &
     particle_velocity = particle_velocity + v0
 
     call add_or_update_particle(itype,particle_position,particle_velocity, &
-         h_sim,u,first_particle+j,npart,npartoftype,xyzh,vxyzu,JKmuS,isink)
+         h_sim,u,first_particle+j,npart,npartoftype,xyzh,vxyzu,dust_prop,isink)
  enddo
 
 end subroutine inject_geodesic_sphere

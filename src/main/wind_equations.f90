@@ -297,15 +297,15 @@ subroutine calc_dvT_dr(r,v,T0,Rstar_cgs,Mdot_cgs,mu0,gamma0,alpha,dalpha_dr,Q,dQ
  real, intent(out) :: dv_dr, dT_dr
  real, intent(out) :: numerator, denominator
 
- real :: AA, BB, CC, c2, T, mu, gamma, pH, pH_tot, rho_cgs
+ real :: AA, BB, CC, c2, T, mu, gamma, pH, pH_tot, rho_cgs, pH2
  real, parameter :: switch_tol = 3.d-2 !the solution is very sensitive to this parameter!
 
  T = T0
  mu = mu0
  gamma = gamma0
- if (update_muGamma .or. idust_opacity == 2) then
+ if (update_muGamma .or. idust_opacity == 2 .or. idust_opacity == 3) then
     rho_cgs = Mdot_cgs/(4.*pi*r**2*v)
-    call calc_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot)
+    call calc_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot, pH2)
  endif
 
 !Temperature law

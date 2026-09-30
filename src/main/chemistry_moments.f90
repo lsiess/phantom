@@ -154,11 +154,11 @@ subroutine chemical_equilibrium_light(rho_cgs, T, epsC, pC, pC2, pC2H, pC2H2, mu
  real, intent(out)   :: pC, pC2, pC2H, pC2H2
  real, intent(out), optional :: nH, nH2, nHe, nCO, nH2O, nOH
  real    :: pH_tot, Kd(nMolecules+1), err, a, b, c, d
- real    :: pH, pCO, pO, pSi, pS, pTi, pN
+ real    :: pH, pCO, pO, pSi, pS, pTi, pN, pH2
  real    :: pC_old, pO_old, pSi_old, pS_old, pTi_old, cst
  integer :: i, nit
 
- call calc_muGamma_moments(rho_cgs, T, mu, gamma, pH, pH_tot)
+ call calc_muGamma_moments(rho_cgs, T, mu, gamma, pH, pH_tot, pH2)
  if (T > 1.d4) then
     pC    = eps(iC)*pH_tot
     pC2   = 0.
@@ -247,18 +247,18 @@ subroutine chemical_equilibrium_light(rho_cgs, T, epsC, pC, pC2, pC2H, pC2H2, mu
  pC2H  = pC2H*patm
  pC2H2 = pC2H2*patm
  if (present(nH)) then
-    cst  = mass_per_H/(mu*mass_proton_cgs*kboltz*T)
+    cst = patm*mass_per_H/(mu*mass_proton_cgs*kboltz*T)
     if (T < 450.) then
-       nH2 = pH_tot/2.      *patm*cst
+       nH2 = cst*pH_tot/2.
        nH  = 1.d-99
     else
-       nH   = pH            *patm*cst
-       nH2  = Kd(iH2)*pH**2 *patm*cst
+       nH   = cst*pH
+       nH2  = cst*Kd(iH2)*pH**2
     endif
-    nHe  = eps(ihe)*pH_tot  *patm*cst
-    nCO  = Kd(iCO) *pC*pO   *patm*cst
-    nH2O = Kd(iH2O)*pH**2*pO*patm*cst
-    nOH  = Kd(iOH) *pH*pO   *patm*cst
+    nHe  = cst*eps(ihe)*pH_tot
+    nCO  = cst*Kd(iCO) *pC*pO
+    nH2O = cst*Kd(iH2O)*pH**2*pO
+    nOH  = cst*Kd(iOH) *pH*pO
  endif
 end subroutine chemical_equilibrium_light
 
@@ -268,7 +268,7 @@ end subroutine chemical_equilibrium_light
 !  Calculate mean molecular weight, gamma
 !
 !----------------------------------------
-subroutine calc_muGamma_moments(rho_cgs, T, mu, gamma, pH, pH_tot)
+subroutine calc_muGamma_moments(rho_cgs, T, mu, gamma, pH, pH_tot, pH2)
 ! all quantities are in cgs
  use io,  only:fatal
  use eos, only:ieos
@@ -276,8 +276,8 @@ subroutine calc_muGamma_moments(rho_cgs, T, mu, gamma, pH, pH_tot)
 
  real, intent(in)    :: rho_cgs
  real, intent(inout) :: T, mu, gamma
- real, intent(out)   :: pH, pH_tot
- real :: KH2, pH2, x
+ real, intent(out)   :: pH, pH_tot, pH2
+ real :: KH2, x
  real :: T_old, mu_old, gamma_old, tol
  logical :: converged
  integer :: i,isolve
@@ -289,6 +289,7 @@ subroutine calc_muGamma_moments(rho_cgs, T, mu, gamma, pH, pH_tot)
  if (T > 1.d4) then
     mu     = (1.+4.*eps(iHe))/(1.+eps(iHe))
     pH     = pH_tot
+    pH2    = 0.
     if (ieos /= 17) gamma  = 5./3.
  elseif (T > 450.) then
 ! iterate to get consistently pH, T, mu and gamma
@@ -366,7 +367,7 @@ subroutine init_muGamma_moments(rho_cgs, T, mu, gamma, ppH, ppH2)
  endif
  mu    = (1.+4.*eps(iHe))*pH_tot/(pH+pH2+eps(iHe)*pH_tot)
  gamma = (5.*pH+5.*eps(iHe)*pH_tot+7.*pH2)/(3.*pH+3.*eps(iHe)*pH_tot+5.*pH2)
- call calc_muGamma_moments(rho_cgs, T, mu, gamma, pH, pH_tot)
+ call calc_muGamma_moments(rho_cgs, T, mu, gamma, pH, pH_tot, pH2)
  if (present(ppH))  ppH = pH
  if (present(ppH2)) ppH2 = pH2
 

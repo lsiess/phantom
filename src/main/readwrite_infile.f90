@@ -273,7 +273,7 @@ end subroutine read_infile
 subroutine read_options_from_db(db,nerr,logfile,dumpfile,evfile)
  use dim,              only:gr,do_radiation,compiled_with_mcfost,mhd_nonideal,&
                             use_apr,sink_radiation,maxptmass,driving,use_dust,&
-                            use_dustgrowth,nucleation,mhd_nonideal,maxvxyzu
+                            use_dustgrowth,nucleation,condensation,mhd_nonideal,maxvxyzu
  use io,               only:warn
  use infile_utils,     only:inopts,read_inopt
  use options,          only:use_porosity
@@ -349,7 +349,7 @@ subroutine read_options_from_db(db,nerr,logfile,dumpfile,evfile)
 
  ! injection and related options
  call read_options_injection(db,nerr)
- if (nucleation) call read_options_dust_formation(db,nerr)
+ if (nucleation .or. condensation) call read_options_dust_formation(db,nerr)
  if (sink_radiation) call read_options_ptmass_radiation(db,nerr)
 
  if (mhd_nonideal) call read_options_nicil(db,nerr)

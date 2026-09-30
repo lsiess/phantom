@@ -1622,6 +1622,7 @@ subroutine combine_two_particles(keep,discard)
  eos_vars(:,keep) = 0.5*(eos_vars(:,keep) + eos_vars(:,discard))
  if (store_dust_temperature) dust_temp(keep) = 0.5*(dust_temp(keep) + dust_temp(discard))
  if (do_nucleation) nucleation(:,keep) = 0.5*(nucleation(:,keep) + nucleation(:,discard))
+ if (do_condensation) condensation(:,keep) = 0.5*(condensation(:,keep) + condensation(:,discard)) !CLS NEVER TESTED
  if (itau_alloc == 1) tau(keep) = 0.5*(tau(keep) + tau(discard))
  if (itauL_alloc == 1) tau_lucy(keep) = 0.5*(tau_lucy(keep) + tau_lucy(discard))
 

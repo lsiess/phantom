@@ -459,6 +459,7 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,rho,xyzmh_ptmass,vxyz_ptmass,
  use physcon,           only:au,solarm,years
  use io,                only:fatal,iverbose,id,master
  use wind,              only:interp_wind_profile
+ use dim,               only:ndust_prop
  use part,              only:massoftype,igas,iReff,iboundary,nptmass,delete_particles_outside_sphere,&
                              delete_dead_particles_inside_radius,n_nucleation,ieject,imloss,ivwind,Bevol,Bxyz
  use partinject,        only:add_or_update_particle
@@ -479,7 +480,7 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,rho,xyzmh_ptmass,vxyz_ptmass,
  real    :: mass_of_spheres,time_between_spheres,rinject,wind_injection_speed
  character(len=*), parameter :: label = 'inject_particles'
  logical, save :: released = .false.
- real :: JKmuS(n_nucleation)
+ real :: dust_prop(ndust_prop)
 
  dum  = 0.
  dtinject = huge(dtinject)
@@ -571,7 +572,7 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,rho,xyzmh_ptmass,vxyz_ptmass,
           !call pulsating_wind_profile(time,local_time,r,v,u,rhoi,e,GM,i,inner_sphere)
        else
           if (idust_opacity == 2) then
-             call interp_wind_profile(time,local_time,r,v,u,rhoi,e,GM,fdone,isink,JKmuS)
+             call interp_wind_profile(time,local_time,r,v,u,rhoi,e,GM,fdone,isink,dust_prop)
           else
              call interp_wind_profile(time,local_time,r,v,u,rhoi,e,GM,fdone,isink)
           endif
@@ -597,7 +598,7 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,rho,xyzmh_ptmass,vxyz_ptmass,
                time,local_time,r/xyzmh_ptmass(iReff,isink),v,u,rhoi,xyzmh_ptmass(imloss,isink)/(solarm/umass)*(years/utime)
        endif
        if (idust_opacity == 2) then
-          call inject_sphere(i,ifirst,npart_per_sphere,r,v,u,npart,npartoftype,xyzh,vxyzu,rhoi,itype,x0,v0,isink,JKmuS)
+          call inject_sphere(i,ifirst,npart_per_sphere,r,v,u,npart,npartoftype,xyzh,vxyzu,rhoi,itype,x0,v0,isink,dust_prop)
        else
           call inject_sphere(i,ifirst,npart_per_sphere,r,v,u,npart,npartoftype,xyzh,vxyzu,rhoi,itype,x0,v0,isink)
        endif
@@ -662,7 +663,7 @@ end subroutine set_injected_Bfield
 !  inject gas particles and/or reset position of boundary particles
 !+
 !-----------------------------------------------------------------------
-subroutine inject_sphere(i,ifirst,ires,r,v,u,npart,npartoftype,xyzh,vxyzu,rho,itype,x0,v0,isink,JKmuS)
+subroutine inject_sphere(i,ifirst,ires,r,v,u,npart,npartoftype,xyzh,vxyzu,rho,itype,x0,v0,isink,dust_prop)
 
  use ptmass_radiation,  only:isink_radiation
  use part,              only:iTeff,dust_temp,xyzmh_ptmass,iReff,ispinx,ispiny,ispinz,ivwind
@@ -673,7 +674,7 @@ subroutine inject_sphere(i,ifirst,ires,r,v,u,npart,npartoftype,xyzh,vxyzu,rho,it
  real,    intent(in)    :: x0(3),v0(3),r,v,u,rho
  real,    intent(inout) :: xyzh(:,:),vxyzu(:,:)
  integer, intent(inout) :: npartoftype(:)
- real,    intent(in), optional :: JKmuS(:)
+ real,    intent(in), optional :: dust_prop(:)
 
  real :: rstar,mstar,omega_vec(3),vwind_terminal
 
@@ -683,9 +684,9 @@ subroutine inject_sphere(i,ifirst,ires,r,v,u,npart,npartoftype,xyzh,vxyzu,rho,it
  omega_vec = xyzmh_ptmass(ispinx:ispinz,isink)
  vwind_terminal = xyzmh_ptmass(ivwind,isink)
 
- if (present(JKmuS)) then
+ if (present(dust_prop)) then
     call inject_geodesic_sphere(i,ifirst,ires,r,v,u, &
-         npart,npartoftype,xyzh,vxyzu,rho,itype,x0,v0,isink,JKmuS, &
+         npart,npartoftype,xyzh,vxyzu,rho,itype,x0,v0,isink,dust_prop, &
          rstar=rstar,mstar=mstar,omega_vec=omega_vec,vwind_terminal=vwind_terminal)
  else
     call inject_geodesic_sphere(i,ifirst,ires,r,v,u, &

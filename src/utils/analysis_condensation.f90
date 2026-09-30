@@ -173,12 +173,12 @@ contains
          call dust_growth_condensation(T, rho_cgs, dt,wind_CO_ratio,&
               fol(timestep),fqu(timestep),fpy(timestep),fir(timestep),fsc(timestep),fcarb(timestep),&
               r_ol(timestep),r_qu(timestep),r_py(timestep),r_ir(timestep),r_sc(timestep),r_carb(timestep),&
-              kappa_dust(timestep), mu, gamma, abundance, pH_tot, pressure_cgs)
+              kappa_dust(timestep), mu, gamma, pH_tot, abundance, pressure_cgs)
         else
          call dust_growth_condensation(T, rho_cgs, dt,wind_CO_ratio,&
               fol(timestep),fqu(timestep),fpy(timestep),fir(timestep),fsc(timestep),fcarb(timestep),&
               r_ol(timestep),r_qu(timestep),r_py(timestep),r_ir(timestep),r_sc(timestep),r_carb(timestep),&
-              kappa_dust(timestep), mu, gamma, abundance, pH_tot)
+              kappa_dust(timestep), mu, gamma, pH_tot, abundance)
         endif
 
         dust_properties(1) = fol(timestep)

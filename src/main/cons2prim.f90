@@ -240,8 +240,8 @@ subroutine cons2prim_everything(npart,xyzh,vxyzu,dvdx,rad,eos_vars,radprop,&
                                 Bevol,Bxyz,dustevol,dustfrac,alphaind)
  use part,              only:isdead_or_accreted,igas,rho,igasP,iradP,iradxi,ics,imu,iX,iZ,&
                              iohm,ihall,nden_nimhd,eta_nimhd,iambi,get_partinfo,iphase,this_is_a_test,&
-                             ndustsmall,itemp,ikappa,idmu,idgamma,icmu,icgamma,icv
- use part,              only:nucleation,igamma,condensation
+                             ndustsmall,itemp,igamma,ikappa,icv
+ use part,              only:nucleation,condensation,icgamma,idgamma,icmu,idmu
  use eos,               only:equationofstate,ieos,eos_outputs_mu,done_init_eos,init_eos,gmw,X_in,Z_in,gamma
  use radiation_utils,   only:radiation_equation_of_state,get_opacity
  use dim,               only:mhd,maxvxyzu,maxphase,maxp,use_dustgrowth,do_condensation,&
@@ -354,7 +354,8 @@ subroutine cons2prim_everything(npart,xyzh,vxyzu,dvdx,rad,eos_vars,radprop,&
        eos_vars(igasP,i)  = p_on_rhogas*rhogas
        eos_vars(ics,i)    = spsound
        eos_vars(itemp,i)  = temperaturei
-       if (use_var_comp .or. eos_outputs_mu(ieos) .or. do_nucleation .or. update_muGamma) eos_vars(imu,i) = mui
+       if (use_var_comp .or. eos_outputs_mu(ieos) .or. do_nucleation .or. &
+           do_condensation .or. update_muGamma) eos_vars(imu,i) = mui
 
        if (do_radiation) then
           if (temperaturei > tiny(0.)) then

@@ -89,7 +89,7 @@ contains
       real,    intent(in) :: dtsph,rho,u,xyzh(4)
       real,    intent(inout) :: dust_prop(:)
 
-      real :: dt_cgs, T, rho_cgs, vxyzui(4)
+      real :: dt_cgs,T,rho_cgs,pH_tot,vxyzui(4)
 
       dt_cgs    = dtsph* utime
       rho_cgs   = rho*unit_density
@@ -98,7 +98,7 @@ contains
       call dust_growth_condensation(T, rho_cgs, dt_cgs,wind_CO_ratio,&
            dust_prop(ifol),dust_prop(ifqu),dust_prop(ifpy),dust_prop(ifir),dust_prop(ifsc),dust_prop(ifcarb),&
            dust_prop(irol),dust_prop(irqu),dust_prop(irpy),dust_prop(irir),dust_prop(irsc),dust_prop(ircarb),&
-           dust_prop(ickappa),dust_prop(icmu),dust_prop(icgamma))
+           dust_prop(ickappa),dust_prop(icmu),dust_prop(icgamma),pH_tot)
 
    end subroutine evolve_condensation
 
@@ -108,18 +108,17 @@ contains
 !+
 !-----------------------------------------------------------------------
    subroutine dust_growth_condensation(T,rho_cgs,dt,wind_CO_ratio,fol,fqu,fpy,fir,fsc,fcarb,&
-        r_ol,r_qu,r_py,r_ir,r_sc,r_carb,kappa_dust,mu,gamma,abundance,pH_tot,pressure_cgs)
-        use physcon, only:patm,kboltz,pi
-        !use dust_formation, only:kappa_gas, mass_per_H, eps
+        r_ol,r_qu,r_py,r_ir,r_sc,r_carb,kappa_dust,mu,gamma,pH_tot,abund,pressure_cgs)
+        use physcon, only:patm,kboltz,pi,twopi,fourpi
         use chemistry_condensation, only: network, iSiO, iH2O, iH2, eps, &
-             iH,iHe,iC,iOx,iN,iSi,iS,iFe,iTi,iMg, iSi2C, mass_per_H
+             iH,iHe,iC,iOx,iN,iSi,iS,iFe,iTi,iMg, iSi2C, mass_per_H, ncols
         use dust_formation, only: kappa_gas,a_init_dust
-        real, intent(in)          :: dt,wind_CO_ratio
-        real, intent(in),optional :: pressure_cgs
-        real, intent(inout)       :: T,rho_cgs,fol,fqu,fpy,fir,fsc,fcarb,r_ol,r_qu,r_py,r_ir,r_sc,r_carb
-        real, intent(out)         :: kappa_dust
-        real, intent(out)         :: mu,gamma
-        real, intent(out),optional:: pH_tot,abundance(:)
+        real, intent(in)           :: dt,wind_CO_ratio
+        real, intent(inout)        :: T,rho_cgs,fol,fqu,fpy,fir,fsc,fcarb,r_ol,r_qu,r_py,r_ir,r_sc,r_carb
+        real, intent(out)          :: kappa_dust
+        real, intent(out)          :: mu,gamma,pH_tot
+        real, intent(out),optional :: abund(ncols)
+        real, intent(in),optional  :: pressure_cgs
         real :: Vth_SiO, Vth_Mg, Vth_H2O, Vth_ir, Vth_Si2C, Vth_carb
         real :: pv_ir, pv_SiO, pv_Mg, pv_H2O, pv_carb, pv_Si2C
         real :: Jgr_SiO_ol, Jgr_Mg_ol, Jgr_H2O_ol, Jgr_SiO_qu, Jgr_Mg_qu, Jgr_H2O_qu, Jgr_SiO_py, Jgr_Mg_py, Jgr_H2O_py
@@ -127,28 +126,28 @@ contains
         real :: Jdec_ol, Jdec_qu, Jdec_py, Jdec_ir, Jdec_sc, Jdec_carb
         real :: kappa_ol,kappa_qu,kappa_py,kappa_ir,kappa_sc,kappa_carb
         real :: fol_dec, fqu_dec ,fpy_dec, fir_dec ,fsc_dec, fcarb_dec
-        real :: P_H2, P_Si, G_const(3), root(3) !fol, kappa_dust
+        real :: P_H2, P_Si, G_const(3), root(3), kT !fol, kappa_dust
         real :: fol_max, fpy_max, fqu_max
+        real :: abundance(ncols)
 
         !XXX Aqui debo poner los valores de fol, fpy, fqu para restar las abundancias de Mg, H2O,
-        if (present(abundance)) then
-           if (present(pressure_cgs)) then
-              call network(T,rho_cgs,mu,gamma,wind_CO_ratio,pH_tot, fol, fpy, fqu, fir, fsc, fcarb,abundance, pressure_cgs)
-           else
-              call network(T,rho_cgs,mu,gamma,wind_CO_ratio,pH_tot, fol, fpy, fqu, fir, fsc, fcarb,abundance)
-           endif
+        if (present(pressure_cgs)) then
+            call network(T,rho_cgs,mu,gamma,wind_CO_ratio,pH_tot,fol,fpy,fqu,fir,fsc,fcarb,abundance,pressure_cgs)
         else
-            call network(T,rho_cgs,mu,gamma,wind_CO_ratio,pH_tot, fol, fpy, fqu, fir, fsc, fcarb)
+            call network(T,rho_cgs,mu,gamma,wind_CO_ratio,pH_tot,fol,fpy,fqu,fir,fsc,fcarb,abundance)
         endif
+        if (present(abund)) abund = abundance
 
-        Vth_SiO = sqrt(kboltz * T / 2.0 / pi / m_SiO) !already in cgs units
-        Vth_Mg  = sqrt(kboltz * T / 2.0 / pi / m_Mg)
-        Vth_H2O = sqrt(kboltz * T / 2.0 / pi / m_H2O)
-        Vth_ir  = sqrt(kboltz * T / 2.0 / pi / m_ir)
-        !Vth_Si = sqrt(kboltz * T / 2.0 / pi / m_Si)
-        !Vth_C2H2 = sqrt(kboltz * T / 2.0 / pi / m_C2H2)
-        Vth_Si2C = sqrt(kboltz * T / 2.0 / pi / m_Si2C)
-        Vth_carb = sqrt(kboltz * T / 2.0 / pi / m_carb)
+        kT = kboltz*T
+
+        Vth_SiO = sqrt(kT / twopi / m_SiO) !already in cgs units
+        Vth_Mg  = sqrt(kT / twopi / m_Mg)
+        Vth_H2O = sqrt(kT / twopi / m_H2O)
+        Vth_ir  = sqrt(kT / twopi / m_ir)
+        !Vth_Si = sqrt(kT / twopi / m_Si)
+        !Vth_C2H2 = sqrt(kT / twopi / m_C2H2)
+        Vth_Si2C = sqrt(kT / twopi / m_Si2C)
+        Vth_carb = sqrt(kT / twopi / m_carb)
 
         Jgr_SiO_ol = alpha_ol * abundance(iSiO) * Vth_SiO !abundance comes from chemical equilibrium
         Jgr_Mg_ol  = alpha_ol * abundance(78)   * Vth_Mg !Mg = 78 in subroutine network
@@ -174,8 +173,8 @@ contains
         Jgr_carb = alpha_carb * abundance(72) *Vth_carb !C = 72 in subroutine network
 
         !pH_tot = pH_tot !!!!%%%%  *patm !now in cgs
-        P_H2 = abundance(iH2)*kboltz*T/patm !H2 pressure from abundance
-        P_Si = abundance(75)*kboltz*T/patm !Si = 75 in subroutine network
+        P_H2 = abundance(iH2)*kT/patm !H2 pressure from abundance
+        P_Si = abundance(75)*kT/patm !Si = 75 in subroutine network
 
         !%% Constant term in the law of mass action equation
         G_const(1) = P_H2**3 / (calc_Kp(coefficients(:,1),T) * pH_tot**6) !for olivine
@@ -210,41 +209,41 @@ contains
 
         if (Jgr_ol == Jgr_SiO_ol) then ! JgrSiO < JgrMg and JgrSiO < JgrH2O
             pv_SiO = max(0., (1.-fol_dec) * eps(iSi) * pH_tot) !Check units
-            Jdec_ol = alpha_ol * Vth_SiO * pv_SiO *patm / kboltz / T !patm to have cgs units
+            Jdec_ol = alpha_ol * Vth_SiO * pv_SiO *patm / kT !patm to have cgs units
         elseif (Jgr_ol == 0.5*Jgr_Mg_ol) then
             pv_Mg = max(0., (eps(iMg) - 2.0*fol_dec*eps(iSi))*pH_tot)
-            Jdec_ol = alpha_ol * Vth_Mg * pv_Mg *patm / kboltz / T !patm to have cgs units
+            Jdec_ol = alpha_ol * Vth_Mg * pv_Mg *patm / kT !patm to have cgs units
         elseif (Jgr_ol == 0.333*Jgr_H2O_ol) then
             pv_H2O = max(0.,(eps(iOx)-eps(iC)-(1.0+3.0*fol_dec)*eps(iSi))*pH_tot)
-            Jdec_ol = alpha_ol * Vth_H2O * pv_H2O * patm / kboltz / T  !patm to have cgs units
+            Jdec_ol = alpha_ol * Vth_H2O * pv_H2O * patm / kT  !patm to have cgs units
         endif
 
         if (Jgr_qu == Jgr_SiO_qu) then
             pv_SiO = max(0., (1.-fqu_dec)*eps(iSi)* pH_tot)
-            Jdec_qu = alpha_qu * Vth_SiO * pv_SiO *patm / kboltz / T !!patm to have cgs units
+            Jdec_qu = alpha_qu * Vth_SiO * pv_SiO *patm / kT !!patm to have cgs units
         elseif (Jgr_qu == Jgr_H2O_qu) then
             pv_H2O = max(0.,(eps(iOx)-eps(iC)-(1.0+fqu_dec)*eps(iSi))*pH_tot)
-            Jdec_qu = alpha_qu * Vth_H2O * pv_H2O *patm / kboltz / T  !patm to have cgs units
+            Jdec_qu = alpha_qu * Vth_H2O * pv_H2O *patm / kT  !patm to have cgs units
         endif
 
         if (Jgr_py == Jgr_SiO_py) then
             pv_SiO = max(0.,(1.-fpy_dec)*eps(iSi)* pH_tot)
-            Jdec_py = alpha_py * Vth_SiO * pv_SiO *patm / kboltz / T  !!patm to have cgs units
+            Jdec_py = alpha_py * Vth_SiO * pv_SiO *patm / kT  !!patm to have cgs units
         elseif (Jgr_py == Jgr_Mg_py) then
             pv_Mg = max(0., (eps(iMg) - fpy_dec*eps(iSi))*pH_tot)
-            Jdec_py = alpha_py * Vth_Mg * pv_Mg *patm / kboltz / T   !patm to have cgs units
+            Jdec_py = alpha_py * Vth_Mg * pv_Mg *patm / kT   !patm to have cgs units
         elseif (Jgr_py == 0.5*Jgr_H2O_py) then
             pv_H2O = max(0., (eps(iOx)-eps(iC)-(1.0+2.0*fpy_dec)*eps(iSi))*pH_tot)
-            Jdec_py = alpha_py * Vth_H2O * pv_H2O *patm / kboltz / T  !patm to have cgs units
+            Jdec_py = alpha_py * Vth_H2O * pv_H2O *patm / kT  !patm to have cgs units
         endif
 
         pv_ir   = max(0.,  (1.-fir_dec)  * eps(iFe) * pH_tot)
         pv_Si2C = max(0.,  (1.-fsc_dec)  * eps(iSi) * pH_tot)  !0.5 *
         pv_carb = max(0., ((1.-fcarb_dec)* eps(iC)-eps(iOx)) * pH_tot)
 
-        Jdec_ir = alpha_ir * Vth_ir * pv_ir *patm /  kboltz / T   !!patm to have cgs units
-        Jdec_sc = 2.0* alpha_sc * Vth_Si2C * pv_Si2C *patm / kboltz / T  !eqn. 21 of Ferrarotti & Gail 2002
-        Jdec_carb = alpha_carb * Vth_carb * pv_carb *patm / kboltz / T
+        Jdec_ir = alpha_ir * Vth_ir * pv_ir *patm / kT   !!patm to have cgs units
+        Jdec_sc = 2.0* alpha_sc * Vth_Si2C * pv_Si2C *patm / kT  !eqn. 21 of Ferrarotti & Gail 2002
+        Jdec_carb = alpha_carb * Vth_carb * pv_carb *patm / kT
 
 
         r_ol = max(r_ol + Vo_ol * (Jgr_ol-Jdec_ol) * dt , a_init_dust)
@@ -255,7 +254,7 @@ contains
         r_carb = max(r_carb + Vo_carb * (Jgr_carb-Jdec_carb) * dt , a_init_dust)
 
 
-        fol = max(0., 4.*pi*(r_ol**3-a_init_dust**3)*1.d-13/3./Vo_ol/eps(iSi)) !fol
+        fol = max(0., fourpi*(r_ol**3-a_init_dust**3)*1.d-13/3./Vo_ol/eps(iSi)) !fol
         if (wind_CO_ratio<=0.9) then
            fol_max = min(1.0, min(0.5*eps(iMg)/eps(iSi),(eps(iOx)-eps(iC)-eps(iSi))/3./eps(iSi)))
         elseif (wind_CO_ratio>=1.1) then
@@ -264,7 +263,7 @@ contains
         if (fol > fol_max) fol = fol_max
 !%%PUEDE SER QUE fol sea negativo porque fol_max es negativo
 
-        fqu = max(0., 4.*pi*(r_qu**3-a_init_dust**3)*1.d-13/3./Vo_qu/eps(iSi)) !fqu
+        fqu = max(0., fourpi*(r_qu**3-a_init_dust**3)*1.d-13/3./Vo_qu/eps(iSi)) !fqu
         if (wind_CO_ratio<=0.9) then
            fqu_max = min(1.0, (eps(iOx)-eps(iC)-eps(iSi))/eps(iSi))
         elseif (wind_CO_ratio>=1.1) then
@@ -272,7 +271,7 @@ contains
         endif
         if (fqu > fqu_max) fqu = fqu_max
 
-        fpy = max(0., 4.*pi*(r_py**3-a_init_dust**3)*1.d-13/3./Vo_py/eps(iSi)) !fpy
+        fpy = max(0., fourpi*(r_py**3-a_init_dust**3)*1.d-13/3./Vo_py/eps(iSi)) !fpy
         if (wind_CO_ratio<=0.9) then
            fpy_max = min(1.0, min(eps(iMg)/eps(iSi),(eps(iOx)-eps(iC)-eps(iSi))/2./eps(iSi)))
         elseif (wind_CO_ratio>=1.1) then
@@ -280,13 +279,13 @@ contains
         endif
         if (fpy > fpy_max) fpy = fpy_max
 
-        fir = max(0., 4.*pi*(r_ir**3-a_init_dust**3)*1.d-13/3./Vo_ir/eps(iFe)) !fir
+        fir = max(0., fourpi*(r_ir**3-a_init_dust**3)*1.d-13/3./Vo_ir/eps(iFe)) !fir
         if (fir > 1.0) fir = 1.
 
-        fsc = max(0., 4.*pi*(r_sc**3-a_init_dust**3)*1.d-13/3./Vo_sc/ eps(iSi)) !fsc
+        fsc = max(0., fourpi*(r_sc**3-a_init_dust**3)*1.d-13/3./Vo_sc/ eps(iSi)) !fsc
         if (fsc > 1.0) fsc = 1.
 
-        fcarb = max(0., 4.*pi*(r_carb**3-a_init_dust**3)*1.d-13/3./Vo_carb/eps(iC)) !fcarb
+        fcarb = max(0., fourpi*(r_carb**3-a_init_dust**3)*1.d-13/3./Vo_carb/eps(iC)) !fcarb
         if (fcarb > 1.0) fcarb = 1.
 
 
@@ -311,7 +310,7 @@ contains
         kappa_carb = 5.9 * T * A_carb * eps(iC) * pi / (2.2 * (mass_per_H/atomic_mass_unit))
                     !5.6d-18 * pi * T / rho_cgs !%%% The correct expression for opacity
 
-                    !5.9**(-25.13) * T * pi * A_carb * eps(iC) * (pH_tot*patm/kboltz/T) &
+                    !5.9**(-25.13) * T * pi * A_carb * eps(iC) * (pH_tot*patm/kT) &
                    !* 2.0*(sqrt(2.5d-5)-sqrt(5.0d-7)) / rho_carb / (mass_per_H/atomic_mass_unit)
 
         !%% mu = mass_per_H / atomic_mass_unit
