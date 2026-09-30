@@ -262,12 +262,12 @@ end subroutine read_headeropts_dust_formation
 !+
 !-----------------------------------------------------------------------
 subroutine write_options_dust_formation(iunit)
- use dim,          only:nucleation
+ use dim,          only:nucleation,condensation
  use infile_utils, only:write_inopt
  integer, intent(in) :: iunit
 
  write(iunit,"(/,a)") '# options controlling dust'
- if (nucleation) then
+ if (nucleation .or. condensation) then
     call write_inopt(idust_opacity,'idust_opacity','compute dust opacity (0=off, 1=bowen, 2=nucleation, 3=condensation)',iunit)
  else
     call write_inopt(idust_opacity,'idust_opacity','compute dust opacity (0=off, 1=bowen)',iunit)
@@ -278,7 +278,7 @@ subroutine write_options_dust_formation(iunit)
     call write_inopt(bowen_Tcond,'bowen_Tcond','dust condensation temperature (K)',iunit)
     call write_inopt(bowen_delta,'bowen_delta','condensation temperature range (K)',iunit)
  endif
- if (nucleation .and. (idust_opacity == 2 .or. idust_opacity == 3)) then
+ if ((nucleation .or. condensation) .and. (idust_opacity == 2 .or. idust_opacity == 3)) then
     call write_inopt(kappa_gas,'kappa_gas','constant gas opacity (cm²/g)',iunit)
     call write_inopt(wind_CO_ratio ,'wind_CO_ratio','wind initial C/O ratio (> 1)',iunit)
  endif

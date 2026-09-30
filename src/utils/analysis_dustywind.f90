@@ -109,6 +109,7 @@ subroutine get_Teq_from_Lucy(npart,xyzh,particlemass,xa,ya,za,R_star,T_star,dust
          rho_over_r2, dust_temp, Teq, nucleation(idK3,:), K3)
     call calculate_Teq(N, dmax, R_star, T_star, rho, rho_over_r2, OR, Teq, K3)
  else
+    if (do_condensation) call fatal('get_Teq_from_Lucy','do_condensation not implemented yet. Use do_nucleation instead.')
     call density_along_line(npart, xyzh, r0, naxis, idx_axis, -dmax, dmax, R_star, N, particlemass, rho, &
          rho_over_r2, dust_temp, Teq)
     call calculate_Teq(N, dmax, R_star, T_star, rho, rho_over_r2, OR, Teq)
@@ -163,7 +164,14 @@ subroutine calculate_Teq(N, dmax, R_star, T_star, rho, rho_over_r2, OR, Teq, K3)
           else
              kappa(i) = 0.d0
           endif
-       elseif (idust_opacity == 1) then
+       elseif (idust_opacity == 3) then
+          if (rho(i) > 0.) then
+            call fatal('calculate_Teq','idust_opacity=3 not implemented yet. Use idust_opacity=2 instead.')
+             kappa(i) = calc_kappa_dust(K3(i),Teq(i),rho(i))
+          else
+             kappa(i) = 0.d0
+          endif
+       else (idust_opacity == 1) then
           kappa(i) = calc_kappa_bowen(Teq(i))
        endif
        rho_on_r2(i) = rho_over_r2(N-i)+rho_over_r2(N-i+1)+rho_over_r2(N+i+1)+rho_over_r2(N+i+2)

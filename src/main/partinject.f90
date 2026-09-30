@@ -129,6 +129,8 @@ subroutine add_or_update_particle(itype,position,velocity,h,u,particle_number,np
        nucleation(:,particle_number) = dust_prop(:)
     elseif (do_condensation) then
        condensation(:,particle_number) = dust_prop(:)
+    else
+       call fatal('Add particle','dust_prop provided but neither nucleation nor condensation is enabled')
     endif
  endif
  if (update_muGamma) then

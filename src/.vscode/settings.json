@@ -1,3 +1,7 @@
 {
     "fortran.fortls.disabled": true
+    "search.exclude": {
+       "**/build/**": true
+       "**/src_*/**": true
+    }
 }

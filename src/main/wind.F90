@@ -83,7 +83,7 @@ subroutine setup_wind(params,u_to_T,rsonic,tsonic,stype)
     rho_cgs      = params%Mdot/(4.*pi*params%Rinject**2*params%vwind)
     wind_gamma   = gamma
     wind_mu      = gmw
-    if (idust_opacity == 2 .or. idust_opacity == 3) call init_muGamma(rho_cgs,T0,wind_mu,wind_gamma)
+    call init_muGamma(rho_cgs,T0,wind_mu,wind_gamma)
     print *,'reset gamma : ',gamma,wind_gamma
     print *,'reset gmw   : ',gmw,wind_mu
     params%Twind = T0
@@ -263,7 +263,7 @@ subroutine wind_step(params,state)
            dust_array(ickappa),dust_array(icmu),dust_array(icgamma),pH_tot)
     state%mu    = state%dust_array(icmu)
     state%gamma = state%dust_array(icgamma)
-    state%kappa = calc_kappa_dust(state%dust_array(idK3), state%Tdust, state%rho)
+    state%kappa = state%dust_array(ickappa)
     state%dust_array(icalpha) = state%alpha_Edd+params%alpha_rad
  else
     if (idust_opacity == 1) state%kappa = calc_kappa_bowen(state%Tdust)
@@ -317,6 +317,9 @@ subroutine wind_step(params,state)
  !calculate opacity
  if (idust_opacity == 2) then
     state%kappa = calc_kappa_dust(state%dust_array(idK3),state%Tdust,state%rho)
+ elseif (idust_opacity == 3) then
+   !CLS I suspect this is not correct. Since Tdust changes, the opacity may need to be recalculated.
+    state%kappa = state%dust_array(ickappa)
  elseif (idust_opacity == 1) then
     state%kappa = calc_kappa_bowen(state%Tdust)
  endif
@@ -403,10 +406,10 @@ subroutine wind_step(params,state)
          state%dust_array(ickappa),state%dust_array(icmu),state%dust_array(icgamma),pH_tot)
     state%mu    = state%dust_array(icmu)
     state%gamma = state%dust_array(icgamma)
-    state%kappa = calc_kappa_dust(state%dust_array(idK3), state%Tdust, state%rho)
+    state%kappa = state%dust_array(ickappa)
     state%dust_array(icalpha) = state%alpha_Edd+params%alpha_rad
  else
-    if (idust_opacity == 1) state%kappa     = calc_kappa_bowen(state%Tdust)
+    if (idust_opacity == 1) state%kappa = calc_kappa_bowen(state%Tdust)
     if (update_muGamma) call calc_muGamma(state%rho,state%Tg,state%mu,state%gamma,pH,pH_tot,pH2)
  endif
 
@@ -430,6 +433,7 @@ subroutine wind_step(params,state)
     state%alpha = 0.
  end select
  if (idust_opacity == 2) state%dust_array(idalpha) = state%alpha
+ if (idust_opacity == 3) state%dust_array(icalpha) = state%alpha
  if (state%time > 0.)    state%dalpha_dr      = (state%alpha-alpha_old)/(1.e-10+state%r-state%r_old)
 
  rvT(1) = state%r
@@ -965,11 +969,11 @@ subroutine interp_wind_profile(time,local_time,r,v,u,rho,e,GM,fdone,isink,dust_a
     enddo
     gammai = dust_array(idgamma)
     gamma  = gammai
- elseif (idust_opacity == 2) then
+ elseif (idust_opacity == 3) then
     do j=1,n_condensation
        dust_array(j) = interp_1d(ltime,trvurho_1D(1,indx),trvurho_1D(1,indx+1),dust_array_1D(j,indx),dust_array_1D(j,indx+1))
     enddo
-    gammai = dust_array(idgamma)
+    gammai = dust_array(icgamma)
     gamma  = gammai
  else
     gammai = gamma
@@ -1205,8 +1209,8 @@ subroutine state_to_array(state,array)
     array(22) = state%Tdust
     array(23) = state%Q
  elseif (idust_opacity == 3) then
-    array(11) = state%dust_array(idmu)
-    array(12) = state%dust_array(idgamma)
+    array(11) = state%dust_array(icmu)
+    array(12) = state%dust_array(icgamma)
     array(13) = state%dust_array(irol)
     array(14) = state%dust_array(irqu)
     array(15) = state%dust_array(irpy)

@@ -17,7 +17,7 @@ program phantomanalysis
 ! :Dependencies: analysis, apr, dim, eos, eos_stamatellos, externalforces,
 !   fileutils, infile_utils, io, kernel, part, readwrite_dumps
 !
- use dim,             only:tagline,do_nucleation,inucleation,use_apr
+ use dim,             only:tagline,do_nucleation,inucleation,do_condensation,icondensation,use_apr
  use part,            only:xyzh,hfact,massoftype,vxyzu,npart,apr_level !,npartoftype
  use io,              only:set_io_unit_numbers,iprint,idisk1,ievfile,ianalysis
  use readwrite_dumps, only:read_dump,read_smalldump,is_small_dump
@@ -80,6 +80,9 @@ program phantomanalysis
           if (idust_opacity == 2) then
              do_nucleation = .true.
              inucleation = 1
+          elseif (idust_opacity == 3) then
+             do_condensation = .true.
+             icondensation = 1
           endif
           call read_inopt(mass1,'mass1',db,ierr)
           call read_inopt(accradius1,'accradius1',db,ierr)

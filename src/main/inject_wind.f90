@@ -571,7 +571,7 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,rho,xyzmh_ptmass,vxyz_ptmass,
        if (pulsating_wind.and.released) then
           !call pulsating_wind_profile(time,local_time,r,v,u,rhoi,e,GM,i,inner_sphere)
        else
-          if (idust_opacity == 2) then
+          if (idust_opacity == 2 .or. idust_opacity == 3) then
              call interp_wind_profile(time,local_time,r,v,u,rhoi,e,GM,fdone,isink,dust_prop)
           else
              call interp_wind_profile(time,local_time,r,v,u,rhoi,e,GM,fdone,isink)
@@ -597,7 +597,7 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,rho,xyzmh_ptmass,vxyz_ptmass,
                npart+1-npart_per_sphere,npart,isink,i,inner_sphere,outer_sphere,int(time/time_between_spheres),&
                time,local_time,r/xyzmh_ptmass(iReff,isink),v,u,rhoi,xyzmh_ptmass(imloss,isink)/(solarm/umass)*(years/utime)
        endif
-       if (idust_opacity == 2) then
+       if (idust_opacity == 2 .or. idust_opacity == 3) then
           call inject_sphere(i,ifirst,npart_per_sphere,r,v,u,npart,npartoftype,xyzh,vxyzu,rhoi,itype,x0,v0,isink,dust_prop)
        else
           call inject_sphere(i,ifirst,npart_per_sphere,r,v,u,npart,npartoftype,xyzh,vxyzu,rhoi,itype,x0,v0,isink)
