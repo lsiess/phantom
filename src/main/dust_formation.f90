@@ -50,9 +50,9 @@ module dust_formation
 
  character(len=*), parameter :: label = 'dust_formation'
  real :: wind_CO_ratio = 2.
- real :: bowen_kmax  = -1
+ real :: bowen_kmax  = 2.7991
  real :: grad_to_ggrav = 0.95
- real :: kappa_max
+ real :: kappa_max   = 2.7991  ! set from bowen_kmax, or by calc_kappa_max if bowen_kmax < 0
  real :: bowen_Tcond = 1500.
  real :: bowen_delta = 60.
 
@@ -781,6 +781,7 @@ subroutine read_options_dust_formation(db,nerr)
     call read_inopt(kappa_gas,'kappa_gas',db,errcount=nerr,min=0.)
     call read_inopt(grad_to_ggrav,'grad_to_ggrav',db,errcount=nerr,min=0.)
     call read_inopt(bowen_kmax,'bowen_kmax',db,errcount=nerr,min=-10.)
+    if (bowen_kmax > 0.) kappa_max = bowen_kmax
     call read_inopt(bowen_Tcond,'bowen_Tcond',db,errcount=nerr,min=0.)
     call read_inopt(bowen_delta,'bowen_delta',db,errcount=nerr,min=0.)
  endif
