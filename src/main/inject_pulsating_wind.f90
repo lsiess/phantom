@@ -133,7 +133,7 @@ subroutine init_inject(ierr)
  use eos,            only:gmw,gamma
  use units,          only:utime,umass,udist,unit_velocity,unit_luminosity
  use part,           only:xyzmh_ptmass,massoftype,igas,iboundary,nptmass,iTeff,iReff,iLum,npartoftype
- use injectutils,    only:get_fibonacci_spacing,find_optimal_rotation
+ use injectutils,    only:get_neighb_distance,seed_random
  use wind_pulsating, only:setup_star,calc_stellar_profile,region_mass
  use dust_formation, only:calc_kappa_max
  use timestep,       only:dtmax
@@ -147,6 +147,7 @@ subroutine init_inject(ierr)
  logical :: file_exists
 
  ierr = 0
+ seed_random = -1  ! reset seed_random so the shell rotations are reproducible
  if (nptmass < 1) call fatal(label,'need at least one sink particle for central star')
 
  Mstar = xyzmh_ptmass(4,wind_emitting_sink)
@@ -194,7 +195,7 @@ subroutine init_inject(ierr)
     else
        n_shell = max(1, nint(tmp_n(nshells-1)*(current_radius/tmp_r(nshells-1))**(2.*(3.-rho_power_in)/3.)))
     endif
-    dr = wss*current_radius*get_fibonacci_spacing(n_shell)
+    dr = wss*current_radius*get_neighb_distance(n_shell)
     if (nshells > 2 .and. real(n_shell)/real(n_tot) < min_mass_fraction) then
        nshells = nshells - 1
        r_max   = current_radius - dr
@@ -248,7 +249,6 @@ subroutine init_inject(ierr)
  if (file_exists) then
     call read_mass_loss_data()
     if (use_file_mdot == 1) mass_loss_rate_calculated = .true.
-    if (mass_loss_rate_calculated) call find_optimal_rotation(particles_to_inject)
     if (use_file_mdot == 1 .and. verbose == 1) then
        print *, ''
        print *, 'use_file_mdot=1: skipping measurement phase.'
@@ -298,7 +298,7 @@ end subroutine init_inject
 !+
 !----------------------------------------------------------------
 subroutine derive_n_particles_first(r_min_cgs,rho_inner_cgs,rho_power,wss_in,m_particle_cgs,n_first)
- use injectutils, only:get_fibonacci_spacing
+ use injectutils, only:get_neighb_distance
  real,    intent(in)  :: r_min_cgs,rho_inner_cgs,rho_power,wss_in,m_particle_cgs
  integer, intent(out) :: n_first
  integer, parameter :: max_iter = 100
@@ -309,7 +309,7 @@ subroutine derive_n_particles_first(r_min_cgs,rho_inner_cgs,rho_power,wss_in,m_p
  exponent = 3. - rho_power
  n_old    = 1000
  do iter = 1,max_iter
-    dr_cgs  = wss_in*r_min_cgs*get_fibonacci_spacing(n_old)
+    dr_cgs  = wss_in*r_min_cgs*get_neighb_distance(n_old)
     n_first = max(1, nint(4.*pi*C_rho*((r_min_cgs + dr_cgs)**exponent - r_min_cgs**exponent) &
                           /exponent/m_particle_cgs))
     if (n_first == n_old) exit
@@ -400,7 +400,6 @@ end function count_unbound
 !+
 !----------------------------------------------------------------
 subroutine take_periodic_mass_measurements(time,xyzh,vxyzu,npart,xyzmh_ptmass,vxyz_ptmass)
- use injectutils, only:find_optimal_rotation
  real,    intent(in) :: time,xyzh(:,:),vxyzu(:,:),xyzmh_ptmass(:,:),vxyz_ptmass(:,:)
  integer, intent(in) :: npart
  integer :: n_escaping,newly_unbound
@@ -431,7 +430,6 @@ subroutine take_periodic_mass_measurements(time,xyzh,vxyzu,npart,xyzmh_ptmass,vx
     particles_to_inject       = max(1, nint(mean_mass_loss_rate*reinject_period/mass_of_gas_particle))
     mass_loss_rate_calculated = .true.
     call write_mass_loss_data()
-    call find_optimal_rotation(particles_to_inject)
  endif
 
 end subroutine take_periodic_mass_measurements
@@ -443,7 +441,7 @@ end subroutine take_periodic_mass_measurements
 !----------------------------------------------------------------
 subroutine perform_reinjection(time,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,npart,npartoftype)
  use part,           only:igas
- use injectutils,    only:inject_fibonacci_sphere
+ use injectutils,    only:inject_geodesic_sphere
  use wind_pulsating, only:interp_stellar_profile
  real,    intent(in)    :: time
  real,    intent(inout) :: xyzh(:,:),vxyzu(:,:),xyzmh_ptmass(:,:),vxyz_ptmass(:,:)
@@ -465,8 +463,9 @@ subroutine perform_reinjection(time,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,npart,np
 
  old_npart      = npart
  n_reinjections = n_reinjections + 1
- call inject_fibonacci_sphere(n_shells_total + n_reinjections, npart+1, particles_to_inject, r_inject, &
-                              piston_velocity*cos(phase), u, rho, npart, npartoftype, xyzh, vxyzu, igas, x0, v0)
+ call inject_geodesic_sphere(n_shells_total + n_reinjections, npart+1, particles_to_inject, r_inject, &
+                             piston_velocity*cos(phase), u, rho, npart, npartoftype, xyzh, vxyzu, igas, x0, v0, &
+                             wind_emitting_sink)
 
  xyzmh_ptmass(4,wind_emitting_sink) = xyzmh_ptmass(4,wind_emitting_sink) - (npart - old_npart)*mass_of_gas_particle
 
@@ -488,7 +487,7 @@ end subroutine perform_reinjection
 !----------------------------------------------------------------
 subroutine setup_initial_atmosphere(xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,npart,npartoftype)
  use part,           only:igas,iboundary
- use injectutils,    only:inject_fibonacci_sphere
+ use injectutils,    only:inject_geodesic_sphere
  use wind_pulsating, only:interp_stellar_profile
  real,    intent(inout) :: xyzh(:,:),vxyzu(:,:)
  real,    intent(in)    :: xyzmh_ptmass(:,:),vxyz_ptmass(:,:)
@@ -502,13 +501,13 @@ subroutine setup_initial_atmosphere(xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,npart,np
  npart = 0
  do i = 1,n_shells_bnd
     call interp_stellar_profile(shell_radii_bnd(i),rho,P,u,T)
-    call inject_fibonacci_sphere(i, npart+1, npart_per_boundary_shell(i), shell_radii_bnd(i), 0., u, rho, &
-                                 npart, npartoftype, xyzh, vxyzu, iboundary, x0, v0)
+    call inject_geodesic_sphere(i, npart+1, npart_per_boundary_shell(i), shell_radii_bnd(i), 0., u, rho, &
+                                npart, npartoftype, xyzh, vxyzu, iboundary, x0, v0, wind_emitting_sink)
  enddo
  do i = 1,n_shells_total
     call interp_stellar_profile(shell_radii_gas(i),rho,P,u,T)
-    call inject_fibonacci_sphere(n_shells_bnd+i, npart+1, npart_per_shell(i), shell_radii_gas(i), 0., u, rho, &
-                                 npart, npartoftype, xyzh, vxyzu, igas, x0, v0)
+    call inject_geodesic_sphere(n_shells_bnd+i, npart+1, npart_per_shell(i), shell_radii_gas(i), 0., u, rho, &
+                                npart, npartoftype, xyzh, vxyzu, igas, x0, v0, wind_emitting_sink)
  enddo
 
  n_boundary_particles = npartoftype(iboundary)

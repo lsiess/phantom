@@ -6,7 +6,7 @@
 !--------------------------------------------------------------------------!
 module injectutils
 !
-! Utility routines for geodesic sphere injection and Fibonacci lattice
+! Utility routines for geodesic sphere injection
 !
 ! :References: None
 !
@@ -26,9 +26,6 @@ module injectutils
  integer :: seed_random = -1
  real    :: edge_velocity, opening_angle
 
- ! Module-level optimal rotation angles, computed once by find_optimal_rotation
- real :: optimal_rotation_angles(3) = (/ 1.28693610288783, 2.97863087745917, 1.03952835451832 /)
-
 contains
 
 !-----------------------------------------------------------------------
@@ -47,145 +44,7 @@ end function get_neighb_distance
 
 !-----------------------------------------------------------------------
 !+
-!  Get approximate particle spacing on Fibonacci sphere
-!  Returns the distance between neighbors in units of sphere radius
-!+
-!-----------------------------------------------------------------------
-real function get_fibonacci_spacing(n_particles)
- integer, intent(in) :: n_particles
- real :: surface_area_per_particle
- 
- ! Each particle occupies approximately equal surface area
- ! Surface area of unit sphere = 4π, so area per particle = 4π/N
- ! Approximate spacing = sqrt(area) = sqrt(4π/N) = 2*sqrt(π/N)
- surface_area_per_particle = 4.0 * pi / real(n_particles)
- get_fibonacci_spacing = sqrt(surface_area_per_particle)
- 
-end function get_fibonacci_spacing
-
-!-----------------------------------------------------------------------
-!+
-!  Get number of particles needed for a given spacing on sphere
-!  Inverse of get_fibonacci_spacing
-!+
-!-----------------------------------------------------------------------
-integer function get_fibonacci_nparticles(desired_spacing)
- real, intent(in) :: desired_spacing
- real :: n_particles_real
- 
- ! From spacing = 2*sqrt(π/N), solve for N:
- ! N = 4π / spacing^2
- n_particles_real = 4.0 * pi / (desired_spacing**2)
- get_fibonacci_nparticles = max(nint(n_particles_real), 3)
- 
-end function get_fibonacci_nparticles
-
-!-----------------------------------------------------------------------
-!+
-!  Find the optimal rotation angles for a Fibonacci sphere with n_particles,
-!  such that the minimum inter-particle distance between two consecutive
-!  shells (one unrotated, one rotated) is maximised.
-!
-!  Uses a uniform 21^3 grid search over [0, 2pi]^3 (~9261 evaluations).
-!  Result is stored in the module-level optimal_rotation_angles.
-!  Call this once from init_inject after n_inj is determined.
-!+
-!-----------------------------------------------------------------------
-subroutine find_optimal_rotation(n_particles)
- integer, intent(in) :: n_particles
-
- integer, parameter :: n_steps = 21
- real,    parameter :: two_pi  = 2.0 * 4.0 * atan(1.0)
-
- ! Reference (unrotated) Fibonacci sphere
- real :: pts(3, n_particles)
-
- ! Candidate and rotated shell
- real :: rotmat(3,3), rot_pt(3)
- real :: angles(3), best_angles(3)
- real :: best_mindist, mindist, dist2, golden_ratio
- real :: dstep, t1, t2, t3, y, radius_at_y, phi_angle, i_float
- integer :: i, j, k, ip
-
- ! Build reference Fibonacci sphere (unit radius, no rotation)
- golden_ratio = (1.0 + sqrt(5.0)) / 2.0
- do i = 0, n_particles - 1
-    i_float     = real(i)
-    y           = 1.0 - (2.0 * i_float) / real(n_particles - 1)
-    radius_at_y = sqrt(max(0.0, 1.0 - y*y))
-    phi_angle   = two_pi * i_float / golden_ratio
-    pts(1, i+1) = cos(phi_angle) * radius_at_y
-    pts(2, i+1) = sin(phi_angle) * radius_at_y
-    pts(3, i+1) = y
- enddo
-
- ! Grid search over [0, 2pi]^3
- dstep       = two_pi / real(n_steps - 1)
- best_mindist = -1.0
- best_angles  = (/ 0.0, 0.0, 0.0 /)
-
- do i = 0, n_steps - 1
-    t1 = i * dstep
-    do j = 0, n_steps - 1
-       t2 = j * dstep
-       do k = 0, n_steps - 1
-          t3 = k * dstep
-
-          angles = (/ t1, t2, t3 /)
-          call make_rotation_matrix(angles, rotmat)
-
-          ! Find minimum distance between rotated shell and reference shell
-          mindist = huge(0.0)
-          do ip = 1, n_particles
-             rot_pt(1) = pts(1,ip)*rotmat(1,1) + pts(2,ip)*rotmat(1,2) + pts(3,ip)*rotmat(1,3)
-             rot_pt(2) = pts(1,ip)*rotmat(2,1) + pts(2,ip)*rotmat(2,2) + pts(3,ip)*rotmat(2,3)
-             rot_pt(3) = pts(1,ip)*rotmat(3,1) + pts(2,ip)*rotmat(3,2) + pts(3,ip)*rotmat(3,3)
-             call min_dist_to_shell(rot_pt, n_particles, pts, dist2)
-             if (dist2 < mindist) mindist = dist2
-          enddo
-
-          if (mindist > best_mindist) then
-             best_mindist = mindist
-             best_angles  = angles
-          endif
-
-       enddo
-    enddo
- enddo
-
- optimal_rotation_angles = best_angles
- write(*,'(a,3f10.6,a,f10.6)') &
-   ' find_optimal_rotation: best angles = ', best_angles, &
-   '  min dist = ', sqrt(best_mindist)
-
-end subroutine find_optimal_rotation
-
-!-----------------------------------------------------------------------
-!+
-!  Helper: find the minimum squared distance from a point to a set of
-!  points on the reference shell
-!+
-!-----------------------------------------------------------------------
-subroutine min_dist_to_shell(pt, n, shell, min_dist2)
- integer, intent(in)  :: n
- real,    intent(in)  :: pt(3), shell(3, n)
- real,    intent(out) :: min_dist2
-
- real :: diff(3), dist2
- integer :: i
-
- min_dist2 = huge(0.0)
- do i = 1, n
-    diff  = pt - shell(:, i)
-    dist2 = diff(1)**2 + diff(2)**2 + diff(3)**2
-    if (dist2 < min_dist2) min_dist2 = dist2
- enddo
-
-end subroutine min_dist_to_shell
-
-!-----------------------------------------------------------------------
-!+
-!  Inject a quasi-spherical distribution of particles using geodesic
+!  Inject a quasi-spherical distribution of particles.
 !+
 !-----------------------------------------------------------------------
 subroutine inject_geodesic_sphere(sphere_number, first_particle, ires, r, v, u, rho, &
@@ -272,81 +131,6 @@ subroutine inject_geodesic_sphere(sphere_number, first_particle, ires, r, v, u, 
  enddo
 
 end subroutine inject_geodesic_sphere
-
-!-----------------------------------------------------------------------
-!+
-!  Inject particles on a sphere using Fibonacci lattice
-!  This allows any number of particles to be placed uniformly.
-!  Uses optimal_rotation_angles (set by find_optimal_rotation) as the
-!  per-shell rotation increment, applied as increment * sphere_number.
-!+
-!-----------------------------------------------------------------------
-subroutine inject_fibonacci_sphere(sphere_number, first_particle, n_particles, r, v, u, rho, &
-           npart, npartoftype, xyzh, vxyzu, itype, x0, v0, JKmuS)
- use partinject,  only:add_or_update_particle
- use part,        only:hrho
- integer, intent(in) :: sphere_number, first_particle, n_particles, itype
- real,    intent(in) :: r, v, u, rho, x0(3), v0(3)
- real,    intent(in), optional :: JKmuS(:)
- integer, intent(inout) :: npart, npartoftype(:)
- real,    intent(inout) :: xyzh(:,:), vxyzu(:,:)
-
- real :: golden_ratio, i_float, phi_angle
- real :: y, radius_at_y, h_sim
- real :: radial_unit_vector(3), rotation_angles(3), rotmat(3,3)
- real :: radial_unit_vector_rotated(3)
- real :: particle_position(3), particle_velocity(3)
- integer :: i
-
- ! Golden ratio
- golden_ratio = (1.0 + sqrt(5.0)) / 2.0
-
- ! Use the optimised rotation increment (set once by find_optimal_rotation)
- rotation_angles = optimal_rotation_angles * sphere_number
- call make_rotation_matrix(rotation_angles, rotmat)
-
- ! Smoothing length in simulation units
- h_sim = hrho(rho)
-
- ! Place particles using Fibonacci lattice
- do i = 0, n_particles-1
-    i_float = real(i)
-    
-    ! Latitude: uniformly distributed from -1 to 1
-    y = 1.0 - (2.0 * i_float) / real(n_particles - 1)
-    
-    ! Radius at this latitude
-    radius_at_y = sqrt(max(0.0, 1.0 - y*y))
-    
-    ! Longitude: golden angle spiral
-    phi_angle = 2.0 * pi * i_float / golden_ratio
-    
-    ! Construct unit vector on sphere
-    radial_unit_vector(1) = cos(phi_angle) * radius_at_y
-    radial_unit_vector(2) = sin(phi_angle) * radius_at_y
-    radial_unit_vector(3) = y
-    
-    ! Apply rotation to avoid alignment between spheres
-    radial_unit_vector_rotated(1) = radial_unit_vector(1)*rotmat(1,1) &
-                                  + radial_unit_vector(2)*rotmat(1,2) &
-                                  + radial_unit_vector(3)*rotmat(1,3)
-    radial_unit_vector_rotated(2) = radial_unit_vector(1)*rotmat(2,1) &
-                                  + radial_unit_vector(2)*rotmat(2,2) &
-                                  + radial_unit_vector(3)*rotmat(2,3)
-    radial_unit_vector_rotated(3) = radial_unit_vector(1)*rotmat(3,1) &
-                                  + radial_unit_vector(2)*rotmat(3,2) &
-                                  + radial_unit_vector(3)*rotmat(3,3)
-    
-    ! Scale to desired radius and add center position/velocity
-    particle_position = r * radial_unit_vector_rotated + x0
-    particle_velocity = v * radial_unit_vector_rotated + v0
-    
-    ! Add particle to arrays
-    call add_or_update_particle(itype, particle_position, particle_velocity, &
-         h_sim, u, first_particle+i, npart, npartoftype, xyzh, vxyzu, JKmuS)
- enddo
-
-end subroutine inject_fibonacci_sphere
 
 !-----------------------------------------------------------------------
 !+
