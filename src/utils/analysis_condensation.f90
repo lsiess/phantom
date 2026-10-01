@@ -130,13 +130,16 @@ contains
     Tmin  = 600.
     Tmax  = 6000.
     rho_0 = 1.0d-10
-    pressure_cgs = -1. !1.d-4  !optional variable for comparison with Gail & Sedlmayr calculations
+    pressure_cgs = 1.d7 !1.d-4 = 10d-10 barye   !optional variable for comparison with Gail & Sedlmayr calculations
+    write(*,*)'The user defined pressure is', pressure_cgs
+    write(*,*)'*************************************************'
+
 
     ! Set initial parameters
     time_0 = 0.
     time_final = 1.d5 !A larger value creates wiggles in fir and kappa
     dt = 5.0d4 !
-    wind_CO_ratio = 2.0 !0.34
+    wind_CO_ratio = 0.975 !Figure 10.11 of Gail+SedlMayr Book
 
     call set_abundances
 
