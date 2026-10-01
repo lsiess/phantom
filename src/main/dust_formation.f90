@@ -15,7 +15,8 @@ module dust_formation
 ! :Runtime parameters:
 !   - bowen_Tcond   : *dust condensation temperature (K)*
 !   - bowen_delta   : *condensation temperature range (K)*
-!   - bowen_kmax    : *maximum dust opacity (cm²/g)*
+!   - bowen_kmax    : *maximum dust opacity (cm²/g) (if < 0, calculated using grad_to_ggrav)*
+!   - grad_to_ggrav : *ratio of radiative to gravitational acceleration*
 !   - idust_opacity : *compute dust opacity (0=off, 1=bowen)*
 !   - kappa_gas     : *constant gas opacity (cm²/g)*
 !   - wind_CO_ratio : *wind initial C/O ratio (> 1)*
@@ -278,7 +279,7 @@ subroutine calc_kappa_max(Mstar_cgs, Lstar_cgs)
 !all quantities in cgs
  use physcon, only:c,Gg
  real, intent(in) :: Mstar_cgs, Lstar_cgs
- 
+
  if (bowen_kmax > 0.) then
     kappa_max = bowen_kmax
  else
@@ -286,7 +287,7 @@ subroutine calc_kappa_max(Mstar_cgs, Lstar_cgs)
  endif
 
  print *,'Calculated kappa_max =',kappa_max,' cm^2/g'
- 
+
 end subroutine calc_kappa_max
 
 !----------------------------

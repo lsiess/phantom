@@ -23,10 +23,10 @@ module cooling
 ! :Owner: Lionel Siess
 !
 ! :Runtime parameters:
-!   - C_cool     : *factor controlling cooling timestep*
-!   - Tfloor     : *temperature floor (K); on if > 0*
-!   - r_min_cool : *minimum cooling radius (AU); cooling off if r < r_min_cool*
-!   - icooling   : *cooling function (0=off, 1=library (step), 2=library (force),*
+!   - C_cool    : *factor controlling cooling timestep*
+!   - Tfloor    : *temperature floor (K); on if > 0*
+!   - icooling  : *cooling function (0=off, 1=library (step), 2=library (force),*
+!   - use_bound : *use criteria on the energy to activate cooling (0=off, 1=on)*
 !
 ! :Dependencies: chem, cooling_gammie, cooling_gammie_PL, cooling_ism,
 !   cooling_koyamainutsuka, cooling_radapprox, cooling_solver, dim, eos,
@@ -159,7 +159,7 @@ subroutine energ_cooling(xi,yi,zi,ui,rho,dt,divv,dudt,Tdust_in,mu_in,gamma_in,K2
  gammai = gamma
  kappa  = 0.
  K2     = 0.
- 
+
  if (present(gamma_in)) gammai = gamma_in
  if (present(mu_in))    mui        = mu_in
  if (present(K2_in))    K2        = K2_in

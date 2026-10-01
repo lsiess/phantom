@@ -17,11 +17,13 @@ module cooling_solver
 ! :Owner: Daniel Price
 !
 ! :Runtime parameters:
+!   - H2_cooling     : *H2 cooling (1=on/0=off)*
 !   - T1_factor      : *factor by which T0 is increased (T1= T1_factor*T0)*
 !   - bowen_Cprime   : *radiative cooling rate (g.s/cm³)*
 !   - dust_collision : *dust collision (1=on/0=off)*
 !   - excitation_HI  : *cooling via electron excitation of HI (1=on/0=off)*
 !   - high_temp      : *radiative cooling for high temperatures (1=on/0=off)*
+!   - icool_method   : *integration method (0=implicit, 1=explicit, 2=exact solution)*
 !   - lambda_shock   : *Cooling rate parameter for analytic shock solution*
 !   - relax_bowen    : *Bowen (diffusive) relaxation (1=on/0=off)*
 !   - relax_stefan   : *radiative relaxation (1=on/0=off)*
@@ -59,7 +61,6 @@ contains
 subroutine init_cooling_solver(ierr)
  use io, only:error
  integer, intent(out) :: ierr
- 
 
  ierr = 0
  !you can't have cool_relaxation_Stefan and cool_relaxation_Bowen at the same time
@@ -334,7 +335,7 @@ subroutine calc_cooling_rate(Q, dlnQ_dlnT, rho, T, Teq, mu, gamma, K2, kappa, i)
 
  real, intent(in)  :: rho, T, Teq     !rho in code units
  real, intent(in)  :: mu, gamma
- real, intent(in)  :: K2, kappa 
+ real, intent(in)  :: K2, kappa
  real, intent(out) :: Q, dlnQ_dlnT    !code units
  integer, optional, intent(in) :: i !index for saving cooling rate in dump (i)
 
@@ -367,11 +368,11 @@ subroutine calc_cooling_rate(Q, dlnQ_dlnT, rho, T, Teq, mu, gamma, K2, kappa, i)
  dlnQ_H2           = 0.
 
  if (excitation_HI      == 1) call cooling_neutral_hydrogen(T, rho_cgs, Q_H0, dlnQ_H0)
- 
+
  if (relax_Bowen        == 1) call cooling_Bowen_relaxation(T, Teq, rho_cgs, mu, gamma,Q_relax_Bowen, dlnQ_relax_Bowen)
 
  if (H2_cooling         == 1) call cooling_H2(T, rho_cgs, Q_H2, dlnQ_H2)
- 
+
  if (dust_collision == 1 .and. K2 > 0.) call cooling_dust_collision(T, Teq, rho_cgs, K2, &
                                                         mu, Q_col_dust, dlnQ_col_dust)
  if (relax_Stefan   == 1) call cooling_radiative_relaxation(T, Teq, kappa, Q_relax_Stefan, &

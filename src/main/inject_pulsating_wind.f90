@@ -1,6 +1,6 @@
 !--------------------------------------------------------------------------!
 ! The Phantom Smoothed Particle Hydrodynamics code, by Daniel Price et al. !
-! Copyright (c) 2007-2025 The Authors (see AUTHORS)                        !
+! Copyright (c) 2007-2026 The Authors (see AUTHORS)                        !
 ! See LICENCE file for usage and distribution conditions                   !
 ! http://phantomsph.github.io/                                             !
 !--------------------------------------------------------------------------!
@@ -13,29 +13,29 @@ module inject
 ! :Owner: Owen Vermeulen
 !
 ! :Runtime parameters:
-!   - iboundary_spheres      : *number of boundary spheres (integer)*
-!   - n_profile_points       : *number of points in stellar profile calculation (integer)*
-!   - min_mass_fraction      : *criteria determining when to stop building shells, i.e., when M_shell / M_tot < mass_fraction*
-!   - rho_power_in           : *density profile exponent: rho ~ r^(-rho_power)*
-!   - r_min_on_rstar         : *inner radius as fraction of R_star*
-!   - dtpulsation            : *pulsation timestep as fraction of pulsation period*
-!   - rho_inner              : *density at inner boundary r_min (cgs)*
-!   - iwind                  : *wind type: 1=prescribed, 2=period from mass-radius relation*
-!   - pulsation_period_days  : *pulsation period (days) if iwind != 2*
-!   - piston_velocity_km_s   : *piston velocity amplitude (km/s)*
-!   - phi0                   : *initial phase offset (radians) (best = -pi/2)*
-!   - wss                    : *fraction of tangential and radial distance between particles*
-!   - save_period            : *wether to save dumps as an multiple of the pulsation period (0=off, 1=on)*
-!   - dumps_p_period         : *how many dumps to save every period, if save_period is activated*
-!   - reinject_enabled       : *enable reinjection (logical)*
-!   - n_inject_period        : *number of reinjections per period*
-!   - mass_loss_start        : *start time for mass-loss calculation in pulsation periods*
-!   - mass_loss_end          : *end time for mass-loss calculation in pulsation periods*
-!   - update_L               : *wether to update the luminosity of the sink particle with the pulsation period (0=off, 1=on)*
-!   - use_file_mdot          : *skip measurement phase and use mass_loss_rate.dat directly (0=off, 1=on)*
+!   - dumps_p_period    : *number of dumps per period (if save_period = 1)*
+!   - iboundary_spheres : *number of boundary spheres (piston layers)*
+!   - iwind             : *wind type: 1=prescribed, 2=period from mass-radius relation*
+!   - mass_loss_end     : *end time for mass-loss calculation (periods)*
+!   - mass_loss_start   : *start time for mass-loss calculation (periods)*
+!   - min_mass_fraction : *minimum mass fraction per shell*
+!   - n_inject_period   : *period between reinjections (periods)*
+!   - n_profile_points  : *number of points in stellar profile*
+!   - phi0              : *initial phase offset (radians)*
+!   - piston_velocity   : *piston velocity amplitude (km/s)*
+!   - pulsation_period  : *pulsation period (days)*
+!   - r_min_on_rstar    : *gas atmosphere inner radius as fraction of R_star*
+!   - reinject_enabled  : *enable dynamic reinjection (0=off, 1=on)*
+!   - rho_inner         : *inner boundary density at r_min (cgs)*
+!   - rho_power         : *density profile exponent: rho ~ r^(-rho_power)*
+!   - save_period       : *wether to save dumps as fraction of period (0=off, 1=on)*
+!   - update_L          : *update luminosity with pulsation (0=off, 1=on)*
+!   - use_file_mdot     : *skip measurement phase (0=off, 1=on)*
+!   - verbose           : *enable verbose output (0=off, 1=on)*
+!   - wss               : *radial/tangential spacing ratio*
 !
-! :Dependencies: dim, eos, icosahedron, infile_utils, injectutils, io,
-!   part, partinject, physcon, units
+! :Dependencies: dust_formation, eos, infile_utils, injectutils, io, part,
+!   physcon, timestep, units, wind_pulsating
 !
  use io,      only:fatal
  use physcon, only:pi
@@ -158,8 +158,8 @@ subroutine init_inject(ierr)
  inquire(file='mass_loss_rate.dat', exist=file_exists)
  if (npartoftype(igas) < 100 .and. file_exists .and. use_file_mdot == 0) then
     print*,'Existing mass loss data file found, but this is a fresh start, so delete'
-    open(newunit=iunit, file='mass_loss_rate.dat', status='old', iostat=ierr)
-    close(iunit, status='delete')
+    open(newunit=iunit,file='mass_loss_rate.dat',status='old',iostat=ierr)
+    close(iunit,status='delete')
     file_exists = .false.
  endif
 
@@ -231,14 +231,14 @@ subroutine init_inject(ierr)
  mass_loss_rates = 0.
 
  if (verbose == 1) then
-   print *, ''
-   print *, 'Calculated reinject period:', reinject_period
-   print *, 'Measurement period:', reinject_period
-   print *, 'Mass loss measurement start time:', mass_loss_start_time
-   print *, 'Mass loss measurement end time  :', mass_loss_end_time
-   print *, 'Rmax                            :', r_max
-   print *, 'Expected number of measurements :', size(mass_loss_rates)
-   print *, ''
+    print *, ''
+    print *, 'Calculated reinject period:', reinject_period
+    print *, 'Measurement period:', reinject_period
+    print *, 'Mass loss measurement start time:', mass_loss_start_time
+    print *, 'Mass loss measurement end time  :', mass_loss_end_time
+    print *, 'Rmax                            :', r_max
+    print *, 'Expected number of measurements :', size(mass_loss_rates)
+    print *, ''
  endif
 
  ! If use_file_mdot=1, read mass_loss_rate.dat now and mark measurement as done,
@@ -617,7 +617,7 @@ subroutine write_mass_loss_data()
  use units,   only:umass,utime
  integer :: iunit,ierr,i
 
- open(newunit=iunit, file='mass_loss_rate.dat', status='replace', iostat=ierr)
+ open(newunit=iunit,file='mass_loss_rate.dat',status='replace',iostat=ierr)
  if (ierr /= 0) then
     write(iprint,*) 'Could not write mass_loss_rate.dat'
     return
@@ -652,7 +652,7 @@ subroutine read_mass_loss_data()
  use io, only:iprint
  integer :: iunit,ierr,i
 
- open(newunit=iunit, file='mass_loss_rate.dat', status='old', iostat=ierr)
+ open(newunit=iunit,file='mass_loss_rate.dat',status='old',iostat=ierr)
  if (ierr /= 0) return
 
  read(iunit,*)

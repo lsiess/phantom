@@ -1,6 +1,6 @@
 !--------------------------------------------------------------------------!
 ! The Phantom Smoothed Particle Hydrodynamics code, by Daniel Price et al. !
-! Copyright (c) 2007-2025 The Authors (see AUTHORS)                        !
+! Copyright (c) 2007-2026 The Authors (see AUTHORS)                        !
 ! See LICENCE file for usage and distribution conditions                   !
 ! http://phantomsph.github.io/                                             !
 !--------------------------------------------------------------------------!
@@ -13,27 +13,28 @@ module setup
 ! :Owner: Owen Vermeulen
 !
 ! :Runtime parameters:
-!   wind_gamma            - Adiabatic index for wind gas
-!   icompanion_star       - Set to 1 for a binary system, 0 for single star
-!   semi_major_axis       - Semi-major axis of the binary system
-!   eccentricity          - Eccentricity of the binary system
-!   primary_Teff          - Primary star effective temperature (K)
-!   primary_lum_lsun      - Primary star luminosity (Lsun)
-!   primary_mass_msun     - Primary star mass (Msun)
-!   primary_Reff_au       - Primary star effective radius (au)
-!   primary_racc_au       - Primary star accretion radius (au)
-!   secondary_lum_lsun    - Secondary star luminosity (Lsun)
-!   secondary_mass_msun   - Secondary star mass (Msun)
-!   secondary_Reff_au     - Secondary star effective radius (au)
-!   secondary_racc_au     - Secondary star accretion radius (au)
-!   mass_of_particles     - Particle mass (Msun, overwritten anyway <>0)
+!   - eccentricity      : *eccentricity of the binary system*
+!   - icompanion_star   : *set to 1 for a binary system, 2 for a triple system*
+!   - mass_of_particles : *particle mass (Msun, overwritten anyway <>0)*
+!   - primary_Reff      : *primary star effective radius (au)*
+!   - primary_Teff      : *primary star effective temperature (K)*
+!   - primary_lum       : *primary star luminosity (Lsun)*
+!   - primary_mass      : *primary star mass (Msun)*
+!   - primary_racc      : *primary star accretion radius (au)*
+!   - secondary_Reff    : *secondary star effective radius (au)*
+!   - secondary_Teff    : *secondary star effective temperature (K)*
+!   - secondary_lum     : *secondary star luminosity (Lsun)*
+!   - secondary_mass    : *secondary star mass (Msun)*
+!   - secondary_racc    : *secondary star accretion radius (au)*
+!   - semi_major_axis   : *semi-major axis of the binary system (au)*
+!   - wind_gamma        : *adiabatic index for wind gas*
 !
-! :Dependencies: boundary, dim, infile_utils, io, kernel, options, part,
-!   physcon, prompting, ptmass, setup_params, table_utils, timestep, units
+! :Dependencies: infile_utils, inject, io, options, part, physcon,
+!   setbinary, units, wind_pulsating
 !
  implicit none
  public :: setpart
-  
+
  private
  real, public :: wind_gamma
  integer :: icompanion_star
@@ -81,13 +82,13 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
  use physcon,   only: au, solarm, mass_proton_cgs, kboltz, solarl
  use units,     only: set_units,umass,udist,utime,unit_energ
  use inject ,   only: set_default_options_inject
- use wind_pulsating, only: setup_star, calc_stellar_profile, save_stellarprofile
- use setbinary, only: set_binary
+ use wind_pulsating, only:setup_star, calc_stellar_profile, save_stellarprofile
+ use setbinary, only:set_binary
  use io,        only: master
  use options,   only  : nfulldump !, ieos
 !  use eos,       only      : gmw
 ! use timestep,  only:dtmax
- 
+
  integer,           intent(in)    :: id
  integer,           intent(inout) :: npart
  integer,           intent(out)   :: npartoftype(:)
@@ -105,7 +106,7 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
 !  dtmax = 0.1
 !  ieos = 5
 !  gmw = 1.26
- 
+
  call set_units(mass=solarm,dist=au,G=1.)
  call set_default_parameters_wind()
  filename = trim(fileprefix)//'.setup'
@@ -148,13 +149,13 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
     xyzmh_ptmass(iTeff,2) = secondary_Teff
     xyzmh_ptmass(iReff,2) = secondary_Reff
     xyzmh_ptmass(iLum,2)  = secondary_lum
-     print *,'Sink particles summary'
-     print *,'  #    mass       racc      lum         Reff'
-     do k=1,nptmass
-        print '(i4,2(2x,f9.5),2(2x,es10.3))',k,xyzmh_ptmass(4:5,k),xyzmh_ptmass(iLum,k)/(solarl*utime/unit_energ),&
+    print *,'Sink particles summary'
+    print *,'  #    mass       racc      lum         Reff'
+    do k=1,nptmass
+       print '(i4,2(2x,f9.5),2(2x,es10.3))',k,xyzmh_ptmass(4:5,k),xyzmh_ptmass(iLum,k)/(solarl*utime/unit_energ),&
                xyzmh_ptmass(iReff,k)*udist/au
-     enddo
-     print *,''
+    enddo
+    print *,''
 
  else
     nptmass = 1
@@ -212,7 +213,6 @@ subroutine write_setupfile(filename)
  character(len=*), intent(in) :: filename
  integer, parameter           :: iunit = 20
 
-
  print "(a)",' writing setup options file '//trim(filename)
  open(unit=iunit,file=filename,status='replace',form='formatted')
  write(iunit,"(a)") '# input file for wind setup routine'
@@ -226,7 +226,7 @@ subroutine write_setupfile(filename)
  call write_inopt(primary_Reff_au,'primary_Reff','primary star effective radius (au)',iunit)
  call write_inopt(icompanion_star,'icompanion_star','set to 1 for a binary system, 2 for a triple system',iunit)
  if (icompanion_star == 1) then
-    call get_lum_and_Reff(secondary_lum_lsun,secondary_Reff_au,secondary_Teff,secondary_lum,secondary_Reff) 
+    call get_lum_and_Reff(secondary_lum_lsun,secondary_Reff_au,secondary_Teff,secondary_lum,secondary_Reff)
     call write_inopt(secondary_mass_msun,'secondary_mass','secondary star mass (Msun)',iunit)
     call write_inopt(secondary_racc_au,'secondary_racc','secondary star accretion radius (au)',iunit)
     call write_inopt(secondary_lum_lsun,'secondary_lum','secondary star luminosity (Lsun)',iunit)
@@ -241,7 +241,7 @@ subroutine write_setupfile(filename)
  call write_inopt(wind_gamma,'wind_gamma','adiabatic index for wind gas',iunit)
 
  close(iunit)
- 
+
 end subroutine write_setupfile
 
 !----------------------------------------------------------------
@@ -259,7 +259,6 @@ subroutine read_setupfile(filename,ierr)
  integer, parameter :: iunit = 21
  type(inopts), allocatable :: db(:)
  integer :: nerr,ichange
-
 
  nerr = 0
  ichange = 0
@@ -306,14 +305,13 @@ subroutine read_setupfile(filename,ierr)
 
  call read_inopt(default_particle_mass,'mass_of_particles',db,min=0.,errcount=nerr)
  call read_inopt(wind_gamma,'wind_gamma',db,min=1.,max=4.,errcount=nerr)
- 
+
  call close_db(db)
- 
+
  call close_db(db)
  ierr = nerr
  call write_setupfile(filename)
 
- 
 end subroutine read_setupfile
 
 end module setup

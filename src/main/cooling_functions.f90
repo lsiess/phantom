@@ -9,6 +9,8 @@ module cooling_functions
 ! A library of cooling functions that can be handled by cooling_solver
 !  Contributed by Lionel Siess and Ward Homan
 !
+! :References: None
+!
 ! :Owner: Daniel Price
 !
 ! :Runtime parameters: None
@@ -40,8 +42,8 @@ module cooling_functions
            cooling_H2, &
            testing_cooling_functions
 
- private
- real, parameter  :: xH = 0.7, xHe = 0.28 !assumed H and He mass fractions
+  private
+  real, parameter  :: xH = 0.7, xHe = 0.28 !assumed H and He mass fractions
 
 contains
 !-----------------------------------------------------------------------
@@ -209,7 +211,7 @@ end subroutine cooling_high_temp
 !-----------------------------------------------------------------------
 subroutine cooling_H2(T, rho_cgs, Q_cgs, dlnQ_dlnT)
 
- use physcon, only: mass_proton_cgs
+ use physcon, only:mass_proton_cgs
 
  real, intent(in)  :: T, rho_cgs
  real, intent(out) :: Q_cgs, dlnQ_dlnT
@@ -283,7 +285,7 @@ subroutine testing_cooling_functions(ifunct, T, Q, dlnQ_dlnT)
     dlnQ_dlnT = 0.
  end select
 
-end subroutine testing_cooling_functions
+end function s
 
 !-----------------------------------------------------------------------
 !+
@@ -917,4 +919,4 @@ real function heat_Compton(T_gas, rho_gas)
 
 end function heat_Compton
 
-end module cooling_functions
+ end function s
