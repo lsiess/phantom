@@ -42,8 +42,8 @@ module cooling_functions
            cooling_H2, &
            testing_cooling_functions
 
-  private
-  real, parameter  :: xH = 0.7, xHe = 0.28 !assumed H and He mass fractions
+ private
+ real, parameter  :: xH = 0.7, xHe = 0.28 !assumed H and He mass fractions
 
 contains
 !-----------------------------------------------------------------------
@@ -285,7 +285,7 @@ subroutine testing_cooling_functions(ifunct, T, Q, dlnQ_dlnT)
     dlnQ_dlnT = 0.
  end select
 
-end function s
+end subroutine testing_cooling_functions
 
 !-----------------------------------------------------------------------
 !+
@@ -919,4 +919,4 @@ real function heat_Compton(T_gas, rho_gas)
 
 end function heat_Compton
 
- end function s
+end module cooling_functions
