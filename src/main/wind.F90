@@ -114,7 +114,7 @@ subroutine init_wind(params,time_end,state,tau_lucy_init)
  use physcon,          only:pi,Rg
  use io,               only:fatal
  use eos,              only:gmw
- use ptmass_radiation, only:iget_tdust
+ use ptmass_radiation, only:iget_tdust,tdust_p
  use dust_formation,   only:kappa_gas,init_muGamma,idust_opacity
 
  real,              intent(in)  :: time_end
@@ -156,6 +156,8 @@ subroutine init_wind(params,time_end,state,tau_lucy_init)
     state%Tdust = params%Tstar*(.5)**(1./4.)
  elseif (iget_tdust == 4) then
     state%Tdust = params%Tstar*(.5+3./4.*state%tau_lucy)**(1./4.)
+ elseif (iget_tdust == 5) then
+    state%Tdust = params%Tstar*(.5)**(2./(4.+tdust_p))
  endif
  state%kappa  = kappa_gas
  state%Q      = 0.
@@ -199,7 +201,7 @@ subroutine wind_step(params,state)
 ! all quantities in cgs
 
  use wind_equations,   only:evolve_hydro
- use ptmass_radiation, only:iget_tdust,tdust_exp,isink_radiation,calc_alpha
+ use ptmass_radiation, only:iget_tdust,tdust_exp,tdust_p,isink_radiation,calc_alpha
  use physcon,          only:pi,Rg
  use dust_formation,   only:evolve_chem,calc_kappa_dust,calc_kappa_bowen,&
       calc_Eddington_factor,idust_opacity,calc_muGamma
@@ -285,6 +287,9 @@ subroutine wind_step(params,state)
  elseif (iget_tdust == 1) then
     ! T(r) relation
     state%Tdust = params%Tstar*(state%Rstar/state%r)**tdust_exp
+ elseif (iget_tdust == 5) then
+    ! Bladh & Hoefner (2012) power law
+    state%Tdust = params%Tstar*(.5*state%Rstar/state%r)**(2./(4.+tdust_p))
  else
     ! Tdust = Tgas
     state%Tdust = state%Tg
@@ -346,7 +351,7 @@ subroutine wind_step(params,state)
 ! all quantities in cgs
 
  use wind_equations,   only:evolve_hydro
- use ptmass_radiation, only:iget_tdust,tdust_exp,isink_radiation,calc_alpha
+ use ptmass_radiation, only:iget_tdust,tdust_exp,tdust_p,isink_radiation,calc_alpha
  use physcon,          only:pi,Rg
  use dust_formation,   only:evolve_chem,calc_kappa_dust,calc_kappa_bowen,&
       calc_Eddington_factor,idust_opacity,calc_muGamma
@@ -426,6 +431,8 @@ subroutine wind_step(params,state)
     state%Tdust = params%Tstar * (.5*(1.-sqrt(1.-(state%Rstar/state%r)**2)))**(1./4.)
  elseif (iget_tdust == 1) then
     state%Tdust = params%Tstar*(state%Rstar/state%r)**tdust_exp
+ elseif (iget_tdust == 5) then
+    state%Tdust = params%Tstar*(.5*state%Rstar/state%r)**(2./(4.+tdust_p))
  else
     state%Tdust = state%Tg
  endif

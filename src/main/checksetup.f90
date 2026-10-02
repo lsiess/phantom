@@ -749,7 +749,7 @@ subroutine check_setup_wind_radiation(nerror)
     print *,'Error: dust opacity not used, change isink_radiation or idust_opacity'
     nerror = nerror+1
  endif
- if (iget_tdust > 2 .and. iray_resolution < 0 ) then
+ if ((iget_tdust == 3 .or. iget_tdust == 4) .and. iray_resolution < 0 ) then
     print *,'ERROR: To get dust temperature with Attenuation or Lucy, set iray_resolution >= 0'
     nerror = nerror+1
  endif

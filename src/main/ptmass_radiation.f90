@@ -10,14 +10,15 @@ module ptmass_radiation
 !   Contains routines to compute dust temperature assuming radiative equilibrium
 !   Also routine to compute radiative acceleration based on sink particle luminosity
 !
-! :References: None
+! :References: Bladh & Hoefner (2012), A&A 546, A76
 !
 ! :Owner: Lionel Siess
 !
 ! :Runtime parameters:
 !   - beta_vgrad : *characterize the steepness of the velocity gradient of the wind profile*
-!   - iget_tdust : *dust temperature (0:Tdust=Tgas 1:T(r) 2:Flux dilution 3:Attenuation 4:Lucy)*
+!   - iget_tdust : *dust temperature (0:Tdust=Tgas 1:T(r) 2:Flux dilution 3:Attenuation 4:Lucy 5:Bladh2012)*
 !   - tdust_exp  : *exponent of the dust temperature profile*
+!   - tdust_p    : *power-law index p of the dust absorption efficiency (Q_abs ~ lambda^-p)*
 !
 ! :Dependencies: dim, dust_formation, infile_utils, io, part, physcon,
 !   raytracer, units
@@ -28,6 +29,7 @@ module ptmass_radiation
  integer, public  :: iget_tdust      = 0
  integer, public  :: iray_resolution = -1
  real,    public  :: tdust_exp       = 0.5
+ real,    public  :: tdust_p         = 1.
  real,    public  :: beta_vgrad      = 0.8
 
  public :: get_rad_accel_from_ptmass,calc_alpha
@@ -390,6 +392,19 @@ subroutine get_dust_temperature_from_ptmass(npart,xyzh,eos_vars,nptmass,xyzmh_pt
        endif
     enddo
     !$omp end parallel do
+ case(5)
+    ! Bladh & Hoefner (2012) power law, Tdust = Tstar*(Rstar/(2r))**(2/(4+p))
+    !$omp parallel  do default(none) &
+    !$omp shared(npart,xa,ya,za,R_star,T_star,xyzh,dust_temp,tdust_p) &
+    !$omp private(i,r)
+    do i=1,npart
+       if (.not.isdead_or_accreted(xyzh(4,i))) then
+          r = sqrt((xyzh(1,i)-xa)**2 + (xyzh(2,i)-ya)**2 + (xyzh(3,i)-za)**2)
+          if (r  <  R_star) r = R_star
+          dust_temp(i) = T_star*(.5*R_star/r)**(2./(4.+tdust_p))
+       endif
+    enddo
+    !$omp end parallel do
  case default
     ! sets Tdust = Tgas
     !$omp parallel do default(none) &
@@ -418,8 +433,9 @@ subroutine write_options_ptmass_radiation(iunit)
  call write_inopt(isink_radiation,'isink_radiation', &
                   'sink radiation pressure method (0=off,1=alpha,2=dust,3=alpha+dust,4=alpha profile)',iunit)
  if (isink_radiation == 2 .or. isink_radiation == 3) then
-    call write_inopt(iget_tdust,'iget_tdust','dust temperature (0:Tdust=Tgas 1:T(r) 2:Flux dilution 3:Attenuation 4:Lucy)',iunit)
-    if (iget_tdust /= 2) call write_inopt(iray_resolution,&
+    call write_inopt(iget_tdust,'iget_tdust',&
+                     'dust temperature (0:Tdust=Tgas 1:T(r) 2:Flux dilution 3:Attenuation 4:Lucy 5:Bladh2012)',iunit)
+    if (iget_tdust /= 2 .and. iget_tdust /= 5) call write_inopt(iray_resolution,&
                                    'iray_resolution','set the number of rays to 12*4**iray_resolution (deactivated if <0)',iunit)
  endif
  if (isink_radiation == 4) then
@@ -427,6 +443,8 @@ subroutine write_options_ptmass_radiation(iunit)
  endif
  if (iget_tdust == 1) then
     call write_inopt(tdust_exp,'tdust_exp','exponent of the dust temperature profile',iunit)
+ elseif (iget_tdust == 5) then
+    call write_inopt(tdust_p,'tdust_p','power-law index p of the dust absorption efficiency (Q_abs ~ lambda^-p)',iunit)
  endif
 
 end subroutine write_options_ptmass_radiation
@@ -446,13 +464,15 @@ subroutine read_options_ptmass_radiation(db,nerr)
 
  call read_inopt(isink_radiation,'isink_radiation',db,errcount=nerr,min=0,max=4)
  if (isink_radiation == 2 .or. isink_radiation == 3) then
-    call read_inopt(iget_tdust,'iget_tdust',db,errcount=nerr,min=0,max=4)
-    if (iget_tdust /= 2) call read_inopt(iray_resolution,'iray_resolution',db,errcount=nerr,min=-1)
+    call read_inopt(iget_tdust,'iget_tdust',db,errcount=nerr,min=0,max=5)
+    if (iget_tdust /= 2 .and. iget_tdust /= 5) call read_inopt(iray_resolution,'iray_resolution',db,errcount=nerr,min=-1)
     if (iray_resolution >= 0) itau_alloc = 1
     if (iget_tdust == 4) itauL_alloc = 1
  endif
  if (iget_tdust == 1) then
     call read_inopt(tdust_exp,'tdust_exp',db,errcount=nerr,min=0.)
+ elseif (iget_tdust == 5) then
+    call read_inopt(tdust_p,'tdust_p',db,errcount=nerr,min=-3.9)
  endif
  if (isink_radiation == 4) then
     call read_inopt(beta_vgrad,'beta_vgrad',db,errcount=nerr,min=0.5,max=2.)
