@@ -9,7 +9,7 @@ module cooling_functions
 ! A library of cooling functions that can be handled by cooling_solver
 !  Contributed by Lionel Siess and Ward Homan
 !
-! :References:
+! :References: None
 !
 ! :Owner: Daniel Price
 !
@@ -39,6 +39,7 @@ module cooling_functions
            cooling_Bowen_relaxation, &
            cooling_dust_collision, &
            cooling_radiative_relaxation, &
+           cooling_H2, &
            testing_cooling_functions
 
  private
@@ -199,6 +200,35 @@ subroutine cooling_high_temp(T, rho_cgs, Q_cgs, dlnQ_dlnT)
  endif
 
 end subroutine cooling_high_temp
+
+!-----------------------------------------------------------------------
+!+
+!  Cooling by H2 molecules
+!
+! :References:
+!   Groenenwegen (1994), A&A 290, 531
+!+
+!-----------------------------------------------------------------------
+subroutine cooling_H2(T, rho_cgs, Q_cgs, dlnQ_dlnT)
+
+ use physcon, only:mass_proton_cgs
+
+ real, intent(in)  :: T, rho_cgs
+ real, intent(out) :: Q_cgs, dlnQ_dlnT
+
+ real, parameter   :: f = 1.0d0
+ real              :: nH2
+
+ if (T < 900.) then
+    nH2 = 0.5 * rho_cgs/(1.4*mass_proton_cgs)
+    Q_cgs = -f*2.61111e-21 * nH2 * (T/1000.)**(4.74) / rho_cgs
+    dlnQ_dlnT = 4.74
+ else
+    Q_cgs = 0.
+    dlnQ_dlnT = 0.
+ endif
+
+end subroutine cooling_H2
 
 !-----------------------------------------------------------------------
 !+
@@ -368,13 +398,9 @@ end function n_dust
 !=======================================================================
 !=======================================================================
 !=======================================================================
-!\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\
 !
 !  Cooling functions    **** ALL IN cgs  ****
 !
-!\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\
-!=======================================================================
-!=======================================================================
 !=======================================================================
 
 !-----------------------------------------------------------------------
@@ -560,7 +586,7 @@ real function cool_HI(T_gas, rho_gas, mu, nH, nHe)
  ! all hydrogen atomic, so nH = n_gas
  ! Dalgarno & McCray (1972) provide data starting at 3000K
  ! (1+sqrt(T_gas/1.d5))**(-1) correction factor added by Cen 1992
- if (T_gas > 3000.) then
+ if (T_gas > 200000.) then
     n_gas   = rho_gas/(mu*mass_proton_cgs)
     !nH      = XH*n_gas
     call nelectron_mu(T_gas, rho_gas, nH, nHe, n_e)

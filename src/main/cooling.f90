@@ -23,9 +23,10 @@ module cooling
 ! :Owner: Lionel Siess
 !
 ! :Runtime parameters:
-!   - C_cool   : *factor controlling cooling timestep*
-!   - Tfloor   : *temperature floor (K); on if > 0*
-!   - icooling : *cooling function (0=off, 1=library (step), 2=library (force),*
+!   - C_cool    : *factor controlling cooling timestep*
+!   - Tfloor    : *temperature floor (K); on if > 0*
+!   - icooling  : *cooling function (0=off, 1=library (step), 2=library (force),*
+!   - use_bound : *use criteria on the energy to activate cooling (0=off, 1=on)*
 !
 ! :Dependencies: chem, cooling_gammie, cooling_gammie_PL, cooling_ism,
 !   cooling_koyamainutsuka, cooling_radapprox, cooling_solver, dim, eos,
@@ -45,8 +46,9 @@ module cooling
  logical, public :: cooling_in_step  = .false.
 
  !--Minimum temperature (failsafe to prevent u < 0); optional for ALL cooling options
- real,    public :: Tfloor = 0.                     ! [K]; set in .in file.  On if Tfloor > 0.
+ real,    public :: Tfloor = 10.                    ! [K]; set in .in file.  On if Tfloor > 0.
  real,    public :: ufloor = 0.                     ! [code units]; set in init_cooling
+ integer, public :: use_bound = 1                   ! if true, only cool if e_tot > 0
  public :: T0_value,lambda_shock_cgs ! expose to public
 
  private
@@ -140,6 +142,7 @@ subroutine energ_cooling(xi,yi,zi,ui,rho,dt,divv,dudt,Tdust_in,mu_in,gamma_in,K2
  use cooling_koyamainutsuka, only:cooling_KoyamaInutsuka_explicit,&
                                   cooling_KoyamaInutsuka_implicit
  use cooling_radapprox,      only:radcool_update_du
+ use physcon,                only:au
 
  real(kind=4), intent(in)  :: divv               ! in code units
  real,         intent(in)  :: xi,yi,zi,ui,rho,dt                      ! in code units
@@ -148,6 +151,7 @@ subroutine energ_cooling(xi,yi,zi,ui,rho,dt,divv,dudt,Tdust_in,mu_in,gamma_in,K2
  real,         intent(in), optional :: abund_in(nabn),duhydro
  integer,      intent(in), optional :: ipart
  real                       :: mui,gammai,Tgas,Tdust,K2,kappa
+
  real :: abundi(nabn)
 
  dudt   = 0.
@@ -155,6 +159,7 @@ subroutine energ_cooling(xi,yi,zi,ui,rho,dt,divv,dudt,Tdust_in,mu_in,gamma_in,K2
  gammai = gamma
  kappa  = 0.
  K2     = 0.
+
  if (present(gamma_in)) gammai = gamma_in
  if (present(mu_in))    mui        = mu_in
  if (present(K2_in))    K2        = K2_in
@@ -223,7 +228,10 @@ subroutine write_options_cooling(iunit)
  case default
     call write_options_cooling_solver(iunit)
  end select
- if (icooling > 0) call write_inopt(Tfloor,'Tfloor','temperature floor (K); on if > 0',iunit)
+ if (icooling > 0) then
+    call write_inopt(Tfloor,'Tfloor','temperature floor (K); on if > 0',iunit)
+    call write_inopt(use_bound,'use_bound','use criteria on the energy to activate cooling (0=off, 1=on)',iunit)
+ endif
 
 end subroutine write_options_cooling
 

@@ -262,6 +262,11 @@ module part
  real, allocatable :: tau(:)
  real, allocatable :: tau_lucy(:)
 !
+!--Cooling rate storage
+!
+ real, allocatable :: cool_rate(:)
+ character(len=*), parameter :: cool_rate_label = 'cool_rate'
+!
 !--Dust formation - theory of moments
 !
  real, allocatable :: dust_temp(:)
@@ -621,6 +626,7 @@ subroutine deallocate_part
  if (allocated(nucleation))   deallocate(nucleation)
  if (allocated(tau))          deallocate(tau)
  if (allocated(tau_lucy))     deallocate(tau_lucy)
+ if (allocated(cool_rate))    deallocate(cool_rate)
  if (allocated(T_gas_cool))   deallocate(T_gas_cool)
  if (allocated(dust_temp))    deallocate(dust_temp)
  if (allocated(rad))          deallocate(rad,radpred,drad,radprop)
@@ -1703,8 +1709,8 @@ subroutine fill_sendbuf(i,xtemp,nbuf)
     if (do_nucleation) then
        call fill_buffer(xtemp, nucleation(:,i),nbuf)
     endif
-    if (itau_alloc == 1)  call fill_buffer(xtemp, tau(i),nbuf)
-    if (itauL_alloc == 1) call fill_buffer(xtemp, tau_lucy(i),nbuf)
+    if (itau_alloc == 1)  call fill_buffer(xtemp, tau(i), nbuf)
+    if (itauL_alloc == 1) call fill_buffer(xtemp, tau_lucy(i), nbuf)
 
     if (maxgrav==maxp) then
        call fill_buffer(xtemp, poten(i),nbuf)
@@ -1790,8 +1796,8 @@ subroutine unfill_buffer(ipart,xbuf)
  if (do_nucleation) then
     nucleation(:,ipart) = unfill_buf(xbuf,j,n_nucleation)
  endif
- if (itau_alloc == 1)  tau(ipart) = unfill_buf(xbuf,j)
- if (itauL_alloc == 1) tau_lucy(ipart) = unfill_buf(xbuf,j)
+ if (itau_alloc == 1)  tau(ipart) = unfill_buf(xbuf, j)
+ if (itauL_alloc == 1) tau_lucy(ipart) = unfill_buf(xbuf, j)
  if (maxgrav==maxp) then
     poten(ipart)        = real(unfill_buf(xbuf,j),kind=kind(poten))
  endif
