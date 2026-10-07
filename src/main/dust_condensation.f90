@@ -10,7 +10,7 @@ module dust_condensation
 !
 ! :References: Gail & Sedlmayr textbook Physics and chemistry of Circumstellar dust shells
 !              + p[apaers by Ferrarotti & Gail (2000+)
-!
+!f
 
 use physcon, only:atomic_mass_unit
 
@@ -325,7 +325,7 @@ subroutine find_root(m, s, o, c, g, root) !, tol, max_iter)
     ! Input parameters
     real, intent(in) :: m, s, o, g(3), c !m = eps(iMg), s = eps(iSi),o = eps(iOx), c = eps(iC)
     real, intent(out) :: root(3)
-    real :: tol = 1.0d-6!, intent(in) :: tol
+    real :: tol = 1.0d-2!, intent(in) :: tol
     integer :: max_iter = 1000 !, intent(in) :: max_iter
 
     ! Local variables
