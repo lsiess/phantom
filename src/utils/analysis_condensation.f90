@@ -123,22 +123,36 @@ contains
 
       do_condensation = .true.
       do_nucleation = .false.
+<<<<<<< Updated upstream
 ! Set input values
 !We condsider a wind with a density distribution rho(T) = rho_0 * (T/Tmax) **2
 !where rho_0 and Tmax are the density and temperature at the base of the wind
       nTstep = 100  ! number of temperature grid point between Tmin and Tmax
       Tmin  = 300.
       Tmax  = 5000.
+=======
+      ! Set input values
+      !We condsider a wind with a density distribution rho(T) = rho_0 * (T/Tmax) **2
+      !where rho_0 and Tmax are the density and temperature at the base of the wind
+      nTstep = 270  ! number of temperature grid point between Tmin and Tmax
+      Tmin  = 600.
+      Tmax  = 6000.
+>>>>>>> Stashed changes
       rho_0 = 1.0d-10
       pressure_cgs = 1.d-4 !7 !1.d-4 = 10d-10 barye   !optional variable for comparison with Gail & Sedlmayr calculations
 
 ! Set initial parameters
       time_0 = 0.
       time_final = 1.d5 !A larger value creates wiggles in fir and kappa
+<<<<<<< Updated upstream
       dt = 1.d5 !
       dt = 5d4
       wind_CO_ratio = 0.3318 !0.3318 for Figure 10.11 of Gail+SedlMayr Book
       wind_CO_ratio = 0.975 !0.3318 for Figure 10.11 of Gail+SedlMayr Book
+=======
+      dt = 5.0d4 !
+      wind_CO_ratio = 0.9 !0.3318 for Figure 10.11 of Gail+SedlMayr Book
+>>>>>>> Stashed changes
 
       call set_abundances
 

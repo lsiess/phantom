@@ -494,7 +494,11 @@ contains
       real, parameter :: R = 1.987165
       real :: G, d
       G = coefs(1)/T + coefs(2) + (coefs(3)+(coefs(4)+coefs(5)*T)*T)*T
+<<<<<<< Updated upstream
       d = max(-exp_lim,min(-G/(R*T),exp_lim)) !222
+=======
+      d = max(-700., min(-G/(R*T),700.)) !222
+>>>>>>> Stashed changes
       calc_Kd = exp(d)
    end function calc_Kd
 
@@ -505,7 +509,12 @@ contains
       real, parameter :: a = 1.3316d1, b = -6.2216, c = 4.5829d-1, d = -6.4903d-2, e = 3.2788d-3
       real :: theta, logKd
       theta = 5040./T
+<<<<<<< Updated upstream
       logKd = max(-log_lim,min(a+(b+(c+(d+e*theta)*theta)*theta)*theta,log_lim))
+=======
+      logKd = a+(b+(c+(d+e*theta)*theta)*theta)*theta
+      logKd = max(-700., min(-logKd,700.)) !222
+>>>>>>> Stashed changes
       calc_Kd_TiS = 10.**(-logKd)*patm
    end function calc_Kd_TiS
 
@@ -516,7 +525,12 @@ contains
       real, parameter :: a = 2.46640e1, b = -6.88730, c = 8.377100e-2, d = -1.00580e-2, e = 4.92910e-4
       real :: theta, logKd
       theta = 5040./T
+<<<<<<< Updated upstream
       logKd = max(-log_lim,min(a+(b+(c+(d+e*theta)*theta)*theta)*theta,log_lim))
+=======
+      logKd = a+(b+(c+(d+e*theta)*theta)*theta)*theta
+      logKd = max(-700., min(-logKd,700.)) !222
+>>>>>>> Stashed changes
       calc_Kd_SiH2 = 10.**(-logKd)*patm
    end function calc_Kd_SiH2
 
@@ -527,7 +541,12 @@ contains
       real, parameter :: a = 3.63290d1, b = -1.05560d1, c = 8.09450d-2, d = -8.62120d-3, e = 3.98640d-4
       real :: theta, logKd
       theta = 5040./T
+<<<<<<< Updated upstream
       logKd = max(-log_lim,min(a+(b+(c+(d+e*theta)*theta)*theta)*theta,log_lim))
+=======
+      logKd = a+(b+(c+(d+e*theta)*theta)*theta)*theta
+      logKd = max(-700., min(-logKd,700.)) !222
+>>>>>>> Stashed changes
       calc_Kd_SiH3 = 10.**(-logKd)*patm
    end function calc_Kd_SiH3
 
@@ -542,7 +561,7 @@ contains
 !         theta = 5040./T
 !         logKd =  max(-log_lim,min(coefs(1)+(coefs(2)+(coefs(3)+(coefs(4)+coefs(5)*theta)*theta)*theta)*theta))
 !         calc_Kd = 10.**(-logKd)*patm
-!         return
+!         cycle
 !      endif
 !      G = coefs(1)/T + coefs(2) + (coefs(3)+(coefs(4)+coefs(5)*T)*T)*T
 !      d = max(-exp_lim,min(-G/(R*T),exp_lim)) !222
@@ -677,14 +696,21 @@ contains
 
    real function newton_method(aa, bb, cc, dd, ee, zz)
       real, intent(in) :: aa, bb, cc, dd, ee, zz
-      real :: a,b,c,d,e,z
+      real :: a,b,c,d,e,u,du
+      real :: L4, L3, L2, L1, L0, Lmax
+      real :: S4, S3, S2, S1, S0
+      real :: fx_scaled, dfx_scaled
       ! Parameters
+<<<<<<< Updated upstream
       integer, parameter :: max_iter = 1000 !350
       real, parameter :: tolerance = 1.d-50 !30 !1.d-50
       real, parameter :: tolerance_rel = 1.d-12 !10 !1.d-50
+=======
+      integer, parameter :: max_iter = 200
+      real, parameter :: tolerance = 1.d-5 ! Scaled absolute tolerance
+      real, parameter :: tolerance_rel = 1.d-5
+>>>>>>> Stashed changes
 
-      ! Local variables
-      real :: fx, dfx, x
       integer :: iter
 
       a = aa
@@ -692,26 +718,67 @@ contains
       c = cc
       d = dd
       e = ee
-      z = zz
-      x = z
 
-      ! Newton's method loop
+      ! Initialize log space variable u = ln(z)
+      if (zz > 0.0) then
+         u = log(zz)
+      else
+         u = -100.0 ! Avoid log(0) if zz is exactly 0
+      end if
+
+      ! Newton's method loop in log space
       do iter = 1, max_iter
-         ! Compute function value and its derivative
-         fx = a*x**4 + b*x**3 + c*x**2 + d*x + e
-         dfx = 4*a*x**3 + 3*b*x**2 + 2*c*x + d
 
+<<<<<<< Updated upstream
          ! Check for convergence
          if (abs(x) < tolerance .or. abs(fx) < tolerance .or. abs(fx) < abs(x) * tolerance_rel) exit
+=======
+         ! Compute log magnitudes of terms
+         L4 = -1.e30; if (abs(a) > 0.0) L4 = log(abs(a)) + 4.0 * u
+         L3 = -1.e30; if (abs(b) > 0.0) L3 = log(abs(b)) + 3.0 * u
+         L2 = -1.e30; if (abs(c) > 0.0) L2 = log(abs(c)) + 2.0 * u
+         L1 = -1.e30; if (abs(d) > 0.0) L1 = log(abs(d)) + u
+         L0 = -1.e30; if (abs(e) > 0.0) L0 = log(abs(e))
+>>>>>>> Stashed changes
 
-         ! Update x using Newton's method
-         x = x - fx / dfx
+         ! Find the maximum log magnitude to scale terms (log-sum-exp trick)
+         Lmax = max(L4, L3, L2, L1, L0)
 
+         ! Compute scaled terms (maximum term magnitude will be 1.0)
+         S4 = 0.0; if (abs(a) > 0.0) S4 = sign(1.0, a) * exp(L4 - Lmax)
+         S3 = 0.0; if (abs(b) > 0.0) S3 = sign(1.0, b) * exp(L3 - Lmax)
+         S2 = 0.0; if (abs(c) > 0.0) S2 = sign(1.0, c) * exp(L2 - Lmax)
+         S1 = 0.0; if (abs(d) > 0.0) S1 = sign(1.0, d) * exp(L1 - Lmax)
+         S0 = 0.0; if (abs(e) > 0.0) S0 = sign(1.0, e) * exp(L0 - Lmax)
+
+         ! Compute scaled function and derivative
+         fx_scaled = S4 + S3 + S2 + S1 + S0
+         dfx_scaled = 4.0 * S4 + 3.0 * S3 + 2.0 * S2 + S1
+
+         ! Check for convergence based on function value
+         if (abs(fx_scaled) < tolerance) exit
+
+         ! Update u using Newton's method
+         if (abs(dfx_scaled) > 0.0) then
+            du = - fx_scaled / dfx_scaled
+            u = u + du
+            ! Check for convergence based on step size
+            if (abs(du) < tolerance_rel) exit
+         else
+            exit
+         end if
+         print *, iter, exp(u)
       end do
+<<<<<<< Updated upstream
       newton_method = x
 
       !print *,iter,max_iter,x,fx,tolerance,abs(x)*tolerance_rel
       !stop
+=======
+
+      ! Convert back from log space
+      newton_method = exp(u)
+>>>>>>> Stashed changes
 
    end function newton_method
 
