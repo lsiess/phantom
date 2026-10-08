@@ -123,31 +123,33 @@ contains
 
       do_condensation = .true.
       do_nucleation = .false.
-      ! Set input values
-      !We condsider a wind with a density distribution rho(T) = rho_0 * (T/Tmax) **2
-      !where rho_0 and Tmax are the density and temperature at the base of the wind
-      nTstep = 1000  ! number of temperature grid point between Tmin and Tmax
-      Tmin  = 600.
-      Tmax  = 6000.
+! Set input values
+!We condsider a wind with a density distribution rho(T) = rho_0 * (T/Tmax) **2
+!where rho_0 and Tmax are the density and temperature at the base of the wind
+      nTstep = 100  ! number of temperature grid point between Tmin and Tmax
+      Tmin  = 300.
+      Tmax  = 5000.
       rho_0 = 1.0d-10
-      pressure_cgs = 1.d-4 != 10d-10 barye   !optional variable for comparison with Gail & Sedlmayr calculations
-      write(*,*)'The user defined pressure is', pressure_cgs
-      write(*,*)'*************************************************'
+      pressure_cgs = 1.d-4 !7 !1.d-4 = 10d-10 barye   !optional variable for comparison with Gail & Sedlmayr calculations
 
-
-      ! Set initial parameters
+! Set initial parameters
       time_0 = 0.
       time_final = 1.d5 !A larger value creates wiggles in fir and kappa
-      dt = 5.0d4 !
+      dt = 1.d5 !
+      dt = 5d4
       wind_CO_ratio = 0.3318 !0.3318 for Figure 10.11 of Gail+SedlMayr Book
+      wind_CO_ratio = 0.975 !0.3318 for Figure 10.11 of Gail+SedlMayr Book
 
       call set_abundances
 
       size_array = int((time_final - time_0) / dt) + 1
       allocate(fol(size_array),fqu(size_array),fpy(size_array),fir(size_array), &
-         fsc(size_array), fcarb(size_array),kappa_dust(size_array))
+           fsc(size_array), fcarb(size_array),kappa_dust(size_array))
       allocate(r_ol(size_array),r_qu(size_array),r_py(size_array),r_ir(size_array), &
-         r_sc(size_array), r_carb(size_array))
+           r_sc(size_array), r_carb(size_array))
+
+      write(*,'("Input parameters : pressure =",es14.7,", C/O = ",f8.5,", rho = ",es14.7)') pressure_cgs,wind_CO_ratio,rho_0
+      write(*,*)'********************************************************************************'
 
       fol = 0.    !degree of condensation of olivine
       fqu = 0.    !degree of condensation of quartz
@@ -167,21 +169,21 @@ contains
       do timestep = 1, size_array !int((time_final - time_0) / dt) + 1
          k = 0
 
-         ! Loop over temperature
+! Loop over temperature
          do i = 1,nTstep
             T = Tmin + (i-1) * (Tmax-Tmin)/(nTstep-1)
             rho_cgs = rho_0 * (T / Tmax)**2
 
             if (pressure_cgs > 0.) then
                call dust_growth_condensation(T, rho_cgs, dt,wind_CO_ratio,&
-                  fol(timestep),fqu(timestep),fpy(timestep),fir(timestep),fsc(timestep),fcarb(timestep),&
-                  r_ol(timestep),r_qu(timestep),r_py(timestep),r_ir(timestep),r_sc(timestep),r_carb(timestep),&
-                  kappa_dust(timestep), mu, gamma, pH_tot, abundance, pressure_cgs)
+                    fol(timestep),fqu(timestep),fpy(timestep),fir(timestep),fsc(timestep),fcarb(timestep),&
+                    r_ol(timestep),r_qu(timestep),r_py(timestep),r_ir(timestep),r_sc(timestep),r_carb(timestep),&
+                    kappa_dust(timestep), mu, gamma, pH_tot, abundance, pressure_cgs)
             else
                call dust_growth_condensation(T, rho_cgs, dt,wind_CO_ratio,&
-                  fol(timestep),fqu(timestep),fpy(timestep),fir(timestep),fsc(timestep),fcarb(timestep),&
-                  r_ol(timestep),r_qu(timestep),r_py(timestep),r_ir(timestep),r_sc(timestep),r_carb(timestep),&
-                  kappa_dust(timestep), mu, gamma, pH_tot, abundance)
+                    fol(timestep),fqu(timestep),fpy(timestep),fir(timestep),fsc(timestep),fcarb(timestep),&
+                    r_ol(timestep),r_qu(timestep),r_py(timestep),r_ir(timestep),r_sc(timestep),r_carb(timestep),&
+                    kappa_dust(timestep), mu, gamma, pH_tot, abundance)
             endif
 
             dust_properties(1) = fol(timestep)

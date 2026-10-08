@@ -400,8 +400,9 @@ contains
          err = abs((pelm-pelm_old)/(pelm_old+1.0e-60))
 
          nit = nit + 1
-         write(*,*)'nit=',T, nit
       enddo
+
+      write(*,*)'nit=',T, nit
 
       pmol(iH2)    = Kd(iH2)*pelm(iH)**2
       pmol(iOH)    = Kd(iOH)*pelm(iOx)*pelm(iH)
@@ -478,7 +479,7 @@ contains
       real, intent(in) :: a, b, c
       real :: delta
       if (-4.*a*c/b**2 > epsilon(0.)) then
-         delta = max(b**2-4.*a*c, 0.)
+         delta = b**2-4.*a*c
          solve_q = (-b+sqrt(delta))/(2.*a)
       else
          solve_q = -c/b
@@ -492,7 +493,7 @@ contains
       real, parameter :: R = 1.987165
       real :: G, d
       G = coefs(1)/T + coefs(2) + (coefs(3)+(coefs(4)+coefs(5)*T)*T)*T
-      d = min(-G/(R*T),700.) !222
+      d = max(-700.,min(-G/(R*T),700.)) !222
       calc_Kd = exp(d)
    end function calc_Kd
 
@@ -503,7 +504,7 @@ contains
       real, parameter :: a = 1.3316d1, b = -6.2216, c = 4.5829d-1, d = -6.4903d-2, e = 3.2788d-3
       real :: theta, logKd
       theta = 5040./T
-      logKd = a+(b+(c+(d+e*theta)*theta)*theta)*theta
+      logKd = max(-700.,min(a+(b+(c+(d+e*theta)*theta)*theta)*theta,700.))
       calc_Kd_TiS = 10.**(-logKd)*patm
    end function calc_Kd_TiS
 
