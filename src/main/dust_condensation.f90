@@ -126,9 +126,13 @@ contains
         real :: Jdec_ol, Jdec_qu, Jdec_py, Jdec_ir, Jdec_sc, Jdec_carb
         real :: kappa_ol,kappa_qu,kappa_py,kappa_ir,kappa_sc,kappa_carb
         real :: fol_dec, fqu_dec ,fpy_dec, fir_dec ,fsc_dec, fcarb_dec
-        real :: P_H2, P_Si, G_const(3), root(3), kT !fol, kappa_dust
-        real :: fol_max, fpy_max, fqu_max
+        real :: P_H2, P_Si, kT !fol, kappa_dust
+        real :: fol_max, fpy_max, fqu_max, G_ol, G_py, G_qu
         real :: abundance(ncols)
+        logical :: ok
+        !root solver parameters
+        real, parameter :: tol = 1.0d-2
+        integer, parameter :: max_iter = 1000
 
         !XXX Aqui debo poner los valores de fol, fpy, fqu para restar las abundancias de Mg, H2O,
         if (present(pressure_cgs)) then
@@ -177,26 +181,29 @@ contains
         P_Si = abundance(75)*kT/patm !Si = 75 in subroutine network
 
         !%% Constant term in the law of mass action equation
-        G_const(1) = P_H2**3 / (calc_Kp(coefficients(:,1),T) * pH_tot**6) !for olivine
-        G_const(2) = P_H2    / (calc_Kp(coefficients(:,2),T) * pH_tot**2) !for Quartz
-        G_const(3) = P_H2**2 / (calc_Kp(coefficients(:,3),T) * pH_tot**4) !for Pyroxene
+        G_ol = P_H2**3 / (calc_Kp(coefficients(:,1),T) * pH_tot**6) !for olivine
+        G_qu = P_H2    / (calc_Kp(coefficients(:,2),T) * pH_tot**2) !for Quartz
+        G_py = P_H2**2 / (calc_Kp(coefficients(:,3),T) * pH_tot**4) !for Pyroxene
 
         !%% to determine degree of condensation fol, fqu, fpy
-!LS : this test should be removed, check must be made in init since wind_CO_ratio is constant
-        if (wind_CO_ratio <= 0.9) then
+!        if (wind_CO_ratio <= 0.9) then
            ! to prevent overflow
            if (T > 3500.) then
-              root = 0.
+              fol_dec   = 0.
+              fqu_dec   = 0.
+              fpy_dec   = 0.
            else
-              call find_root(eps(iMg), eps(iSi), eps(iOx), eps(iC), G_const, root)
+              call solve_olivine (eps(iMg), eps(iOx), eps(iC), eps(iSi), g_ol, tol, max_iter, fol_dec, ok)
+              call solve_quartz  (eps(iMg), eps(iOx), eps(iC), eps(iSi), g_qu, tol, max_iter, fqu_dec, ok)
+              call solve_pyroxene(eps(iMg), eps(iOx), eps(iC), eps(iSi), g_py, tol, max_iter, fpy_dec, ok)
            endif
-        elseif (wind_CO_ratio >= 1.1) then
-            root = 0.
-         endif
+!        elseif (wind_CO_ratio >= 1.1) then
+!            root = 0.
+!         endif
 
-        fol_dec   = max(0., root(1)) !min(1., max(0., root(1)))
-        fqu_dec   = max(0., root(2)) !min(1., max(0., root(2)))
-        fpy_dec   = max(0., root(3)) !min(1., max(0., root(3)))
+        fol_dec   = min(1., max(0., fol_dec))
+        fqu_dec   = min(1. ,max(0., fqu_dec))
+        fpy_dec   = min(1., max(0., fpy_dec))
         fir_dec   = min(1., max(0., 1.- 1./(calc_Kp(coefficients(:,4),T) * eps(iFe) * pH_tot)))     !For Iron
         fsc_dec   = min(1., max(0., 1.- P_Si / (calc_Kp(coefficients(:,5),T) * eps(iSi) * pH_tot))) !For SiC
         fcarb_dec = min(1., max(0., 1.-1./wind_CO_ratio-2.*P_H2/(calc_Kp(coefficients(:,6),T)*eps(iC)*pH_tot)))
@@ -254,39 +261,42 @@ contains
         r_carb = max(r_carb + Vo_carb * (Jgr_carb-Jdec_carb) * dt , a_init_dust)
 
 
-        fol = max(0., fourpi*(r_ol**3-a_init_dust**3)*1.d-13/3./Vo_ol/eps(iSi)) !fol
-        if (wind_CO_ratio<=0.9) then
-           fol_max = min(1.0, min(0.5*eps(iMg)/eps(iSi),(eps(iOx)-eps(iC)-eps(iSi))/3./eps(iSi)))
-        elseif (wind_CO_ratio>=1.1) then
-            fol_max = 0.0
-        endif        !%%fol_max is negative if C/O ratio is larger than 1
-        if (fol > fol_max) fol = fol_max
+        fol_max = max(0.,min(1.0, min(0.5*eps(iMg)/eps(iSi),(eps(iOx)-eps(iC)-eps(iSi))/3./eps(iSi))))
+        fol = max(fol_max, fourpi*(r_ol**3-a_init_dust**3)*1.d-13/3./Vo_ol/eps(iSi)) !fol
+!        if (wind_CO_ratio<=0.9) then
+!           fol_max = min(1.0, min(0.5*eps(iMg)/eps(iSi),(eps(iOx)-eps(iC)-eps(iSi))/3./eps(iSi)))
+!        elseif (wind_CO_ratio>=1.1) then
+!            fol_max = 0.0
+!        endif        !%%fol_max is negative if C/O ratio is larger than 1
+!        if (fol > fol_max) fol = fol_max
 !%%PUEDE SER QUE fol sea negativo porque fol_max es negativo
 
-        fqu = max(0., fourpi*(r_qu**3-a_init_dust**3)*1.d-13/3./Vo_qu/eps(iSi)) !fqu
-        if (wind_CO_ratio<=0.9) then
-           fqu_max = min(1.0, (eps(iOx)-eps(iC)-eps(iSi))/eps(iSi))
-        elseif (wind_CO_ratio>=1.1) then
-           fqu_max = 0.0
-        endif
-        if (fqu > fqu_max) fqu = fqu_max
+        fqu_max = max(0.,min(1.0, (eps(iOx)-eps(iC)-eps(iSi))/eps(iSi)))
+        fqu = max(fqu_max, fourpi*(r_qu**3-a_init_dust**3)*1.d-13/3./Vo_qu/eps(iSi)) !fqu
+!        if (wind_CO_ratio<=0.9) then
+!           fqu_max = min(1.0, (eps(iOx)-eps(iC)-eps(iSi))/eps(iSi))
+!        elseif (wind_CO_ratio>=1.1) then
+!           fqu_max = 0.0
+!        endif
+!        if (fqu > fqu_max) fqu = fqu_max
 
-        fpy = max(0., fourpi*(r_py**3-a_init_dust**3)*1.d-13/3./Vo_py/eps(iSi)) !fpy
-        if (wind_CO_ratio<=0.9) then
-           fpy_max = min(1.0, min(eps(iMg)/eps(iSi),(eps(iOx)-eps(iC)-eps(iSi))/2./eps(iSi)))
-        elseif (wind_CO_ratio>=1.1) then
-            fpy_max = 0.0
-        endif
-        if (fpy > fpy_max) fpy = fpy_max
+        fpy_max = max(0.,min(1.0, min(eps(iMg)/eps(iSi),(eps(iOx)-eps(iC)-eps(iSi))/2./eps(iSi))))
+        fpy = max(fpy_max, fourpi*(r_py**3-a_init_dust**3)*1.d-13/3./Vo_py/eps(iSi)) !fpy
+!        if (wind_CO_ratio<=0.9) then
+!           fpy_max = min(1.0, min(eps(iMg)/eps(iSi),(eps(iOx)-eps(iC)-eps(iSi))/2./eps(iSi)))
+!        elseif (wind_CO_ratio>=1.1) then
+!            fpy_max = 0.0
+!        endif
+!        if (fpy > fpy_max) fpy = fpy_max
 
-        fir = max(0., fourpi*(r_ir**3-a_init_dust**3)*1.d-13/3./Vo_ir/eps(iFe)) !fir
-        if (fir > 1.0) fir = 1.
+        fir = min(1.,max(0., fourpi*(r_ir**3-a_init_dust**3)*1.d-13/3./Vo_ir/eps(iFe))) !fir
+!        if (fir > 1.0) fir = 1.
 
-        fsc = max(0., fourpi*(r_sc**3-a_init_dust**3)*1.d-13/3./Vo_sc/ eps(iSi)) !fsc
-        if (fsc > 1.0) fsc = 1.
+        fsc = min(1.,max(0., fourpi*(r_sc**3-a_init_dust**3)*1.d-13/3./Vo_sc/ eps(iSi))) !fsc
+!        if (fsc > 1.0) fsc = 1.
 
-        fcarb = max(0., fourpi*(r_carb**3-a_init_dust**3)*1.d-13/3./Vo_carb/eps(iC)) !fcarb
-        if (fcarb > 1.0) fcarb = 1.
+        fcarb = min(1.,max(0., fourpi*(r_carb**3-a_init_dust**3)*1.d-13/3./Vo_carb/eps(iC))) !fcarb
+!        if (fcarb > 1.0) fcarb = 1.
 
 
         kappa_ol = ((6.147d-07 * T**2.444)**(-2) &
@@ -318,92 +328,110 @@ contains
         kappa_dust = kappa_gas + fol * kappa_ol + fqu * kappa_qu &
                    + fpy * kappa_py + fir * kappa_ir + fsc * kappa_sc + fcarb * kappa_carb
 
+
      end subroutine dust_growth_condensation
 
-subroutine find_root(m, s, o, c, g, root) !, tol, max_iter)
-    implicit none
-    ! Input parameters
-    real, intent(in) :: m, s, o, g(3), c !m = eps(iMg), s = eps(iSi),o = eps(iOx), c = eps(iC)
-    real, intent(out) :: root(3)
-    real :: tol = 1.0d-2!, intent(in) :: tol
-    integer :: max_iter = 1000 !, intent(in) :: max_iter
+     subroutine solve_olivine(mg, o, c, si, g, tol, max_iter, x, ok)
+        implicit none
+        real, intent(in)      :: mg, o, c, si, g, tol
+        integer,  intent(in)  :: max_iter
+        real, intent(out)     :: x
+        logical,  intent(out) :: ok
+        real :: A, B, D, fx, dfx
+        integer  :: i
 
-    ! Local variables
-    real :: x(3), fx(3), dfx(3), A(3), B(3), D(3)
-    integer :: i
+        ok = .false.
 
-    ! Calculate the interval boundaries
-    real :: x_max(3)
+        x = min(1., min(0.5*mg/si, 1./3. * (o-c-si)/si) )
+        !condition for formation of olivive not met
+        if (x < 0.) then
+           x = 0.
+           return
+        endif
+        do i = 1, max_iter
+           A = mg - 2.*x*si
+           B = 1. - x
+           D = o - c - (1. + 3.*x)*si
+           fx = A**2*B*si*D**3 - g
+           if (abs(fx) < tol) then
+              ok = .true.; exit
+           end if
+           dfx = -si*A*D**2*(4.*si*B*D + 9.*si*A*B + A*D)
+           if (abs(dfx) < tiny(1.)) exit
+           x = x - fx/dfx
+        end do
+     end subroutine solve_olivine
 
-    !%only valid when C/O is less than 1, otherwise there is no Silicate dust formation, all Oxygen is locked in CO
+     subroutine solve_quartz(mg, o, c, si, g, tol, max_iter, x, ok)
+        implicit none
+        real, intent(in)      :: mg, o, c, si, g, tol
+        integer,  intent(in)  :: max_iter
+        real, intent(out)     :: x
+        logical,  intent(out) :: ok
+        real :: A, B, D, fx, dfx
+        integer  :: i
 
-    x_max(1) = min(1.0d0, min(5.0d-1*m/s, 1.0d0/3.0d0 * (o-c-s)/s) ) !Max value for Olivine
-    x_max(2) = min(1.0d0, (o-c-s)/s) !Max value for Quartz
-    x_max(3) = min(1.0d0, min(m/s, 5.0d-1*(o-c-s)/s )) !Max value for Pyroxene
+        ok = .false.
 
-    x(1) = x_max(1)-0.001 ! Initial guess given by the maximum available degree of condensation
-    x(2) = x_max(2)-0.001
-    x(3) = x_max(3)-0.001
+        x =  min(1., (o-c-si)/si)
+        !condition for formation of quartz not met
+        if (x < 0.) then
+           x = 0.
+           return
+        endif
+        do i = 1, max_iter
+           A = 1.
+           B = 1. - x
+           D = o - c - (1. + x)*si
+           fx = A*B*si*D - g
+           if (abs(fx) < tol) then
+              ok = .true.; exit
+           end if
+           dfx = -si*(si*B + D)
+           if (abs(dfx) < tiny(1.)) exit
+           x = x - fx/dfx
+        end do
+     end subroutine solve_quartz
 
-    ! Newton-Raphson iteration
-    do i = 1, max_iter
-        !%% Calculate A, B, and D for Olivine
-        A(1) = m - 2. * x(1) * s
-        B(1) = 1.0d0 - x(1)
-        D(1) = o - c - (1.0d0 + 3.0d0 * x(1)) * s
+     subroutine solve_pyroxene (mg, o, c, si, g, tol, max_iter, x, ok)
+        implicit none
+        real, intent(in)      :: mg, o, c, si, g, tol
+        integer,  intent(in)  :: max_iter
+        real, intent(out)     :: x
+        logical,  intent(out) :: ok
+        real :: A, B, D, fx, dfx
+        integer  :: i
 
-        !%% Calculate A, B, and D for Quartz
-        A(2) = 1.0d0
-        B(2) = 1.0d0 - x(2)
-        D(2) = o -c - (1.0d0 + x(2)) * s
+        ok = .false.
 
-        !%% Calculate A, B, and D for Pyroxene
-        A(3) = m - x(3) * s
-        B(3) = 1.0d0 - x(3)
-        D(3) = o - c - (1.0d0 + 2.0d0 * x(3)) * s
+        x =  min(1., min(mg/si, 0.5*(o-c-si)/si ))
+        !condition for formation of pyroxyne not met
+        if (x < 0.) then
+           x = 0.
+           return
+        endif
+        do i = 1, max_iter
+           A = mg -x*si
+           B = 1. - x
+           D = o - c - (1. + 2.*x)*si
+           fx = A*B*si*D**2 - g
+           if (abs(fx) < tol) then
+              ok = .true.; exit
+           end if
+           dfx = -si*D*(4.*A*B+si*B*D + A*D)
+           if (abs(dfx) < tiny(1.)) exit
+           x = x - fx/dfx
+        end do
+     end subroutine solve_pyroxene
 
-        !%% Calculate f(x) and f'(x) for Olivine
-        fx(1) = -g(1) + A(1)**2 * B(1) * s * D(1)**3
-        dfx(1) = -s * A(1) * D(1)**2 * (4.0d0 * B(1) * D(1) * s + 9.0d0 * s * B(1) * A(1) + A(1) * D(1))
-
-        !%% Calculate f(x) and f'(x) for Quartz
-        fx(2) = -g(2) + A(2) * B(2) * s * D(2)
-        dfx(2) = -s**2 * B(2) -s * D(2)
-
-        !%% Calculate f(x) and f'(x) for Pyroxene
-        fx(3) = -g(3) + A(3) * B(3) * s * D(3)**2
-        dfx(3) = -s * D(3) *(4.0d0 * A(3) * B(3) + s * B(3) * D(3) + A(3) * D(3))
-
-        ! Check for zero derivative
-        if (ANY(dfx(1:3) == 0.0d0)) then
-            print *, "Derivative is zero. No solution found."
-            return
-        end if
-
-        ! Update x using Newton-Raphson formula
-        x(:) = x(:) - fx(:) / dfx(:)
-
-        ! Check for convergence
-        if (all(abs(fx(:)) < tol)) then
-            root(:) = x(:)
-            return
-        end if
-    end do
-
-    print *, "Maximum iterations reached. No solution found."
-    root(1) = x(1)
-    root(2) = x(2)
-end subroutine find_root
-
-pure real function calc_Kp(coefficients,T)
+     pure real function calc_Kp(coeffs,T)
 ! all quantities are in cgs
-real, intent(in) :: coefficients(5), T
-real, parameter :: R = 1.987165
-real :: G, d
-G = coefficients(1)/T + coefficients(2) + (coefficients(3)+(coefficients(4)+coefficients(5)*T)*T)*T
-d = min(-G/(R*T),222.)
-calc_Kp = exp(d)
-end function calc_kp
-
+        real, intent(in) :: coeffs(5), T
+        real, parameter :: R = 1.987165
+        real :: G, d
+        G = coeffs(1)/T + coeffs(2) + (coeffs(3)+(coeffs(4)+coeffs(5)*T)*T)*T
+        d = max(-222.,min(-G/(R*T),222.))
+        calc_Kp = exp(d)
+     end function calc_kp
 
 end module dust_condensation

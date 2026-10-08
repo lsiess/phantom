@@ -196,6 +196,7 @@ contains
 
             call write_time_file('abundances_' // trim(adjustl(itoa(timestep))), columns, T, abundance, ncols, k)
             call write_time_file('condensation_' // trim(adjustl(itoa(timestep))), condensation, T, dust_properties, 7, k)
+            print *,'dust_prop=',dust_properties
 
             k = k + 1
          end do

@@ -27,6 +27,7 @@ module chemistry_condensation
 
    private
    integer, parameter :: nMolecules = 69
+   real, parameter :: exp_lim = 700.,log_lim = exp_lim/2.71828182846
 
    real :: Aw(nElements) = [1.0079, 4.0026, 12.011, 15.9994, 14.0067, 20.17, 28.0855, 32.06, 55.847, 47.867, 24.305]
 
@@ -493,7 +494,7 @@ contains
       real, parameter :: R = 1.987165
       real :: G, d
       G = coefs(1)/T + coefs(2) + (coefs(3)+(coefs(4)+coefs(5)*T)*T)*T
-      d = max(-700.,min(-G/(R*T),700.)) !222
+      d = max(-exp_lim,min(-G/(R*T),exp_lim)) !222
       calc_Kd = exp(d)
    end function calc_Kd
 
@@ -504,7 +505,7 @@ contains
       real, parameter :: a = 1.3316d1, b = -6.2216, c = 4.5829d-1, d = -6.4903d-2, e = 3.2788d-3
       real :: theta, logKd
       theta = 5040./T
-      logKd = max(-700.,min(a+(b+(c+(d+e*theta)*theta)*theta)*theta,700.))
+      logKd = max(-log_lim,min(a+(b+(c+(d+e*theta)*theta)*theta)*theta,log_lim))
       calc_Kd_TiS = 10.**(-logKd)*patm
    end function calc_Kd_TiS
 
@@ -515,7 +516,7 @@ contains
       real, parameter :: a = 2.46640e1, b = -6.88730, c = 8.377100e-2, d = -1.00580e-2, e = 4.92910e-4
       real :: theta, logKd
       theta = 5040./T
-      logKd = a+(b+(c+(d+e*theta)*theta)*theta)*theta
+      logKd = max(-log_lim,min(a+(b+(c+(d+e*theta)*theta)*theta)*theta,log_lim))
       calc_Kd_SiH2 = 10.**(-logKd)*patm
    end function calc_Kd_SiH2
 
@@ -526,7 +527,7 @@ contains
       real, parameter :: a = 3.63290d1, b = -1.05560d1, c = 8.09450d-2, d = -8.62120d-3, e = 3.98640d-4
       real :: theta, logKd
       theta = 5040./T
-      logKd = a+(b+(c+(d+e*theta)*theta)*theta)*theta
+      logKd = max(-log_lim,min(a+(b+(c+(d+e*theta)*theta)*theta)*theta,log_lim))
       calc_Kd_SiH3 = 10.**(-logKd)*patm
    end function calc_Kd_SiH3
 
@@ -539,12 +540,12 @@ contains
 !      real, parameter :: R = 1.987165
 !      if flag_Kd = 1 then
 !         theta = 5040./T
-!         logKd = coefs(1)+(coefs(2)+(coefs(3)+(coefs(4)+coefs(5)*theta)*theta)*theta)*theta
+!         logKd =  max(-log_lim,min(coefs(1)+(coefs(2)+(coefs(3)+(coefs(4)+coefs(5)*theta)*theta)*theta)*theta))
 !         calc_Kd = 10.**(-logKd)*patm
 !         return
 !      endif
 !      G = coefs(1)/T + coefs(2) + (coefs(3)+(coefs(4)+coefs(5)*T)*T)*T
-!      d = min(-G/(R*T),700.) !222
+!      d = max(-exp_lim,min(-G/(R*T),exp_lim)) !222
 !      calc_Kd = exp(d)
 !   end function calc_Kd_test
 
@@ -679,8 +680,8 @@ contains
       real :: a,b,c,d,e,z
       ! Parameters
       integer, parameter :: max_iter = 1000 !350
-      real, parameter :: tolerance = 1.d-50 !1.d-50
-      real, parameter :: tolerance_rel = 1.d-12 !1.d-50
+      real, parameter :: tolerance = 1.d-50 !30 !1.d-50
+      real, parameter :: tolerance_rel = 1.d-12 !10 !1.d-50
 
       ! Local variables
       real :: fx, dfx, x
@@ -701,14 +702,15 @@ contains
          dfx = 4*a*x**3 + 3*b*x**2 + 2*c*x + d
 
          ! Check for convergence
-         if (abs(fx) < tolerance .or. abs(fx) < abs(x) * tolerance_rel) exit
+         if (abs(x) < tolerance .or. abs(fx) < tolerance .or. abs(fx) < abs(x) * tolerance_rel) exit
 
          ! Update x using Newton's method
          x = x - fx / dfx
 
       end do
       newton_method = x
-      print *,iter,max_iter,x,fx,dfx
+
+      !print *,iter,max_iter,x,fx,tolerance,abs(x)*tolerance_rel
       !stop
 
    end function newton_method
