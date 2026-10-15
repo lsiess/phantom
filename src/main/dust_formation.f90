@@ -51,7 +51,7 @@ module dust_formation
 
  character(len=*), parameter :: label = 'dust_formation'
  real :: wind_CO_ratio = 2.
- real :: bowen_kmax  = 2.7991
+ real, public :: bowen_kmax  = 2.7991
  real :: grad_to_ggrav = 0.95
  real :: kappa_max   = 2.7991  ! set from bowen_kmax, or by calc_kappa_max if bowen_kmax < 0
  real :: bowen_Tcond = 1500.
@@ -393,72 +393,65 @@ end subroutine evol_K
 !  Calculate mean molecular weight, gamma
 !
 !----------------------------------------
-subroutine calc_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot)
-! all quantities are in cgs
- use io,  only:fatal
+subroutine calc_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot, ppH2)
+! all quantities in cgs
+ use physcon, only:mass_electron_cgs,planckhbar
 
  real, intent(in)    :: rho_cgs
  real, intent(inout) :: T, mu, gamma
  real, intent(out)   :: pH, pH_tot
- real :: KH2, pH2, x, T_ionisation_He
- real :: T_old, mu_old, gamma_old, tol
- logical :: converged
- integer :: i,isolve
+ real, intent(out), optional :: ppH2
+ real :: Tu, Tlo, Thi, XH, YHe, KH2, cst, KH, KHe, KHe2, B
+ real :: x, y, z1, z2, xe, n_mono, n_H2, ntot, Cv
+ integer :: i
  integer, parameter :: itermax = 100
- real, parameter    :: a1 = 4.4314613664, b1 = 7.46314789e-02, c1 = 1.5361475e-03
- character(len=30), parameter :: label = 'calc_muGamma'
+ real, parameter    :: tol = 1.e-7
+ real, parameter    :: H_ion = 2.179d-11, He_ion = 3.940d-11, He2_ion = 8.720d-11 ! ionisation energies (erg)
+ real, parameter    :: H2_diss = 52490. ! H2 dissociation energy / kboltz (K)
 
- pH_tot = rho_cgs*T*kboltz/(patm*mass_per_H)
- T_old  = T
- ! temperature above which helium starts being ionized (fit to Saha equation)
- T_ionisation_He = 10.**(a1 + log(rho_cgs)/log(10.) * b1 + (log(rho_cgs)/log(10.))**2 * c1)
- if (T > T_ionisation_He) then
-    pH = pH_tot
-    mu = 0.62
-    !  mu     = (1.+4.*eps(iHe))/(1.+eps(iHe))
- elseif (T > 450.) then
-! iterate to get consistently pH, T, mu and gamma
-    tol       = 1.d-3
-    converged = .false.
-    isolve    = 0
-    pH        = pH_tot ! initial value, overwritten below, to avoid compiler warning
-    i = 0
-    do while (.not. converged .and. i < itermax)
-       i = i+1
-       pH_tot    = rho_cgs*T*kboltz/(patm*mass_per_H)
-       KH2       = calc_Kd(coefs(:,iH2), T)
-       pH        = solve_q(2.*KH2, 1., -pH_tot)
-       pH2       = KH2*pH**2
-       mu        = (1.+4.*eps(iHe))/(.5+eps(iHe)+0.5*pH/pH_tot)
-       x         = 2.*(1.+4.*eps(iHe))/mu
-       gamma     = (3.*x+4.+4.*eps(iHe))/(x+4.+4.*eps(iHe))
-       converged = (abs(T-T_old)/T_old) < tol
-       if (i == 1) then
-          mu_old = mu
-          gamma_old = gamma
-       else
-          T = T_old*mu/mu_old/(gamma_old-1.)*2.*x/(x+4.+4.*eps(iHe))
-          if (i>=itermax .and. .not.converged) then
-             if (isolve==0) then
-                isolve = isolve+1
-                i      = 0
-                tol    = 1.d-2
-                print *,'[dust_formation] cannot converge on T(mu,gamma). Trying with lower tolerance'
-             else
-                print *,'Told=',T_old,',T=',T,',gamma_old=',gamma_old,',gamma=',gamma,',mu_old=',&
-                  mu_old,',mu=',mu,',dT/T=',abs(T-T_old)/T_old,', rho=',rho_cgs
-                call fatal(label,'cannot converge on T(mu,gamma)')
-             endif
-          endif
-       endif
-    enddo
- else
-! Simplified low-temperature chemistry: all hydrogen in H2 molecules
-    pH2    = pH_tot/2.
-    pH     = 0.
-    mu     = (1.+4.*eps(iHe))/(0.5+eps(iHe))
-    gamma  = (5.*eps(iHe)+3.5)/(3.*eps(iHe)+2.5)
- endif
+ ! y  : fraction of H nuclei in atomic form (H or H+)
+ ! x  : ionised fraction of atomic H
+ ! z1 : fraction of He at least singly ionised
+ ! z2 : fraction of He+ ionised again (He2+ = z1*z2 of all He)
+
+ XH  = 1./(1.+4.*eps(iHe))  ! H and He mass fractions
+ YHe = 1.-XH
+ Tu  = T/(mu*(gamma-1.))
+ Tlo = 0.3*Tu
+ Thi = 1.1*Tu
+ do i = 1,itermax
+    T = sqrt(Tlo*Thi)
+    pH_tot = rho_cgs*T*kboltz/(patm*mass_per_H)
+    ! H2 dissociation from Saha equation y^2/(1-y) = KH2 (D'Angelo & Bodenheimer 2013)
+    KH2 = max(2.11/(rho_cgs*XH)*exp(-H2_diss/T), tiny(KH2))
+    y   = 2.*KH2/(KH2 + sqrt(KH2*(KH2+4.)))
+    ! H, He and He+ ionisation from Saha equations (D'Angelo & Bodenheimer 2013)
+    cst  = mass_proton_cgs/rho_cgs*sqrt(mass_electron_cgs*kboltz*T/(2.*pi*planckhbar**2))**3
+    KH   = max(cst/XH*exp(-H_ion/(kboltz*T)), tiny(KH))
+    KHe  = 4.*cst*exp(-He_ion/(kboltz*T))
+    KHe2 = cst*exp(-He2_ion/(kboltz*T))
+    x    = 2.*KH/(KH + sqrt(KH*(KH+4.)))
+    z1   = 2.*KHe/(sqrt((KHe+XH)**2 + KHe*YHe) + KHe + XH)
+    B    = KHe2 + XH + 0.25*YHe
+    z2   = 2.*KHe2/(sqrt(B**2 + KHe2*YHe) + B)
+    xe   = y*x + eps(iHe)*z1*(1.+z2)  ! free electrons per H nucleus
+    pH   = y*(1.-x)*pH_tot
+
+    n_mono = y + eps(iHe) + xe
+    n_H2   = 0.5*(1.-y)
+    ntot   = n_mono + n_H2
+    Cv     = 1.5*n_mono + 2.5*n_H2
+    mu     = (1.+4.*eps(iHe))/ntot
+    gamma  = 1. + ntot/Cv
+
+    if (Thi/Tlo - 1. < tol) exit
+    if (T > Tu*mu*(gamma-1.)) then
+       Thi = T
+    else
+       Tlo = T
+    endif
+ enddo
+ if (present(ppH2)) ppH2 = 0.5*(1.-y)*pH_tot
 
 end subroutine calc_muGamma
 
@@ -473,24 +466,19 @@ subroutine init_muGamma(rho_cgs, T, mu, gamma, ppH, ppH2)
  real, intent(inout) :: T
  real, intent(out)   :: mu, gamma
  real, intent(out), optional :: ppH, ppH2
- real :: KH2, pH_tot, pH, pH2
+ real :: pH_tot, pH, pH2, Ti
+ integer :: i
 
- pH_tot = rho_cgs*kboltz*T/(patm*mass_per_H)
- if (T > 1.d5) then
-    pH2 = 0.
-    pH  = pH_tot
- elseif (T > 450.) then
-    KH2 = calc_Kd(coefs(:,iH2), T)
-    pH  = solve_q(2.*KH2, 1., -pH_tot)
-    pH2 = KH2*pH**2
- else
-! Simplified low-temperature chemistry: all hydrogen in H2 molecules
-    pH2 = pH_tot/2.
-    pH  = 0.
- endif
- mu    = (1.+4.*eps(iHe))*pH_tot/(pH+pH2+eps(iHe)*pH_tot)
- gamma = (5.*pH+5.*eps(iHe)*pH_tot+7.*pH2)/(3.*pH+3.*eps(iHe)*pH_tot+5.*pH2)
- call calc_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot)
+ ! initial guess: molecular gas
+ mu    = (1.+4.*eps(iHe))/(0.5+eps(iHe))
+ gamma = (5.*eps(iHe)+3.5)/(3.*eps(iHe)+2.5)
+ ! calc_muGamma solves for T at fixed u = kT/((gamma-1) mu m_H): iterate on mu
+ ! and gamma until the returned temperature equals the prescribed one
+ do i = 1,100
+    Ti = T
+    call calc_muGamma(rho_cgs, Ti, mu, gamma, pH, pH_tot, pH2)
+    if (abs(Ti-T) < 1.e-6*T) exit
+ enddo
  if (present(ppH))  ppH = pH
  if (present(ppH2)) ppH2 = pH2
 
