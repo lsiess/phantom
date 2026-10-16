@@ -42,7 +42,7 @@ module wind
  ! wind properties
  type wind_state
     real :: dt, time, r, r0, Rstar, v, a, time_end, Tg, Tdust
-    real :: alpha, rho, p, u, c, dalpha_dr, r_old, Q, dQ_dr
+    real :: alpha, rho, p, u, c, dalpha_dr, r_old, Q, dQ_dr, divv
     real :: kappa, mu, gamma, tau_lucy, alpha_Edd, tau
     real :: JKmuS(n_nucleation),K2
     integer :: spcode, nsteps
@@ -159,6 +159,7 @@ subroutine init_wind(r0, v0, T0, time_end, state, tau_lucy_init)
     state%tau_lucy = 2./3.
  endif
  state%kappa  = kappa_gas
+ state%divv   = 0.
  state%Q      = 0.
  state%dQ_dr  = 0.
  state%rho    = Mdot_cgs/(4.*pi * state%r**2 * state%v)
@@ -313,7 +314,7 @@ subroutine wind_step(state)
  if (icooling > 0) then
     Q_old = state%Q
     call calc_cooling_rate(Q_code,dlnQ_dlnT,state%rho/unit_density,state%Tg,state%Tdust,&
-         state%mu,state%gamma,state%K2,state%kappa)
+         state%mu,state%gamma,state%divv,state%K2,state%kappa)
     state%Q = Q_code*unit_ergg/utime
     state%dQ_dr = (state%Q-Q_old)/(1.e-10+state%r-state%r_old)
  endif
@@ -446,7 +447,7 @@ subroutine wind_step(state)
  if (icooling > 0) then
     Q_old = state%Q
     call calc_cooling_rate(Q_code,dlnQ_dlnT,real(state%rho/unit_density),state%Tg,state%Tdust,&
-         state%mu,state%gamma,state%K2,state%kappa)
+         state%mu,state%gamma,state%divv,state%K2,state%kappa)
     state%Q = Q_code*unit_ergg/utime
     state%dQ_dr = (state%Q-Q_old)/(1.e-10+state%r-state%r_old)
  endif

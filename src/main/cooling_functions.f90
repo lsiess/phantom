@@ -1,6 +1,6 @@
 !--------------------------------------------------------------------------!
 ! The Phantom Smoothed Particle Hydrodynamics code, by Daniel Price et al. !
-! Copyright (c) 2007-2024 The Authors (see AUTHORS)                        !
+! Copyright (c) 2007-2026 The Authors (see AUTHORS)                        !
 ! See LICENCE file for usage and distribution conditions                   !
 ! http://phantomsph.github.io/                                             !
 !--------------------------------------------------------------------------!
@@ -39,7 +39,7 @@ module cooling_functions
            cooling_Bowen_relaxation, &
            cooling_dust_collision, &
            cooling_radiative_relaxation, &
-           cooling_H2, &
+           cooling_H2, rotational_CO_cooling_WJ, &
            nelectron_mu, testing_cooling_functions
 
  private
@@ -200,6 +200,41 @@ subroutine cooling_high_temp(T, rho_cgs, Q_cgs, dlnQ_dlnT)
  endif
 
 end subroutine cooling_high_temp
+
+
+!-------------------------------------------------------------------------
+!+
+!  CO rotational cooling using the fit of Whitworth & Jaffa (2018)
+!+
+!-------------------------------------------------------------------------
+subroutine rotational_CO_cooling_WJ(T, rho_cgs, CO_ab, div_v, Q_CO, dlnQ_dlnT)
+    use dust_formation, only:mass_per_H
+    real, intent(in)  :: T, rho_cgs, CO_ab, div_v
+    real, intent(out) :: Q_CO, dlnQ_dlnT
+
+    real :: nH2, nCO
+    real :: Lambda_TOT
+    real, parameter :: KM_S_PC_TO_S = 1.0d5 / 3.0856775814913673d18  ! 1 km/s/pc in s^-1 (cgs)
+    real :: div_v_kms_pc, Lambda_LO_per_nCO, Lambda_HI_per_nCO, beta, Lambda_TOT_per_nCO
+
+    nH2 = rho_cgs / mass_per_H * 0.5  ! Assuming H2 is the dominant species
+    nCO = rho_cgs / mass_per_H * CO_ab
+
+    div_v_kms_pc = abs(div_v) / KM_S_PC_TO_S  ! convert s^-1 -> km/s/pc
+
+    Lambda_LO_per_nCO = 2.16d-27 * nH2 * T**1.5
+    Lambda_HI_per_nCO = 2.21d-28 / (CO_ab / div_v_kms_pc) / nH2 * T**4
+
+    beta = 1.23 * nH2**0.0533 * T**0.164
+    Lambda_TOT_per_nCO = (Lambda_LO_per_nCO**(-1.0 / beta)    &
+                         + Lambda_HI_per_nCO**(-1.0 / beta))**(-beta)
+
+    Lambda_TOT = Lambda_TOT_per_nCO * nCO
+
+    Q_CO = -Lambda_TOT  ! Cooling rate is negative
+    dlnQ_dlnT = 0.0  ! For now
+
+end subroutine rotational_CO_cooling_WJ
 
 !-----------------------------------------------------------------------
 !+

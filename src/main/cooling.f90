@@ -142,9 +142,9 @@ subroutine energ_cooling(xi,yi,zi,ui,rho,dt,divv,dudt,Tdust_in,mu_in,gamma_in,K2
  kappa  = 0.
  K2     = 0.
  if (present(gamma_in)) gammai = gamma_in
- if (present(mu_in))    mui        = mu_in
- if (present(K2_in))    K2        = K2_in
- if (present(kappa_in)) kappa     = kappa_in
+ if (present(mu_in))    mui    = mu_in
+ if (present(K2_in))    K2     = K2_in
+ if (present(kappa_in)) kappa  = kappa_in
  if (gammai < 1.) call fatal('energ_cooling','gamma < 1')
  if (present(abund_in)) then
     abundi = abund_in
@@ -169,7 +169,7 @@ subroutine energ_cooling(xi,yi,zi,ui,rho,dt,divv,dudt,Tdust_in,mu_in,gamma_in,K2
  case (7)
     call cooling_Gammie_PL_explicit(xi,yi,zi,ui,dudt)
  case default
-    call energ_cooling_solver(ui,dudt,rho,dt,mui,gammai,Tdust,K2,kappa)
+    call energ_cooling_solver(ui,dudt,rho,dt,mui,gammai,divv,Tdust,K2,kappa)
  end select
 
 end subroutine energ_cooling

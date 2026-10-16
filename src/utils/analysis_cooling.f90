@@ -259,11 +259,12 @@ subroutine test_cooling_solvers(dumpfile)
  integer, parameter :: ndt = 100
  real :: tstart,tlast,dtstep,dti(ndt),tcool
  real :: rho, T_gas, rho_gas, pH, pH2   !rho in code units
- real :: mu, gamma
+ real :: mu, gamma, divv
  real :: K2, kappa       !cgs
  real :: Q, dlnQ_dlnT
  real :: u,ui,dudt,T_on_u,Tout,dt,tcool0
  real :: T_floor
+ real(kind=4) :: divvi
  ! For reading the input file:
  real :: utime_tmp,umass_tmp,udist_tmp
  character(len=*), intent(in)  ::   dumpfile
@@ -279,6 +280,8 @@ subroutine test_cooling_solvers(dumpfile)
  icool_method = 1 !0=implicit, 1=explicit, 2=exact solution
  K2    = 0.
  kappa = 0.
+ divv  = 0.
+ divvi = 0.
 
  !temperature
  T_gas   = 1.d6
@@ -355,7 +358,7 @@ subroutine test_cooling_solvers(dumpfile)
     tstart = 0.01
  endif
 
- call calc_cooling_rate(Q, dlnQ_dlnT, rho, T_gas, T_gas, mu, gamma, K2, kappa)
+ call calc_cooling_rate(Q, dlnQ_dlnT, rho, T_gas, T_gas, mu, gamma, divv, K2, kappa)
  tcool  = abs(kboltz*T_gas/((gamma-1.)*mu*atomic_mass_unit*Q*unit_ergg)) !code unit
  tcool0 = tcool
  T_on_u = (gamma-1.)*mu*unit_ergg/Rg
@@ -381,7 +384,7 @@ subroutine test_cooling_solvers(dumpfile)
     print *,'#Tin=',T_gas,', rho_cgs=',rho_gas,', imethod=',icool_method,', cooling funct =',ifunct,excitation_HI,k2
     do i = 1,ndt
        dt = tcool0*dti(i)
-       call energ_cooling_solver(ui,dudt,rho,dt,mu,gamma,0.,K2,0.)
+       call energ_cooling_solver(ui,dudt,rho,dt,mu,gamma,divvi,0.,K2,0.)
        u = ui+dt*dudt
        Tout = max(u*T_on_u,T_floor)
        write(iunit,*) dti(i),dt,Tout,dudt,get_Texact(ifunct,T_gas,dt,tcool0,T_floor)
@@ -418,6 +421,7 @@ subroutine integrate_cooling(file_in,ifunct,T_gas,T_floor,tcool0,tstart,ui,rho,m
  real, intent(in) :: tcool0,ui,rho,mu,gamma,T_gas,T_floor,tstart
  character(len=*), intent(in) :: file_in
  real :: time,dudt,dt,Tout,u,tend,dt_fact,T_on_u
+ real(kind=4) :: divv
  integer :: iunit
 
  T_on_u  = (gamma-1.)*mu*unit_ergg/Rg
@@ -428,11 +432,12 @@ subroutine integrate_cooling(file_in,ifunct,T_gas,T_floor,tcool0,tstart,ui,rho,m
  dt      = tcool0*dt_fact
  u       = ui
  dudt    = 0.
+ divv    = 0.
 
  open(newunit=iunit,file=file_in,status='replace')
  write(iunit,*) tstart,dT,Tout,dudt,get_Texact(99,T_gas,time,tcool0,T_floor)
  do while (time < tend)! .and. Tout > T_floor)
-    call energ_cooling_solver(u,dudt,rho,dt,mu,gamma,0.,dble(ifunct),0.)
+    call energ_cooling_solver(u,dudt,rho,dt,mu,gamma,divv,0.,dble(ifunct),0.)
     u = u+dt*dudt
     Tout = max(u*T_on_u,T_floor)
     time = time+dt
