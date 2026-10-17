@@ -107,7 +107,7 @@ contains
 
    subroutine do_analysis(dumpfile,num,xyzh,vxyzu,particlemass,npart,time,iunit)
 
-     use prompting,     only:prompt
+      use prompting,     only:prompt
       character(len=*), intent(in) :: dumpfile
       integer,          intent(in) :: num,npart,iunit
       real,             intent(in) :: xyzh(:,:),vxyzu(:,:)
@@ -115,15 +115,15 @@ contains
       integer  :: analysis_to_perform
 
       print "(2(a,/))", &
-           '1) chemical profiles as a function of temperature',&
-           '2) chemical profiles at a given temperature as a function of C/O'
+         '1) chemical profiles as a function of temperature',&
+         '2) chemical profiles at a given temperature as a function of C/O'
       analysis_to_perform = 1
       call prompt('Choose analysis type ',analysis_to_perform,1,2)
 
       select case(analysis_to_perform)
-      case(1) !sink separation
+       case(1) !sink separation
          call temperature_dependence
-      case(2) !bound and unbound quantities
+       case(2) !bound and unbound quantities
          call CO_dependence
       end select
 
@@ -146,9 +146,9 @@ contains
       real :: T, rho_cgs, mu, gamma, abundance(ncols), pH_tot, dt
       real :: fol, fqu, fpy, fir, fsc, fcarb, kappa_dust
       real :: r_ol,r_qu,r_py,r_ir,r_sc,r_carb
-      integer :: i, k
+      integer :: i, k, nCO
       real :: dust_properties(7)
-      real :: pressure_cgs, CO_min,CO_max,nCO
+      real :: pressure_cgs, CO_min,CO_max
 
       do_condensation = .true.
       do_nucleation = .false.
@@ -162,7 +162,7 @@ contains
       nCO = 100
       wind_CO_ratio = CO_min
       write(*,'(/,"Input parameters : pressure =",es10.3,", C/O = ",f8.5,", rho = ",es10.4,", T = ",f7.1)') &
-           pressure_cgs,wind_CO_ratio,rho_cgs,T
+         pressure_cgs,wind_CO_ratio,rho_cgs,T
       write(*,*)'********************************************************************************'
 
 
@@ -188,12 +188,12 @@ contains
 
          if (pressure_cgs > 0.) then
             call dust_growth_condensation(T, rho_cgs, dt,wind_CO_ratio,&
-                 fol,fqu,fpy,fir,fsc,fcarb,r_ol,r_qu,r_py,r_ir,r_sc,r_carb,&
-                 kappa_dust, mu, gamma, pH_tot, abundance, pressure_cgs)
+               fol,fqu,fpy,fir,fsc,fcarb,r_ol,r_qu,r_py,r_ir,r_sc,r_carb,&
+               kappa_dust, mu, gamma, pH_tot, abundance, pressure_cgs)
          else
             call dust_growth_condensation(T, rho_cgs, dt,wind_CO_ratio,&
-                 fol,fqu,fpy,fir,fsc,fcarb,r_ol,r_qu,r_py,r_ir,r_sc,r_carb,&
-                 kappa_dust, mu, gamma, pH_tot, abundance)
+               fol,fqu,fpy,fir,fsc,fcarb,r_ol,r_qu,r_py,r_ir,r_sc,r_carb,&
+               kappa_dust, mu, gamma, pH_tot, abundance)
          endif
          dust_properties(1) = fol
          dust_properties(2) = fqu
@@ -236,9 +236,9 @@ contains
       ! Set input values
       !We condsider a wind with a density distribution rho(T) = rho_0 * (T/Tmax) **2
       !where rho_0 and Tmax are the density and temperature at the base of the wind
-      nTstep = 11  ! number of temperature grid point between Tmin and Tmax
-      Tmin  = 950.
-      Tmax  = 1050.
+      nTstep = 1400  ! number of temperature grid point between Tmin and Tmax
+      Tmin  = 600.
+      Tmax  = 2000.
       rho_0 = 1.0d-10
       pressure_cgs = 1.d-4 !7 !1.d-4 = 10d-10 barye   !optional variable for comparison with Gail & Sedlmayr calculations
 
@@ -247,17 +247,17 @@ contains
       time_final = 1.d5 !A larger value creates wiggles in fir and kappa
       dt = 1.d5
       ! dt = 5d4
-      wind_CO_ratio = 0.3318 !0.3318 for Figure 10.11 of Gail+SedlMayr Book
-      wind_CO_ratio = 0.975 !0.3318 for Figure 10.11 of Gail+SedlMayr Book
-      wind_CO_ratio = 0.9 !0.3318 for Figure 10.11 of Gail+SedlMayr Book
+      !wind_CO_ratio = 0.3318 !0.3318 for Figure 10.11 of Gail+SedlMayr Book
+      wind_CO_ratio = 0.33 !0.3318 for Figure 10.11 of Gail+SedlMayr Book
+      !wind_CO_ratio = 0.9 !0.3318 for Figure 10.11 of Gail+SedlMayr Book
 
       call set_abundances
 
       size_array = max(1,int((time_final - time_0) / dt))
       allocate(fol(size_array),fqu(size_array),fpy(size_array),fir(size_array), &
-           fsc(size_array), fcarb(size_array),kappa_dust(size_array))
+         fsc(size_array), fcarb(size_array),kappa_dust(size_array))
       allocate(r_ol(size_array),r_qu(size_array),r_py(size_array),r_ir(size_array), &
-           r_sc(size_array), r_carb(size_array))
+         r_sc(size_array), r_carb(size_array))
 
       write(*,'(/,"Input parameters : pressure =",es14.7,", C/O = ",f8.5,", rho = ",es14.7)') pressure_cgs,wind_CO_ratio,rho_0
       write(*,*)'********************************************************************************'
@@ -288,14 +288,14 @@ contains
 
             if (pressure_cgs > 0.) then
                call dust_growth_condensation(T, rho_cgs, dt,wind_CO_ratio,&
-                    fol(timestep),fqu(timestep),fpy(timestep),fir(timestep),fsc(timestep),fcarb(timestep),&
-                    r_ol(timestep),r_qu(timestep),r_py(timestep),r_ir(timestep),r_sc(timestep),r_carb(timestep),&
-                    kappa_dust(timestep), mu, gamma, pH_tot, abundance, pressure_cgs)
+                  fol(timestep),fqu(timestep),fpy(timestep),fir(timestep),fsc(timestep),fcarb(timestep),&
+                  r_ol(timestep),r_qu(timestep),r_py(timestep),r_ir(timestep),r_sc(timestep),r_carb(timestep),&
+                  kappa_dust(timestep), mu, gamma, pH_tot, abundance, pressure_cgs)
             else
                call dust_growth_condensation(T, rho_cgs, dt,wind_CO_ratio,&
-                    fol(timestep),fqu(timestep),fpy(timestep),fir(timestep),fsc(timestep),fcarb(timestep),&
-                    r_ol(timestep),r_qu(timestep),r_py(timestep),r_ir(timestep),r_sc(timestep),r_carb(timestep),&
-                    kappa_dust(timestep), mu, gamma, pH_tot, abundance)
+                  fol(timestep),fqu(timestep),fpy(timestep),fir(timestep),fsc(timestep),fcarb(timestep),&
+                  r_ol(timestep),r_qu(timestep),r_py(timestep),r_ir(timestep),r_sc(timestep),r_carb(timestep),&
+                  kappa_dust(timestep), mu, gamma, pH_tot, abundance)
             endif
 
             dust_properties(1) = fol(timestep)

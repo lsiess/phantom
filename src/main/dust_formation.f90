@@ -24,236 +24,236 @@ module dust_formation
 !   units
 !
 
- implicit none
- integer, public :: idust_opacity = 0
+   implicit none
+   integer, public :: idust_opacity = 0
 
- public :: set_abundances,calc_kappa_dust,calc_kappa_bowen,&
+   public :: set_abundances,calc_kappa_dust,calc_kappa_bowen,&
       read_options_dust_formation,write_options_dust_formation,&
       calc_Eddington_factor,calc_muGamma,init_muGamma,init_dust_formation,&
       write_headeropts_dust_formation,read_headeropts_dust_formation
 !
 !--runtime settings for this module
 !
- real, public :: kappa_gas   = 2.d-4
- real, public :: wind_CO_ratio = 2.
- real, parameter, public :: a_init_dust = 1.0d-7 !cgs units 1nm
+   real, public :: kappa_gas   = 2.d-4
+   real, public :: wind_CO_ratio = 2.
+   real, parameter, public :: a_init_dust = 1.0d-7 !cgs units 1nm
 
- private
+   private
 
- character(len=*), parameter :: label = 'dust_formation'
- real :: bowen_kmax  = 2.7991
- real :: bowen_Tcond = 1500.
- real :: bowen_delta = 60.
+   character(len=*), parameter :: label = 'dust_formation'
+   real :: bowen_kmax  = 2.7991
+   real :: bowen_Tcond = 1500.
+   real :: bowen_delta = 60.
 
 contains
 
 !----------------------------------------------------------------
-subroutine set_abundances
+   subroutine set_abundances
 !----------------------------------------------------------------
 ! initialize abundances
-  use dim, only: do_nucleation,do_condensation
-  use chemistry_moments, only:set_abundances_moments
-  use chemistry_condensation, only:set_abundances_condensation
+      use dim, only: do_nucleation,do_condensation
+      use chemistry_moments, only:set_abundances_moments
+      use chemistry_condensation, only:set_abundances_condensation
 
-  if (do_nucleation) then
-     call set_abundances_moments(wind_CO_ratio)
-  elseif (do_condensation) then
-     call set_abundances_condensation(wind_CO_ratio)
-  endif
-end subroutine set_abundances
-
-!----------------------------------------------------------------
-subroutine init_muGamma(rho_cgs, T, mu, gamma, ppH_tot, ppH, ppH2)
-!----------------------------------------------------------------
-! all quantities are in cgs
- use dim, only: do_nucleation,do_condensation
- use chemistry_moments, only:init_muGamma_moments
- use chemistry_condensation, only:init_muGamma_condensation
- real, intent(in)              :: rho_cgs
- real, intent(inout)           :: T, mu, gamma
- real, intent(out), optional   :: ppH_tot, ppH, ppH2
- real :: pH_tot,pH,pH2
-
- if (do_nucleation) then
-    call init_muGamma_moments(rho_cgs,T,mu,gamma)
- elseif (do_condensation) then
-    call init_muGamma_condensation(rho_cgs,T,mu,gamma,pH_tot,pH,pH2)
- endif
- if (present(ppH_tot)) ppH_tot = pH_tot
- if (present(ppH))     ppH     = pH
- if (present(ppH2))    ppH2    = pH2
-
-end subroutine init_muGamma
+      if (do_nucleation) then
+         call set_abundances_moments(wind_CO_ratio)
+      elseif (do_condensation) then
+         call set_abundances_condensation(wind_CO_ratio)
+      endif
+   end subroutine set_abundances
 
 !----------------------------------------------------------------
-subroutine calc_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot, pH2, pressure)
+   subroutine init_muGamma(rho_cgs, T, mu, gamma, ppH_tot, ppH, ppH2)
 !----------------------------------------------------------------
 ! all quantities are in cgs
- use dim, only: do_nucleation,do_condensation
- use chemistry_moments, only:calc_muGamma_moments
- use chemistry_condensation, only:calc_muGamma_condensation
- real, intent(in)              :: rho_cgs
- real, intent(inout)           :: T, mu, gamma
- real, intent(out)             :: pH, pH_tot, pH2
- real, intent(out), optional   :: pressure
+      use dim, only: do_nucleation,do_condensation
+      use chemistry_moments, only:init_muGamma_moments
+      use chemistry_condensation, only:init_muGamma_condensation
+      real, intent(in)              :: rho_cgs
+      real, intent(inout)           :: T, mu, gamma
+      real, intent(out), optional   :: ppH_tot, ppH, ppH2
+      real :: pH_tot,pH,pH2
 
- if (do_nucleation) then
-    call calc_muGamma_moments(rho_cgs, T, mu, gamma, pH, pH_tot, pH2)
- elseif (do_condensation) then
-    if (present(pressure)) then
-       call calc_muGamma_condensation(rho_cgs, T, mu, gamma, pH, pH_tot, pH2, pressure)
-    else
-       call calc_muGamma_condensation(rho_cgs, T, mu, gamma, pH, pH_tot, pH2)
-    endif
- endif
-end subroutine calc_muGamma
+      if (do_nucleation) then
+         call init_muGamma_moments(rho_cgs,T,mu,gamma)
+      elseif (do_condensation) then
+         call init_muGamma_condensation(rho_cgs,T,mu,gamma,pH_tot,pH,pH2)
+      endif
+      if (present(ppH_tot)) ppH_tot = pH_tot
+      if (present(ppH))     ppH     = pH
+      if (present(ppH2))    ppH2    = pH2
+
+   end subroutine init_muGamma
 
 !----------------------------------------------------------------
-subroutine init_dust_formation
+   subroutine calc_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot, pH2, pressure)
+!----------------------------------------------------------------
+! all quantities are in cgs
+      use dim, only: do_nucleation,do_condensation
+      use chemistry_moments, only:calc_muGamma_moments
+      use chemistry_condensation, only:calc_muGamma_condensation
+      real, intent(in)              :: rho_cgs
+      real, intent(inout)           :: T, mu, gamma
+      real, intent(out)             :: pH, pH_tot, pH2
+      real, intent(out), optional   :: pressure
+
+      if (do_nucleation) then
+         call calc_muGamma_moments(rho_cgs, T, mu, gamma, pH, pH_tot, pH2)
+      elseif (do_condensation) then
+         if (present(pressure)) then
+            call calc_muGamma_condensation(rho_cgs, T, mu, gamma, pH, pH_tot, pH2, pressure)
+         else
+            call calc_muGamma_condensation(rho_cgs, T, mu, gamma, pH, pH_tot, pH2)
+         endif
+      endif
+   end subroutine calc_muGamma
+
+!----------------------------------------------------------------
+   subroutine init_dust_formation
 !----------------------------------------------------------------
 !initialize dust formation arrays
- use dim,  only: do_nucleation,do_condensation,ndust_prop
- use part, only:npart,nucleation,n_nucleation,idmu,idgamma,&
-                condensation,n_condensation,icmu,icgamma
- use eos,  only:gamma,gmw
- integer :: i
- real :: tmp_nucleation(n_nucleation),tmp_condensation(n_condensation)
+      use dim,  only: do_nucleation,do_condensation,ndust_prop
+      use part, only:npart,nucleation,n_nucleation,idmu,idgamma,&
+         condensation,n_condensation,icmu,icgamma
+      use eos,  only:gamma,gmw
+      integer :: i
+      real :: tmp_nucleation(n_nucleation),tmp_condensation(n_condensation)
 
- call set_abundances
+      call set_abundances
 
- gamma = 5./3.
- !initialize nucleation array
- if (do_nucleation) then
-    ndust_prop              = n_nucleation
-    tmp_nucleation          = 0.
-    tmp_nucleation(idmu)    = gmw
-    tmp_nucleation(idgamma) = gamma
-    do i=1,npart
-       nucleation(:,i) = tmp_nucleation(:)
-    enddo
- elseif (do_condensation) then
-    ndust_prop                = n_condensation
-    tmp_condensation          = 0.
-    tmp_condensation(1:6)     = a_init_dust !initial dust radius (1nm)
-    tmp_condensation(icmu)    = gmw
-    tmp_condensation(icgamma) = gamma
-    do i=1,npart
-       condensation(:,i) = tmp_condensation(:)
-    enddo
- else
-   stop '[S-init_dust_formation] something went wrong ??'
- endif
+      gamma = 5./3.
+      !initialize nucleation array
+      if (do_nucleation) then
+         ndust_prop              = n_nucleation
+         tmp_nucleation          = 0.
+         tmp_nucleation(idmu)    = gmw
+         tmp_nucleation(idgamma) = gamma
+         do i=1,npart
+            nucleation(:,i) = tmp_nucleation(:)
+         enddo
+      elseif (do_condensation) then
+         ndust_prop                = n_condensation
+         tmp_condensation          = 0.
+         tmp_condensation(1:6)     = a_init_dust !initial dust radius (1nm)
+         tmp_condensation(icmu)    = gmw
+         tmp_condensation(icgamma) = gamma
+         do i=1,npart
+            condensation(:,i) = tmp_condensation(:)
+         enddo
+      else
+         stop '[S-init_dust_formation] something went wrong ??'
+      endif
 
-end subroutine init_dust_formation
+   end subroutine init_dust_formation
 
 !------------------------------------
 !
 !  Bowen dust opacity formula
 !
 !------------------------------------
-pure elemental real function calc_kappa_bowen(Teq)
+   pure elemental real function calc_kappa_bowen(Teq)
 !all quantities in cgs
- real, intent(in) :: Teq
- real :: dlnT
+      real, intent(in) :: Teq
+      real :: dlnT
 
- dlnT = (Teq-bowen_Tcond)/bowen_delta
- if (dlnT > 50.) then
-    calc_kappa_bowen = 0.
- else
-    calc_kappa_bowen = bowen_kmax/(1.0 + exp(dlnT)) + kappa_gas
- endif
+      dlnT = (Teq-bowen_Tcond)/bowen_delta
+      if (dlnT > 50.) then
+         calc_kappa_bowen = 0.
+      else
+         calc_kappa_bowen = bowen_kmax/(1.0 + exp(dlnT)) + kappa_gas
+      endif
 
-end function calc_kappa_bowen
+   end function calc_kappa_bowen
 
 !-----------------------------------------------------------------------
 !
 !  calculate dust opacity
 !
 !-----------------------------------------------------------------------
-pure real function calc_kappa_dust(K3, Tdust, rho_cgs)
+   pure real function calc_kappa_dust(K3, Tdust, rho_cgs)
 !all quantities in cgs
- use physcon, only:atomic_mass_unit
- use chemistry_moments, only: mass_per_H
- real, intent(in) :: K3, Tdust, rho_cgs
+      use physcon, only:atomic_mass_unit
+      use chemistry_moments, only: mass_per_H
+      real, intent(in) :: K3, Tdust, rho_cgs
 
- real :: kappa_cgs, fac
- real, parameter :: rho_Cdust = 2.62, mc = 12.*atomic_mass_unit
- real, parameter :: Qplanck_abs = 1.6846124267740528e+04
- real, parameter :: Qross_ext = 9473.2722815583311
+      real :: kappa_cgs, fac
+      real, parameter :: rho_Cdust = 2.62, mc = 12.*atomic_mass_unit
+      real, parameter :: Qplanck_abs = 1.6846124267740528e+04
+      real, parameter :: Qross_ext = 9473.2722815583311
 
- fac = max(0.75*K3*mc/(mass_per_H*rho_Cdust),1.e-15)
- !kappa_cgs = Qplanck_abs *fac ! planck
- !kappa_cgs = Qross_ext * fac  ! Rosseland
+      fac = max(0.75*K3*mc/(mass_per_H*rho_Cdust),1.e-15)
+      !kappa_cgs = Qplanck_abs *fac ! planck
+      !kappa_cgs = Qross_ext * fac  ! Rosseland
 
- ! Gail & Sedlmayr, 1985, A&A, 148, 183, eqs 23,24
- !kappa_cgs = 6.7d0 * fac * Tdust  ! planck
- kappa_cgs = 5.9 * fac * Tdust  ! Rosseland
+      ! Gail & Sedlmayr, 1985, A&A, 148, 183, eqs 23,24
+      !kappa_cgs = 6.7d0 * fac * Tdust  ! planck
+      kappa_cgs = 5.9 * fac * Tdust  ! Rosseland
 
- calc_kappa_dust = kappa_cgs + kappa_gas
-end function calc_kappa_dust
+      calc_kappa_dust = kappa_cgs + kappa_gas
+   end function calc_kappa_dust
 
 !-----------------------------------------------------------------------
 !
 !  calculate alpha, reduced gravity factor
 !
 !-----------------------------------------------------------------------
-pure real function calc_Eddington_factor(Mstar_cgs, Lstar_cgs, kappa_cgs, tau)
+   pure real function calc_Eddington_factor(Mstar_cgs, Lstar_cgs, kappa_cgs, tau)
 !all quantities in cgs
- use physcon, only:c,Gg,pi
- real, intent(in) :: Mstar_cgs,Lstar_cgs,kappa_cgs
- real, intent(in), optional :: tau
+      use physcon, only:c,Gg,pi
+      real, intent(in) :: Mstar_cgs,Lstar_cgs,kappa_cgs
+      real, intent(in), optional :: tau
 
- if (present(tau)) then
-    calc_Eddington_factor = Lstar_cgs*exp(-tau)/(4.*pi*c*Gg*Mstar_cgs) * kappa_cgs
- else
-    calc_Eddington_factor = Lstar_cgs/(4.*pi*c*Gg*Mstar_cgs) * kappa_cgs
- endif
-end function calc_Eddington_factor
-
-!-----------------------------------------------------------------------
-!+
-!  write relevant options to the header of the dump file
-!+
-!-----------------------------------------------------------------------
-subroutine write_headeropts_dust_formation(hdr,ierr)
- use chemistry_moments, only:write_headeropts_dust_moments
- use chemistry_condensation, only:write_headeropts_dust_condensation
- use dump_utils, only:dump_h
-  use dim, only: do_nucleation,do_condensation
-
- type(dump_h), intent(inout) :: hdr
- integer,      intent(out)   :: ierr
-
- if (do_condensation) then
-    call write_headeropts_dust_condensation(wind_CO_ratio,hdr,ierr)
- elseif (do_nucleation) then
-    call write_headeropts_dust_moments(wind_CO_ratio,hdr,ierr)
- endif
-
-end subroutine write_headeropts_dust_formation
-
+      if (present(tau)) then
+         calc_Eddington_factor = Lstar_cgs*exp(-tau)/(4.*pi*c*Gg*Mstar_cgs) * kappa_cgs
+      else
+         calc_Eddington_factor = Lstar_cgs/(4.*pi*c*Gg*Mstar_cgs) * kappa_cgs
+      endif
+   end function calc_Eddington_factor
 
 !-----------------------------------------------------------------------
 !+
 !  write relevant options to the header of the dump file
 !+
 !-----------------------------------------------------------------------
-subroutine read_headeropts_dust_formation(hdr,ierr)
- use chemistry_moments, only:read_headeropts_dust_moments
- use chemistry_condensation, only:read_headeropts_dust_condensation
- use dump_utils, only:dump_h
-  use dim, only: do_nucleation,do_condensation
+   subroutine write_headeropts_dust_formation(hdr,ierr)
+      use chemistry_moments, only:write_headeropts_dust_moments
+      use chemistry_condensation, only:write_headeropts_dust_condensation
+      use dump_utils, only:dump_h
+      use dim, only: do_nucleation,do_condensation
 
- type(dump_h), intent(in)  :: hdr
- integer,      intent(out) :: ierr
+      type(dump_h), intent(inout) :: hdr
+      integer,      intent(out)   :: ierr
 
- if (do_condensation) then
-    call read_headeropts_dust_condensation(wind_CO_ratio,hdr,ierr)
- elseif (do_nucleation) then
-    call read_headeropts_dust_moments(wind_CO_ratio,hdr,ierr)
- endif
+      if (do_condensation) then
+         call write_headeropts_dust_condensation(wind_CO_ratio,hdr,ierr)
+      elseif (do_nucleation) then
+         call write_headeropts_dust_moments(wind_CO_ratio,hdr,ierr)
+      endif
 
-end subroutine read_headeropts_dust_formation
+   end subroutine write_headeropts_dust_formation
+
+
+!-----------------------------------------------------------------------
+!+
+!  write relevant options to the header of the dump file
+!+
+!-----------------------------------------------------------------------
+   subroutine read_headeropts_dust_formation(hdr,ierr)
+      use chemistry_moments, only:read_headeropts_dust_moments
+      use chemistry_condensation, only:read_headeropts_dust_condensation
+      use dump_utils, only:dump_h
+      use dim, only: do_nucleation,do_condensation
+
+      type(dump_h), intent(in)  :: hdr
+      integer,      intent(out) :: ierr
+
+      if (do_condensation) then
+         call read_headeropts_dust_condensation(wind_CO_ratio,hdr,ierr)
+      elseif (do_nucleation) then
+         call read_headeropts_dust_moments(wind_CO_ratio,hdr,ierr)
+      endif
+
+   end subroutine read_headeropts_dust_formation
 
 
 !-----------------------------------------------------------------------
@@ -261,71 +261,71 @@ end subroutine read_headeropts_dust_formation
 !  Writes input options to the input file
 !+
 !-----------------------------------------------------------------------
-subroutine write_options_dust_formation(iunit)
- use dim,          only:nucleation,condensation
- use infile_utils, only:write_inopt
- integer, intent(in) :: iunit
+   subroutine write_options_dust_formation(iunit)
+      use dim,          only:nucleation,condensation
+      use infile_utils, only:write_inopt
+      integer, intent(in) :: iunit
 
- write(iunit,"(/,a)") '# options controlling dust'
- if (nucleation .or. condensation) then
-    call write_inopt(idust_opacity,'idust_opacity','compute dust opacity (0=off, 1=bowen, 2=nucleation, 3=condensation)',iunit)
- else
-    call write_inopt(idust_opacity,'idust_opacity','compute dust opacity (0=off, 1=bowen)',iunit)
- endif
- if (idust_opacity == 1) then
-    call write_inopt(kappa_gas,'kappa_gas','constant gas opacity (cm²/g)',iunit)
-    call write_inopt(bowen_kmax,'bowen_kmax','maximum dust opacity (cm²/g)',iunit)
-    call write_inopt(bowen_Tcond,'bowen_Tcond','dust condensation temperature (K)',iunit)
-    call write_inopt(bowen_delta,'bowen_delta','condensation temperature range (K)',iunit)
- endif
- if ((nucleation .or. condensation) .and. (idust_opacity == 2 .or. idust_opacity == 3)) then
-    call write_inopt(kappa_gas,'kappa_gas','constant gas opacity (cm²/g)',iunit)
-    call write_inopt(wind_CO_ratio ,'wind_CO_ratio','wind initial C/O ratio (> 1)',iunit)
- endif
+      write(iunit,"(/,a)") '# options controlling dust'
+      if (nucleation .or. condensation) then
+         call write_inopt(idust_opacity,'idust_opacity','compute dust opacity (0=off, 1=bowen, 2=nucleation, 3=condensation)',iunit)
+      else
+         call write_inopt(idust_opacity,'idust_opacity','compute dust opacity (0=off, 1=bowen)',iunit)
+      endif
+      if (idust_opacity == 1) then
+         call write_inopt(kappa_gas,'kappa_gas','constant gas opacity (cm²/g)',iunit)
+         call write_inopt(bowen_kmax,'bowen_kmax','maximum dust opacity (cm²/g)',iunit)
+         call write_inopt(bowen_Tcond,'bowen_Tcond','dust condensation temperature (K)',iunit)
+         call write_inopt(bowen_delta,'bowen_delta','condensation temperature range (K)',iunit)
+      endif
+      if ((nucleation .or. condensation) .and. (idust_opacity == 2 .or. idust_opacity == 3)) then
+         call write_inopt(kappa_gas,'kappa_gas','constant gas opacity (cm²/g)',iunit)
+         call write_inopt(wind_CO_ratio ,'wind_CO_ratio','wind initial C/O ratio (> 1)',iunit)
+      endif
 
-end subroutine write_options_dust_formation
+   end subroutine write_options_dust_formation
 
 !-----------------------------------------------------------------------
 !+
 !  Reads input options from the input file.
 !+
 !-----------------------------------------------------------------------
-subroutine read_options_dust_formation(db,nerr)
- use io,      only:error
- use dim,     only:nucleation,do_nucleation,inucleation,condensation,&
-                   do_condensation,icondensation,store_dust_temperature
- use eos,     only:ieos
- use infile_utils, only:inopts,read_inopt
- type(inopts), intent(inout) :: db(:)
- integer,      intent(inout) :: nerr
+   subroutine read_options_dust_formation(db,nerr)
+      use io,      only:error
+      use dim,     only:nucleation,do_nucleation,inucleation,condensation,&
+         do_condensation,icondensation,store_dust_temperature
+      use eos,     only:ieos
+      use infile_utils, only:inopts,read_inopt
+      type(inopts), intent(inout) :: db(:)
+      integer,      intent(inout) :: nerr
 
- call read_inopt(idust_opacity,'idust_opacity',db,errcount=nerr,min=0,max=3)
- ! bowen opacity
- if (idust_opacity == 1) then
-    call read_inopt(kappa_gas,'kappa_gas',db,errcount=nerr,min=0.)
-    call read_inopt(bowen_kmax,'bowen_kmax',db,errcount=nerr,min=0.)
-    call read_inopt(bowen_Tcond,'bowen_Tcond',db,errcount=nerr,min=0.)
-    call read_inopt(bowen_delta,'bowen_delta',db,errcount=nerr,min=0.)
- endif
- ! dust nucleation
- if (idust_opacity == 2) then
-    do_nucleation = .true.
-    do_condensation = .false.
-    inucleation = 1
- endif
- ! dust condensation
- if (idust_opacity == 3) then
-    do_condensation = .true.
-    do_nucleation = .false.
-    icondensation = 1
- endif
- if ((nucleation .or. condensation) .and. (idust_opacity == 2 .or. idust_opacity == 3)) then
-    call read_inopt(kappa_gas,'kappa_gas',db,errcount=nerr,min=0.)
-    call read_inopt(wind_CO_ratio,'wind_CO_ratio',db,errcount=nerr,min=0.)
- endif
- if (idust_opacity > 0) store_dust_temperature = .true.
- if ((do_nucleation .or. do_condensation) .and. ieos == 5) call error('read_infile','with nucleation you must use ieos = 2')
+      call read_inopt(idust_opacity,'idust_opacity',db,errcount=nerr,min=0,max=3)
+      ! bowen opacity
+      if (idust_opacity == 1) then
+         call read_inopt(kappa_gas,'kappa_gas',db,errcount=nerr,min=0.)
+         call read_inopt(bowen_kmax,'bowen_kmax',db,errcount=nerr,min=0.)
+         call read_inopt(bowen_Tcond,'bowen_Tcond',db,errcount=nerr,min=0.)
+         call read_inopt(bowen_delta,'bowen_delta',db,errcount=nerr,min=0.)
+      endif
+      ! dust nucleation
+      if (idust_opacity == 2) then
+         do_nucleation = .true.
+         do_condensation = .false.
+         inucleation = 1
+      endif
+      ! dust condensation
+      if (idust_opacity == 3) then
+         do_condensation = .true.
+         do_nucleation = .false.
+         icondensation = 1
+      endif
+      if ((nucleation .or. condensation) .and. (idust_opacity == 2 .or. idust_opacity == 3)) then
+         call read_inopt(kappa_gas,'kappa_gas',db,errcount=nerr,min=0.)
+         call read_inopt(wind_CO_ratio,'wind_CO_ratio',db,errcount=nerr,min=0.)
+      endif
+      if (idust_opacity > 0) store_dust_temperature = .true.
+      if ((do_nucleation .or. do_condensation) .and. ieos == 5) call error('read_infile','with nucleation you must use ieos = 2')
 
-end subroutine read_options_dust_formation
+   end subroutine read_options_dust_formation
 
 end module dust_formation

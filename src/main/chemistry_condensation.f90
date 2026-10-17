@@ -288,7 +288,7 @@ contains
       nit   = 0
       ipass = 0
 
-      do while (maxval(err) > 1.e-6 .and. nit < 300) !200 original
+      do while (maxval(err) > 1.e-6 .and. nit < 2000) !200 original
 
          pelm_old(:) = pelm(:)
 
@@ -490,15 +490,21 @@ contains
 
 
    pure real function solve_q(a, b, c)
+! Note that this solve_q uses the Citardauq/Miller formula to avoid catastrophic cancellation.
+! The value b>0 always and c<0 (this must be so because the roote of the equation is a partial
+! pressure which must be positive), so b**2 - 4*a*c>0 always.
       real, intent(in) :: a, b, c
-      real :: delta
-      if (-4.*a*c/b**2 > epsilon(0.)) then
-         delta = b**2-4.*a*c
-         solve_q = (-b+sqrt(delta))/(2.*a)
-      else
+      real :: delta, denom
+      delta = max(b**2 - 4.*a*c, 0.)
+      denom = b + sqrt(delta)
+      if (denom > 0.) then
+         solve_q = -2.*c / denom
+      elseif (b /= 0.) then
          solve_q = -c/b
+      else
+         solve_q = 0.
       endif
-      solve_q = max(solve_q,1.d-300) !1.d-50 was the old value
+      solve_q = max(solve_q, 1.d-300)
    end function solve_q
 
    pure real function calc_Kd(coefs, T)
@@ -681,7 +687,7 @@ contains
          mu     = (1.+4.*eps(iHe))/(0.5+eps(iHe))
          gamma  = (5.*eps(iHe)+3.5)/(3.*eps(iHe)+2.5)
       endif
-    end subroutine calc_muGamma_condensation
+   end subroutine calc_muGamma_condensation
 
 
 !Fortran subroutine that implements Newton's method for
@@ -695,9 +701,9 @@ contains
       real :: S4, S3, S2, S1, S0
       real :: fx_scaled, dfx_scaled
       ! Parameters
-      integer, parameter :: max_iter = 200
-      real, parameter :: tolerance = 1.d-5 ! Scaled absolute tolerance
-      real, parameter :: tolerance_rel = 1.d-5
+      integer, parameter :: max_iter = 1000
+      real, parameter :: tolerance = 1.d-12 ! Scaled absolute tolerance
+      real, parameter :: tolerance_rel = 1.d-10
 
       integer :: iter
 
@@ -752,7 +758,6 @@ contains
          end if
 !         print *, iter, exp(u)
       end do
-      print *, iter, u, exp(u)
 
       ! Convert back from log space
       newton_method = exp(u)
