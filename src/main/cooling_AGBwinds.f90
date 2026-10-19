@@ -1061,7 +1061,7 @@ subroutine co_cool(temp, N_co_eff, N_co_eff_vib, co_rot_L0, co_rot_LTE, co_rot_a
 !           kaufman (1993) and neufeld, lepp & melnick (1995)
 !           cooling functions [see coolinmo.f]
 !
-!  INPUT VARIABLES: temp, N_co_eff
+!  INPUT VARIABLES: temp, N_co_eff, N_co_eff_vib
 !
 !  OUTPUT VARIABLES: co_rot_L0, co_rot_LTE, co_rot_alpha, co_rot_n05,
 !                    co_vib_LTE_out
@@ -1071,13 +1071,13 @@ subroutine co_cool(temp, N_co_eff, N_co_eff_vib, co_rot_L0, co_rot_LTE, co_rot_a
  use mol_data
  use splineutils, only:spline_eval
 !
- real, intent(in)  :: temp, N_co_eff
+ real, intent(in)  :: temp, N_co_eff, N_co_eff_vib
  real, intent(out) :: co_rot_L0, co_rot_LTE, co_rot_alpha, co_rot_n05, co_vib_LTE_out
  integer           :: itemp_co, iN_co
 !
  real   ::   co_rot_LTE_1, co_rot_LTE_2, co_rot_alp_1, co_rot_alp_2, &
              co_rot_n05_1, co_rot_n05_2, co_vib_LTE_1, co_vib_LTE_2
- real   ::   dtemp_co, dn_co, N_co_eff_vib
+ real   ::   dtemp_co, dn_co
 !
 ! co rotational cooling
 !
@@ -1152,7 +1152,7 @@ subroutine co_cool(temp, N_co_eff, N_co_eff_vib, co_rot_L0, co_rot_LTE, co_rot_a
        iN_co = ncdco_vib
        dn_co = 0d0
  else
-       iN_co = int((10 * N_co_eff) - 129)
+       iN_co = int((10 * N_co_eff_vib) - 129)
        dn_co = (N_co_eff_vib - co_vib_colntab(iN_co)) / 0.1d0
  endif
  co_vib_LTE_1 =   co_vib_LTE_final(iN_co,itemp_co) + dtemp_co *dtco_vib_LTE(iN_co,itemp_co)
