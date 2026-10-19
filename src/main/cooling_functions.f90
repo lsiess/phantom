@@ -40,7 +40,10 @@ module cooling_functions
            AGB_cooling, &
            cooling_dust_collision, &
            cooling_radiative_relaxation, &
-           testing_cooling_functions
+           testing_cooling_functions, &
+           rad_temp, radiative_heating, &
+           rotational_CO_cooling_C, rotational_CO_cooling_WJ, &
+           rotational_CO_cooling_McKee
 
  private
  real, parameter  :: xH = 0.7, xHe = 0.28 !assumed H and He mass fractions
@@ -274,6 +277,100 @@ subroutine cooling_high_temp(T, rho_cgs, Q_cgs, dlnQ_dlnT)
 
 end subroutine cooling_high_temp
 
+
+!-------------------------------------------------------------------------
+!+
+!  CO rotational cooling using the fit of Ceulemans et al. (1996)
+!+
+!-------------------------------------------------------------------------
+subroutine rotational_CO_cooling_C(T, rho_cgs, CO_ab, div_v, Q_CO, dlnQ_dlnT)
+    use dust_formation, only:mass_per_H 
+   real, intent(in)  :: T, rho_cgs, CO_ab, div_v
+    real, intent(out) :: Q_CO, dlnQ_dlnT
+
+    real, parameter :: a = -1.74249389d1
+    real, dimension(3), parameter :: b = [1.08678135, -6.83716540d-2, 3.08211028d-2]
+    real, dimension(4), parameter :: c = [-6.13253761, 1.01649680, -5.32517202d-2, 9.04689294d-4]
+    real, parameter :: d = 9.61193214d-1
+    real, dimension(2), parameter :: e = [2.23296121d-1, -6.30372565d-3]
+    real :: nH2, nCO
+
+    real :: b_terms, c_terms, d_terms, e_terms
+
+    nH2 = rho_cgs / mass_per_H * 0.5 * 1e6 ! Assuming H2 is the dominant species, converting to SI units
+    nCO = rho_cgs / mass_per_H * CO_ab * 1e6
+
+    b_terms = b(1)*log10(T) + b(2)*log10(T)**2 + b(3)*log10(T)**3
+    c_terms = c(1)*log10(nH2) + c(2)*log10(nH2)**2 + c(3)*log10(nH2)**3 + c(4)*log10(nH2)**4
+    d_terms = d*log10(CO_ab)
+    e_terms = e(1)*log10(nCO/abs(div_v)) + e(2)*log10(nCO/abs(div_v))**2
+
+    Q_CO = -10.**(a + b_terms + c_terms + d_terms + e_terms) * 1.d1 ! Convert from SI to cgs units (erg/s)
+    dlnQ_dlnT = 0.0  ! For now
+
+end subroutine rotational_CO_cooling_C
+
+
+!-------------------------------------------------------------------------
+!+
+!  CO rotational cooling using the fit of Whitworth & Jaffa (2018)
+!+
+!-------------------------------------------------------------------------
+subroutine rotational_CO_cooling_WJ(T, rho_cgs, CO_ab, div_v, Q_CO, dlnQ_dlnT)
+    use dust_formation, only:mass_per_H 
+    real, intent(in)  :: T, rho_cgs, CO_ab, div_v
+    real, intent(out) :: Q_CO, dlnQ_dlnT
+
+    real :: nH2, nCO
+    real :: Lambda_TOT
+    real, parameter :: KM_S_PC_TO_S = 1.0d5 / 3.0856775814913673d18  ! 1 km/s/pc in s^-1 (cgs)
+    real :: div_v_kms_pc, Lambda_LO_per_nCO, Lambda_HI_per_nCO, beta, Lambda_TOT_per_nCO
+
+    nH2 = rho_cgs / mass_per_H * 0.5  ! Assuming H2 is the dominant species
+    nCO = rho_cgs / mass_per_H * CO_ab
+
+    div_v_kms_pc = abs(div_v) / KM_S_PC_TO_S  ! convert s^-1 -> km/s/pc
+
+    Lambda_LO_per_nCO = 2.16d-27 * nH2 * T**1.5
+    Lambda_HI_per_nCO = 2.21d-28 / (CO_ab / div_v_kms_pc) / nH2 * T**4
+
+    beta = 1.23 * nH2**0.0533 * T**0.164
+    Lambda_TOT_per_nCO = (Lambda_LO_per_nCO**(-1.0 / beta)    &
+                         + Lambda_HI_per_nCO**(-1.0 / beta))**(-beta)
+
+    Lambda_TOT = Lambda_TOT_per_nCO * nCO
+
+    Q_CO = -Lambda_TOT  ! Cooling rate is negative
+    dlnQ_dlnT = 0.0  ! For now
+
+end subroutine rotational_CO_cooling_WJ
+
+!-----------------------------------------------------------------------
+!+
+! CO rotational cooling using the analytical expression from 
+! McKee et al. (1982), Eq. 5.5
+!+
+!-----------------------------------------------------------------------
+subroutine rotational_CO_cooling_McKee(T, rho_cgs, CO_ab, Q_CO, dlnQ_dlnT)
+ use dust_formation, only:mass_per_H
+
+ real, intent(in)  :: T, rho_cgs, CO_ab
+ real, intent(out) :: Q_CO, dlnQ_dlnT
+
+ real :: ngas, ncrit
+
+ ngas = rho_cgs / mass_per_H
+ ncrit = 3.3d6 * (T / 1000.0)**0.75
+
+ if (ngas > ncrit) then
+    Q_CO = 8.3d-21 * (T / 1000.0)**2 * CO_ab/3.7d-4 * ngas
+    dlnQ_dlnT = 0.0
+ else
+    Q_CO = 2.5d-27 * (T / 1000.0)**(5/4) * CO_ab/3.7d-4 * ngas**2
+    dlnQ_dlnT = 0.0
+ endif
+
+end subroutine rotational_CO_cooling_McKee
 !-----------------------------------------------------------------------
 !+
 !  compute electron equilibrium abundance per nH atom (Palla et al 1983)
@@ -387,6 +484,51 @@ subroutine nelectron_mu(T_gas, rho_gas, nH, nHe, n_e, mu)
  mu        = 4./(2.*xH*(1.+yy+2.*xx*yy)+xHe*(1+z1+z1*z2))
 
 end subroutine nelectron_mu
+
+subroutine rad_temp(Tref, Trad, xi, yi, zi, r_in)
+ use part, only:xyzmh_ptmass,iReff
+ use units, only:udist
+ real, intent(in)  :: Tref
+ real, intent(out) :: Trad
+ real, intent(in), optional  :: xi, yi, zi
+ real, intent(in), optional :: r_in
+ real :: W, Rstar, r
+
+!  Rstar = xyzmh_ptmass(iReff,1)
+ Rstar = 0.91 ! Radius in AU, since the input radius is actually the wind injection radius
+ if (present(r_in)) then
+    r = r_in
+ elseif (present(xi) .and. present(yi) .and. present(zi)) then
+    r = sqrt((xi-xyzmh_ptmass(1,1))**2 + (yi-xyzmh_ptmass(2,1))**2 + (zi-xyzmh_ptmass(3,1))**2) 
+ else
+    print*, 'Error: either r_in or (xi, yi, zi) must be provided.'
+    stop
+ endif
+ W = 0.5*( 1. - sqrt( 1 - (Rstar/r)**2 ) )
+ Trad = Tref * W**0.20    ! p=1 for carbon dust
+
+ print*, 'Rstar: ', Rstar, 'r: ', r, 'Trad: ', Trad
+
+!  print*, 'Rstar: ', xyzmh_ptmass(iReff,1), 'r: ', r, 'Trad: ', Trad
+!  print*, 'x star: ', xyzmh_ptmass(1,1), 'y star: ', xyzmh_ptmass(2,1), 'z star: ', xyzmh_ptmass(3,1)
+!  print*, 'x: ', xi, 'y: ', yi, 'z: ', zi
+!  print*, 'udist: ', udist
+
+end subroutine rad_temp
+
+subroutine radiative_heating(Trad, Tg, rho_cgs, Q_radHeat, dlnQ_radHeat)
+ use physcon, only:steboltz
+ real, intent(in)  :: Trad, Tg, rho_cgs
+ real, intent(out) :: Q_radHeat, dlnQ_radHeat
+ real, parameter   :: kappa_gas = 2.d-4      ! in cgs, from Woitke 2006, A&A, 452, 537–549
+
+ Q_radHeat = 4*steboltz*kappa_gas*(Trad**4-Tg**4)
+ dlnQ_radHeat = 0.
+
+!  print*, 'Radiative heating: ', Q_radHeat, 'T rad: ', Trad, 'Tg: ', Tg, 'rho_cgs: ', rho_cgs
+
+end subroutine radiative_heating
+ 
 
 !-----------------------------------------------------------------------
 !+
@@ -797,14 +939,16 @@ end function heat_H2_recombination
 !  RADIATIVE: optically thin CO ro-vibrational cooling (Hollenbach & McKee 1979, McKee et al. 1982)
 !+
 !-----------------------------------------------------------------------
-real function cool_CO_rovib(T_gas, rho_gas, mu, nH, nH2, nCO)
+subroutine cool_CO_rovib(T_gas, rho_gas, mu, nH, nH2, nCO, Q_CO_rot, Q_CO_vib)
 
  use physcon, only:kboltz, mass_proton_cgs
+ use dust_formation, only:mass_per_H
 
  real, intent(in) :: T_gas, rho_gas, mu, nH, nH2, nCO
+ real, intent(out) :: Q_CO_rot, Q_CO_vib
 
  real              :: Qrot, QvibH2, QvibH
- real              :: n_gas, n_crit, sigma
+ real              :: n_gas, n_crit, sigma, n_a
  real              :: v_crit, nfCO
 
 ! CO bond dissociation energy = 11.11 eV = 1.78e-11 erg
@@ -812,13 +956,15 @@ real function cool_CO_rovib(T_gas, rho_gas, mu, nH, nH2, nCO)
 ! to account for collisions that destroy CO
 
  if (T_gas > 3000. .or. T_gas < 250.) then
-    cool_CO_rovib = 0.
+    Q_CO_rot = 0.0
+    Q_CO_vib = 0.0
     return
  endif
  v_crit = sqrt( 2.*1.78d-11/(mu*mass_proton_cgs) )  ! kinetic energy
  nfCO   = MaxBol_cumul(T_gas, mu,  v_crit) * nCO
 
  n_gas  = rho_gas/(mu*mass_proton_cgs)
+ n_a = 0.5*(nH+sqrt(2.d0)*nH2)
  n_crit = 3.3d6*(T_gas/1000.)**0.75      !McKee et al. 1982 eq. 5.3
  sigma  = 3.d-16*(T_gas/1000.)**(-0.25)  !McKee et al. 1982 eq. 5.4
  !v_th = sqrt((8.*kboltz*T_gas)/(pi*mH2_cgs)) !3.1
@@ -828,9 +974,10 @@ real function cool_CO_rovib(T_gas, rho_gas, mu, nH, nH2, nCO)
  QvibH2 = 1.83d-26*nH2*nfCO*T_gas*exp(-3080./T_gas)*exp(-68./(T_gas**(1./3.)))  !Smith & Rosen
  QvibH  = 1.28d-24*nH *nfCO*sqrt(T_gas)*exp(-3080./T_gas)*exp(-(2000./T_gas)**3.43) !Smith & Rosen
 
- cool_CO_rovib = Qrot+QvibH+QvibH2
+ Q_CO_rot = Qrot
+ Q_CO_vib = QvibH+QvibH2
 
-end function cool_CO_rovib
+end subroutine cool_CO_rovib
 
 !-----------------------------------------------------------------------
 !+
