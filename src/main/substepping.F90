@@ -1059,6 +1059,7 @@ subroutine cooling_abundances_update(i,pmassi,xyzh,vxyzu,eos_vars,abundance,nucl
  use options,         only:icooling
  use chem,            only:update_abundances,get_dphot
  use dust_formation,  only:evolve_dust,calc_muGamma
+ use units,           only:unit_density
  use cooling,         only:energ_cooling,cooling_in_step,use_bound
  use eos_HIIR,        only:muion,Tion
  use part,            only:xyzmh_ptmass,vxyz_ptmass
@@ -1107,7 +1108,7 @@ subroutine cooling_abundances_update(i,pmassi,xyzh,vxyzu,eos_vars,abundance,nucl
     eos_vars(imu,i)    = nucleation(idmu,i)
     eos_vars(igamma,i) = nucleation(idgamma,i)
  elseif (update_muGamma) then
-    call calc_muGamma(rhoi,eos_vars(itemp,i),eos_vars(imu,i),eos_vars(igamma,i),pH,pH_tot)
+    call calc_muGamma(rhoi*unit_density,eos_vars(itemp,i),eos_vars(imu,i),eos_vars(igamma,i),pH,pH_tot)
  endif
  !
  ! COOLING

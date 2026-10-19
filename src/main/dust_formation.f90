@@ -21,8 +21,8 @@ module dust_formation
 !   - kappa_gas     : *constant gas opacity (cm²/g)*
 !   - wind_CO_ratio : *wind initial C/O ratio (> 1)*
 !
-! :Dependencies: dim, dump_utils, eos, infile_utils, io, part, physcon,
-!   units
+! :Dependencies: cooling_functions, dim, dump_utils, eos, infile_utils, io,
+!   part, physcon, units
 !
 
  use part,    only:idJstar,idK0,idK1,idK2,idK3,idmu,idgamma,idsat,idkappa
@@ -51,7 +51,7 @@ module dust_formation
 
  character(len=*), parameter :: label = 'dust_formation'
  real :: wind_CO_ratio = 2.
- real :: bowen_kmax  = 2.7991
+ real, public :: bowen_kmax  = 2.7991
  real :: grad_to_ggrav = 0.95
  real :: kappa_max   = 2.7991  ! set from bowen_kmax, or by calc_kappa_max if bowen_kmax < 0
  real :: bowen_Tcond = 1500.
@@ -391,110 +391,104 @@ end subroutine evol_K
 !----------------------------------------
 !
 !  Calculate mean molecular weight, gamma
+!  at fixed specific internal energy
 !
 !----------------------------------------
-subroutine calc_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot)
-! all quantities are in cgs
- use io,  only:fatal
-
+subroutine calc_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot, ppH2)
+! all quantities in cgs
  real, intent(in)    :: rho_cgs
  real, intent(inout) :: T, mu, gamma
  real, intent(out)   :: pH, pH_tot
- real :: KH2, pH2, x, T_ionisation_He
- real :: T_old, mu_old, gamma_old, tol
- logical :: converged
- integer :: i,isolve
+ real, intent(out), optional :: ppH2
+ real :: Tu, Tlo, Thi, T_old, T_new, f, f_old, pH2
+ integer :: i
  integer, parameter :: itermax = 100
- real, parameter    :: a1 = 4.4314613664, b1 = 7.46314789e-02, c1 = 1.5361475e-03
- character(len=30), parameter :: label = 'calc_muGamma'
+ real, parameter    :: tol = 1.e-5
 
- pH_tot = rho_cgs*T*kboltz/(patm*mass_per_H)
- T_old  = T
- ! temperature above which helium starts being ionized (fit to Saha equation)
- T_ionisation_He = 10.**(a1 + log(rho_cgs)/log(10.) * b1 + (log(rho_cgs)/log(10.))**2 * c1)
- if (T > T_ionisation_He) then
-    pH = pH_tot
-    mu = 0.62
-    !  mu     = (1.+4.*eps(iHe))/(1.+eps(iHe))
- elseif (T > 450.) then
-! iterate to get consistently pH, T, mu and gamma
-    tol       = 1.d-3
-    converged = .false.
-    isolve    = 0
-    pH        = pH_tot ! initial value, overwritten below, to avoid compiler warning
-    i = 0
-    do while (.not. converged .and. i < itermax)
-       i = i+1
-       pH_tot    = rho_cgs*T*kboltz/(patm*mass_per_H)
-       KH2       = calc_Kd(coefs(:,iH2), T)
-       pH        = solve_q(2.*KH2, 1., -pH_tot)
-       pH2       = KH2*pH**2
-       mu        = (1.+4.*eps(iHe))/(.5+eps(iHe)+0.5*pH/pH_tot)
-       x         = 2.*(1.+4.*eps(iHe))/mu
-       gamma     = (3.*x+4.+4.*eps(iHe))/(x+4.+4.*eps(iHe))
-       converged = (abs(T-T_old)/T_old) < tol
-       if (i == 1) then
-          mu_old = mu
-          gamma_old = gamma
-       else
-          T = T_old*mu/mu_old/(gamma_old-1.)*2.*x/(x+4.+4.*eps(iHe))
-          if (i>=itermax .and. .not.converged) then
-             if (isolve==0) then
-                isolve = isolve+1
-                i      = 0
-                tol    = 1.d-2
-                print *,'[dust_formation] cannot converge on T(mu,gamma). Trying with lower tolerance'
-             else
-                print *,'Told=',T_old,',T=',T,',gamma_old=',gamma_old,',gamma=',gamma,',mu_old=',&
-                  mu_old,',mu=',mu,',dT/T=',abs(T-T_old)/T_old,', rho=',rho_cgs
-                call fatal(label,'cannot converge on T(mu,gamma)')
-             endif
-          endif
-       endif
-    enddo
- else
-! Simplified low-temperature chemistry: all hydrogen in H2 molecules
-    pH2    = pH_tot/2.
-    pH     = 0.
-    mu     = (1.+4.*eps(iHe))/(0.5+eps(iHe))
-    gamma  = (5.*eps(iHe)+3.5)/(3.*eps(iHe)+2.5)
- endif
+ Tu  = T/(mu*(gamma-1.))
+ Tlo = 0.35*Tu
+ Thi = 1.05*Tu
+
+ call saha_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot, pH2)
+ T_old = T
+ f_old = T - Tu*mu*(gamma-1.)
+ T     = Tu*mu*(gamma-1.)
+
+ do i = 1,itermax
+    call saha_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot, pH2)
+    f = T - Tu*mu*(gamma-1.)
+    if (abs(f) < tol*T) exit
+
+    if (f > 0.) then
+       Thi = T
+    else
+       Tlo = T
+    endif
+
+    if (f /= f_old) then
+       T_new = T - f*(T-T_old)/(f-f_old)
+    else
+       T_new = Tlo
+    endif
+    if (T_new <= Tlo .or. T_new >= Thi) T_new = sqrt(Tlo*Thi)
+
+    T_old = T
+    f_old = f
+    T    = T_new
+ enddo
+ if (present(ppH2)) ppH2 = pH2
 
 end subroutine calc_muGamma
 
 !--------------------------------------------
 !
 !  Initialise mean molecular weight and gamma
+!  at fixed temperature
 !
 !--------------------------------------------
 subroutine init_muGamma(rho_cgs, T, mu, gamma, ppH, ppH2)
 ! all quantities are in cgs
- real, intent(in)    :: rho_cgs
- real, intent(inout) :: T
+ real, intent(in)    :: rho_cgs, T
  real, intent(out)   :: mu, gamma
  real, intent(out), optional :: ppH, ppH2
- real :: KH2, pH_tot, pH, pH2
+ real :: pH_tot, pH, pH2
 
- pH_tot = rho_cgs*kboltz*T/(patm*mass_per_H)
- if (T > 1.d5) then
-    pH2 = 0.
-    pH  = pH_tot
- elseif (T > 450.) then
-    KH2 = calc_Kd(coefs(:,iH2), T)
-    pH  = solve_q(2.*KH2, 1., -pH_tot)
-    pH2 = KH2*pH**2
- else
-! Simplified low-temperature chemistry: all hydrogen in H2 molecules
-    pH2 = pH_tot/2.
-    pH  = 0.
- endif
- mu    = (1.+4.*eps(iHe))*pH_tot/(pH+pH2+eps(iHe)*pH_tot)
- gamma = (5.*pH+5.*eps(iHe)*pH_tot+7.*pH2)/(3.*pH+3.*eps(iHe)*pH_tot+5.*pH2)
- call calc_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot)
+ call saha_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot, pH2)
  if (present(ppH))  ppH = pH
  if (present(ppH2)) ppH2 = pH2
 
 end subroutine init_muGamma
+
+!--------------------------------------------------------------
+!
+!  Mean molecular weight, gamma and partial pressures (atm) of
+!  H and H2 at given density and temperature, from the LTE
+!  H2 dissociation and H, He, He+ ionisation fractions
+!
+!--------------------------------------------------------------
+pure subroutine saha_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot, pH2)
+! all quantities in cgs
+ use cooling_functions, only:saha_fractions
+ real, intent(in)  :: rho_cgs, T
+ real, intent(out) :: mu, gamma, pH, pH_tot, pH2
+ real :: XH, xx, yy, z1, z2, xe, n_mono, n_H2, ntot, Cv
+
+ XH     = 1./(1.+4.*eps(iHe))  ! H mass fraction
+ call saha_fractions(T, rho_cgs, XH, 1.-XH, xx, yy, z1, z2)
+
+ pH_tot = rho_cgs*T*kboltz/(patm*mass_per_H)
+ xe  = yy*xx + eps(iHe)*z1*(1.+z2) 
+ pH  = yy*(1.-xx)*pH_tot
+ pH2 = 0.5*(1.-yy)*pH_tot
+
+ n_mono = yy + eps(iHe) + xe
+ n_H2   = 0.5*(1.-yy)
+ ntot   = n_mono + n_H2
+ Cv     = 1.5*n_mono + 2.5*n_H2
+ mu     = (1.+4.*eps(iHe))/ntot
+ gamma  = 1. + ntot/Cv
+
+end subroutine saha_muGamma
 
 !---------------------------------------------------------------
 !

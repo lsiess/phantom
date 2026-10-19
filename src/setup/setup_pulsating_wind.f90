@@ -85,9 +85,15 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
  use wind_pulsating, only:setup_star, calc_stellar_profile, save_stellarprofile
  use setbinary, only:set_binary
  use io,        only: master
- use options,   only  : nfulldump !, ieos
-!  use eos,       only      : gmw
-! use timestep,  only:dtmax
+ use options,   only: nfulldump,ieos,icooling
+ use eos,       only: gmw
+ use timestep,  only: tmax,dtmax,C_cool
+ use cooling,          only:Tfloor,use_bound
+ use cooling_solver,   only:icool_method,excitation_HI,relax_Bowen,relax_Stefan, &
+                            dust_collision,shock_problem,high_temp,H2_cooling
+ use cooling_functions,only:bowen_Cprime
+ use dust_formation,   only:idust_opacity,kappa_gas,bowen_kmax
+ use ptmass_radiation, only:isink_radiation,iget_tdust,iray_resolution,tdust_exp
 
  integer,           intent(in)    :: id
  integer,           intent(inout) :: npart
@@ -100,18 +106,46 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
  character(len=*),  intent(in)    :: fileprefix
  character(len=len(fileprefix)+6) :: filename
  integer :: ierr,k
- logical :: iexist
+ logical :: iexist,iexist_in
 
  nfulldump = 1
-!  dtmax = 0.1
-!  ieos = 5
-!  gmw = 1.26
+
+ ! default run time, equation of state, cooling and dust options for the pulsating wind,
+ ! only set on the first setup so that values edited in an existing .in file are kept
+ inquire(file=trim(fileprefix)//'.in',exist=iexist_in)
+ if (.not. iexist_in) then
+    tmax      = 100.
+    dtmax     = 1.
+
+    ieos            = 5
+    gmw             = 1.26
+    icooling        = 1
+    C_cool          = 0.05
+    icool_method    = 0
+    excitation_HI   = 1
+    relax_Bowen     = 1
+    relax_Stefan    = 0
+    dust_collision  = 0
+    shock_problem   = 0
+    high_temp       = 0
+    H2_cooling      = 0
+    bowen_Cprime    = 3.e-5
+    Tfloor          = 10.
+    use_bound       = 1
+    idust_opacity   = 1
+    kappa_gas       = 2.e-4
+    bowen_kmax      = -1. 
+    isink_radiation = 2
+    iget_tdust      = 1
+    iray_resolution = -1
+    tdust_exp       = 0.5
+ endif
 
  call set_units(mass=solarm,dist=au,G=1.)
  call set_default_parameters_wind()
  filename = trim(fileprefix)//'.setup'
  inquire(file=filename,exist=iexist)
- if (.not. iexist) call set_default_options_inject()
+ if (.not. iexist .and. .not. iexist_in) call set_default_options_inject()
 
  time = 0.
  filename = trim(fileprefix)//'.setup'
@@ -166,15 +200,7 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
     xyzmh_ptmass(iLum,1)  = primary_lum
  endif
 
- ! This is overwritten anyway, calculated by M_atmosphere/N_particles
  massoftype(igas) = default_particle_mass * (solarm / umass)
-
-!  call init_inject(dummy)
-! Setup stellar structure calculation
-!  call setup_star(Matmos, Rstar_cgs, r_inner, gmw, gamma, n_shells_total,surface_pressure)
-!  call calc_stellar_profile(n_profile_points)
-!  call save_stellarprofile(n_profile_points, 'stellar_profile1D.dat')
-!  call inject_particles(time,dtlast,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,npart,npart_old,npartoftype,dtinject)
 
 end subroutine setpart
 
