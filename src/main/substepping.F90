@@ -1062,6 +1062,7 @@ subroutine cooling_abundances_update(i,pmassi,xyzh,vxyzu,eos_vars,abundance,nucl
  use dust_formation,  only:evolve_dust,calc_muGamma,chemical_equilibrium_light,eps
  use cooling,         only:energ_cooling,cooling_in_step
  use eos_HIIR,        only:muion,Tion
+ use units,           only:unit_density
 #ifdef KROME
  use part,            only: T_gas_cool
  use krome_interface, only:update_krome
@@ -1109,7 +1110,7 @@ subroutine cooling_abundances_update(i,pmassi,xyzh,vxyzu,eos_vars,abundance,nucl
        print*, 'cooling abundances_update: K3 > eps(3) = ',nucleation(5,i),eps(3), 'for particle ',iorig(i)
     endif
  elseif (update_muGamma) then
-    call calc_muGamma(rhoi,eos_vars(itemp,i),eos_vars(imu,i),eos_vars(igamma,i),pH,pH_tot)
+    call calc_muGamma(rhoi*unit_density,eos_vars(itemp,i),eos_vars(imu,i),eos_vars(igamma,i),pH,pH_tot)
  endif
  !
  ! COOLING
