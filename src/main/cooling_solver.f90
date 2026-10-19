@@ -564,6 +564,7 @@ subroutine read_options_cooling_solver(db,nerr)
  call read_inopt(dust_collision,'dust_collision',db,errcount=nerr,min=0,max=1)
  call read_inopt(shock_problem,'shock_problem',db,errcount=nerr,min=0,max=1)
  call read_inopt(high_temp,'high_temp',db,errcount=nerr,min=0,max=1,default=high_temp)
+ call read_inopt(H2_cooling,'H2_cooling',db,errcount=nerr,min=0,max=1,default=H2_cooling)
  if (shock_problem == 1) then
     call read_inopt(lambda_shock_cgs,'lambda_shock',db,errcount=nerr,min=0.)
     call read_inopt(T1_factor,'T1_factor',db,errcount=nerr,min=0.)
