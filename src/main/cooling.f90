@@ -48,7 +48,7 @@ module cooling
  !--Minimum temperature (failsafe to prevent u < 0); optional for ALL cooling options
  real,    public :: Tfloor = 10.                    ! [K]; set in .in file.  On if Tfloor > 0.
  real,    public :: ufloor = 0.                     ! [code units]; set in init_cooling
- integer, public :: use_bound = 1                   ! if true, only cool if e_tot > 0
+ integer, public :: use_bound = 0                   ! if true, only cool if e_tot > 0
  public :: T0_value,lambda_shock_cgs ! expose to public
 
  private
