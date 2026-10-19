@@ -29,7 +29,7 @@ module substepping
 !   dust_formation, eos, eos_HIIR, extern_gr, externalforces, io,
 !   io_summary, krome_interface, metric, metric_tools, mpiutils,
 !   neighkdtree, options, part, ptmass, ptmass_radiation, ptmass_tree,
-!   subgroup, timestep, timing
+!   subgroup, timestep, timing, units
 !
  implicit none
 

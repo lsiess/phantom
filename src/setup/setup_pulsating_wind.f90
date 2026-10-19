@@ -29,8 +29,9 @@ module setup
 !   - semi_major_axis   : *semi-major axis of the binary system (au)*
 !   - wind_gamma        : *adiabatic index for wind gas*
 !
-! :Dependencies: infile_utils, inject, io, options, part, physcon,
-!   setbinary, units, wind_pulsating
+! :Dependencies: cooling, cooling_functions, cooling_solver,
+!   dust_formation, eos, infile_utils, inject, io, options, part, physcon,
+!   ptmass_radiation, setbinary, timestep, units, wind_pulsating
 !
  implicit none
  public :: setpart
@@ -134,7 +135,7 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
     use_bound       = 1
     idust_opacity   = 1
     kappa_gas       = 2.e-4
-    bowen_kmax      = -1. 
+    bowen_kmax      = -1.
     isink_radiation = 2
     iget_tdust      = 1
     iray_resolution = -1

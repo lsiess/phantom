@@ -477,7 +477,7 @@ pure subroutine saha_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot, pH2)
  call saha_fractions(T, rho_cgs, XH, 1.-XH, xx, yy, z1, z2)
 
  pH_tot = rho_cgs*T*kboltz/(patm*mass_per_H)
- xe  = yy*xx + eps(iHe)*z1*(1.+z2) 
+ xe  = yy*xx + eps(iHe)*z1*(1.+z2)
  pH  = yy*(1.-xx)*pH_tot
  pH2 = 0.5*(1.-yy)*pH_tot
 

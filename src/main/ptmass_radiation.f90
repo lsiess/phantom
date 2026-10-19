@@ -16,7 +16,6 @@ module ptmass_radiation
 !
 ! :Runtime parameters:
 !   - beta_vgrad : *characterize the steepness of the velocity gradient of the wind profile*
-!   - iget_tdust : *dust temperature (0:Tdust=Tgas 1:T(r) 2:Flux dilution 3:Attenuation 4:Lucy 5:Bladh2012)*
 !   - tdust_exp  : *exponent of the dust temperature profile*
 !   - tdust_p    : *power-law index p of the dust absorption efficiency (Q_abs ~ lambda^-p)*
 !

@@ -43,8 +43,8 @@ module cooling_functions
            testing_cooling_functions, &
            saha_fractions
 
- private
- real, parameter  :: xH = 0.7, xHe = 0.28 !assumed H and He mass fractions
+  private
+  real, parameter  :: xH = 0.7, xHe = 0.28 !assumed H and He mass fractions
 
 contains
 !-----------------------------------------------------------------------
@@ -286,7 +286,7 @@ subroutine testing_cooling_functions(ifunct, T, Q, dlnQ_dlnT)
     dlnQ_dlnT = 0.
  end select
 
-end subroutine testing_cooling_functions
+end function testing_cooling_functions
 
 !-----------------------------------------------------------------------
 !+
@@ -322,11 +322,11 @@ pure subroutine saha_fractions(T_gas, rho_gas, XH, YHe, xx, yy, z1, z2)
  real, intent(in)  :: T_gas, rho_gas, XH, YHe  ! H and He mass fractions
  real, intent(out) :: xx, yy, z1, z2
 
- real, parameter  :: H2_diss = 52490.*kboltz !  4.52 eV in erg 
+ real, parameter  :: H2_diss = 52490.*kboltz !  4.52 eV in erg
  real, parameter  :: H_ion   = 2.179d-11     ! 13.60 eV in erg
  real, parameter  :: He_ion  = 3.940d-11     ! 24.59 eV in erg
  real, parameter  :: He2_ion = 8.720d-11     ! 54.42 eV in erg
- real, parameter  :: Kmin    = 1.d-300       
+ real, parameter  :: Kmin    = 1.d-300
  real             :: KH, KH2, KHe, KHe2, B, cst
 
  cst  = mass_proton_cgs/rho_gas*sqrt(mass_electron_cgs*kboltz*T_gas/(2.*pi*planckhbar**2))**3
