@@ -21,8 +21,8 @@ module dust_formation
 !   - kappa_gas     : *constant gas opacity (cm²/g)*
 !   - wind_CO_ratio : *wind initial C/O ratio (> 1)*
 !
-! :Dependencies: dim, dump_utils, eos, infile_utils, io, part, physcon,
-!   units
+! :Dependencies: cooling_functions, dim, dump_utils, eos, infile_utils, io,
+!   part, physcon, units
 !
 
  use part,    only:idJstar,idK0,idK1,idK2,idK3,idmu,idgamma,idsat,idkappa
@@ -391,98 +391,104 @@ end subroutine evol_K
 !----------------------------------------
 !
 !  Calculate mean molecular weight, gamma
+!  at fixed specific internal energy
 !
 !----------------------------------------
 subroutine calc_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot, ppH2)
 ! all quantities in cgs
- use physcon, only:mass_electron_cgs,planckhbar
-
  real, intent(in)    :: rho_cgs
  real, intent(inout) :: T, mu, gamma
  real, intent(out)   :: pH, pH_tot
  real, intent(out), optional :: ppH2
- real :: Tu, Tlo, Thi, XH, YHe, KH2, cst, KH, KHe, KHe2, B
- real :: x, y, z1, z2, xe, n_mono, n_H2, ntot, Cv
+ real :: Tu, Tlo, Thi, T_old, T_new, f, f_old, pH2
  integer :: i
  integer, parameter :: itermax = 100
- real, parameter    :: tol = 1.e-7
- real, parameter    :: H_ion = 2.179d-11, He_ion = 3.940d-11, He2_ion = 8.720d-11 ! ionisation energies (erg)
- real, parameter    :: H2_diss = 52490. ! H2 dissociation energy / kboltz (K)
+ real, parameter    :: tol = 1.e-5
 
- ! y  : fraction of H nuclei in atomic form (H or H+)
- ! x  : ionised fraction of atomic H
- ! z1 : fraction of He at least singly ionised
- ! z2 : fraction of He+ ionised again (He2+ = z1*z2 of all He)
-
- XH  = 1./(1.+4.*eps(iHe))  ! H and He mass fractions
- YHe = 1.-XH
  Tu  = T/(mu*(gamma-1.))
- Tlo = 0.3*Tu
- Thi = 1.1*Tu
+ Tlo = 0.35*Tu
+ Thi = 1.05*Tu
+
+ call saha_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot, pH2)
+ T_old = T
+ f_old = T - Tu*mu*(gamma-1.)
+ T     = Tu*mu*(gamma-1.)
+
  do i = 1,itermax
-    T = sqrt(Tlo*Thi)
-    pH_tot = rho_cgs*T*kboltz/(patm*mass_per_H)
-    ! H2 dissociation from Saha equation y^2/(1-y) = KH2 (D'Angelo & Bodenheimer 2013)
-    KH2 = max(2.11/(rho_cgs*XH)*exp(-H2_diss/T), tiny(KH2))
-    y   = 2.*KH2/(KH2 + sqrt(KH2*(KH2+4.)))
-    ! H, He and He+ ionisation from Saha equations (D'Angelo & Bodenheimer 2013)
-    cst  = mass_proton_cgs/rho_cgs*sqrt(mass_electron_cgs*kboltz*T/(2.*pi*planckhbar**2))**3
-    KH   = max(cst/XH*exp(-H_ion/(kboltz*T)), tiny(KH))
-    KHe  = 4.*cst*exp(-He_ion/(kboltz*T))
-    KHe2 = cst*exp(-He2_ion/(kboltz*T))
-    x    = 2.*KH/(KH + sqrt(KH*(KH+4.)))
-    z1   = 2.*KHe/(sqrt((KHe+XH)**2 + KHe*YHe) + KHe + XH)
-    B    = KHe2 + XH + 0.25*YHe
-    z2   = 2.*KHe2/(sqrt(B**2 + KHe2*YHe) + B)
-    xe   = y*x + eps(iHe)*z1*(1.+z2)  ! free electrons per H nucleus
-    pH   = y*(1.-x)*pH_tot
+    call saha_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot, pH2)
+    f = T - Tu*mu*(gamma-1.)
+    if (abs(f) < tol*T) exit
 
-    n_mono = y + eps(iHe) + xe
-    n_H2   = 0.5*(1.-y)
-    ntot   = n_mono + n_H2
-    Cv     = 1.5*n_mono + 2.5*n_H2
-    mu     = (1.+4.*eps(iHe))/ntot
-    gamma  = 1. + ntot/Cv
-
-    if (Thi/Tlo - 1. < tol) exit
-    if (T > Tu*mu*(gamma-1.)) then
+    if (f > 0.) then
        Thi = T
     else
        Tlo = T
     endif
+
+    if (f /= f_old) then
+       T_new = T - f*(T-T_old)/(f-f_old)
+    else
+       T_new = Tlo
+    endif
+    if (T_new <= Tlo .or. T_new >= Thi) T_new = sqrt(Tlo*Thi)
+
+    T_old = T
+    f_old = f
+    T    = T_new
  enddo
- if (present(ppH2)) ppH2 = 0.5*(1.-y)*pH_tot
+ if (present(ppH2)) ppH2 = pH2
 
 end subroutine calc_muGamma
 
 !--------------------------------------------
 !
 !  Initialise mean molecular weight and gamma
+!  at fixed temperature
 !
 !--------------------------------------------
 subroutine init_muGamma(rho_cgs, T, mu, gamma, ppH, ppH2)
 ! all quantities are in cgs
- real, intent(in)    :: rho_cgs
- real, intent(inout) :: T
+ real, intent(in)    :: rho_cgs, T
  real, intent(out)   :: mu, gamma
  real, intent(out), optional :: ppH, ppH2
- real :: pH_tot, pH, pH2, Ti
- integer :: i
+ real :: pH_tot, pH, pH2
 
- ! initial guess: molecular gas
- mu    = (1.+4.*eps(iHe))/(0.5+eps(iHe))
- gamma = (5.*eps(iHe)+3.5)/(3.*eps(iHe)+2.5)
- ! calc_muGamma solves for T at fixed u = kT/((gamma-1) mu m_H): iterate on mu
- ! and gamma until the returned temperature equals the prescribed one
- do i = 1,100
-    Ti = T
-    call calc_muGamma(rho_cgs, Ti, mu, gamma, pH, pH_tot, pH2)
-    if (abs(Ti-T) < 1.e-6*T) exit
- enddo
+ call saha_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot, pH2)
  if (present(ppH))  ppH = pH
  if (present(ppH2)) ppH2 = pH2
 
 end subroutine init_muGamma
+
+!--------------------------------------------------------------
+!
+!  Mean molecular weight, gamma and partial pressures (atm) of
+!  H and H2 at given density and temperature, from the LTE
+!  H2 dissociation and H, He, He+ ionisation fractions
+!
+!--------------------------------------------------------------
+pure subroutine saha_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot, pH2)
+! all quantities in cgs
+ use cooling_functions, only:saha_fractions
+ real, intent(in)  :: rho_cgs, T
+ real, intent(out) :: mu, gamma, pH, pH_tot, pH2
+ real :: XH, xx, yy, z1, z2, xe, n_mono, n_H2, ntot, Cv
+
+ XH     = 1./(1.+4.*eps(iHe))  ! H mass fraction
+ call saha_fractions(T, rho_cgs, XH, 1.-XH, xx, yy, z1, z2)
+
+ pH_tot = rho_cgs*T*kboltz/(patm*mass_per_H)
+ xe  = yy*xx + eps(iHe)*z1*(1.+z2) 
+ pH  = yy*(1.-xx)*pH_tot
+ pH2 = 0.5*(1.-yy)*pH_tot
+
+ n_mono = yy + eps(iHe) + xe
+ n_H2   = 0.5*(1.-yy)
+ ntot   = n_mono + n_H2
+ Cv     = 1.5*n_mono + 2.5*n_H2
+ mu     = (1.+4.*eps(iHe))/ntot
+ gamma  = 1. + ntot/Cv
+
+end subroutine saha_muGamma
 
 !---------------------------------------------------------------
 !

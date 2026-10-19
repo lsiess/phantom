@@ -40,7 +40,8 @@ module cooling_functions
            cooling_dust_collision, &
            cooling_radiative_relaxation, &
            cooling_H2, &
-           testing_cooling_functions
+           testing_cooling_functions, &
+           saha_fractions
 
  private
  real, parameter  :: xH = 0.7, xHe = 0.28 !assumed H and He mass fractions
@@ -295,54 +296,55 @@ end subroutine testing_cooling_functions
 !-----------------------------------------------------------------------
 subroutine nelectron_mu(T_gas, rho_gas, nH, nHe, n_e, mu)
 
- use physcon, only:kboltz, mass_proton_cgs, mass_electron_cgs, planckhbar, pi
-
  real, intent(in)  :: T_gas, rho_gas, nH, nHe
  real, intent(out) :: n_e
  real, intent(out), optional :: mu
+ real              :: xx, yy, z1, z2
 
- real, parameter  :: H2_diss = 7.178d-12    !  4.48 eV in erg
- real, parameter  :: H_ion   = 2.179d-11    ! 13.60 eV in erg
- real, parameter  :: He_ion  = 3.940d-11    ! 24.59 eV in erg
- real, parameter  :: He2_ion = 8.720d-11    ! 54.42 eV in erg
- real             :: KH, KH2, xx, yy, KHe, KHe2, z1, z2, cst
+ call saha_fractions(T_gas, rho_gas, xH, xHe, xx, yy, z1, z2)
 
- cst = mass_proton_cgs/rho_gas*sqrt(mass_electron_cgs*kboltz*T_gas/(2.*pi*planckhbar**2))**3
- if (T_gas > 1.d5) then
-    ! all hydrogen is ionized
-    xx = 1.
- else
-    KH   = cst/xH * exp(-H_ion /(kboltz*T_gas))
-    ! solution to quadratic SAHA equations (Eq. 16 in D'Angelo et al 2013)
-    xx   = 0.5 * (-KH + sqrt(KH**2+4.*KH))
- endif
-
- if (T_gas > 1.d4) then
-    ! all H2 has been dissociated
-    yy = 1.
- else
-    KH2  = 0.5*cst/xH * sqrt(0.5*mass_proton_cgs/mass_electron_cgs)**3 * exp(-H2_diss/(kboltz*T_gas))
-    ! solution to quadratic SAHA equations (Eq. 15 in D'Angelo et al 2013)
-    yy   = 0.5 * (-KH2 + sqrt(KH2**2+4.*KH2))
- endif
-
- if (T_gas > 4.d5) then
-    ! all helium has been ionized twice
-    z1 = 1.
-    z2 = 1.
- else
-    KHe    = 4.*cst * exp(-He_ion/(kboltz*T_gas))
-    KHe2   =    cst * exp(-He2_ion/(kboltz*T_gas))
-    ! solution to quadratic SAHA equations (Eq. 17 in D'Angelo et al 2013)
-    z1     = (2./XHe) * (-KHe-xH + sqrt((KHe+xH)**2+KHe*xHe))
-    ! solution to quadratic SAHA equations (Eq. 18 in D'Angelo et al 2013)
-    z2     = (2./xHe) * (-KHe2-xH-xHe/4. + sqrt((KHe2+xH+xHe/4.)**2+KHe2*xHe))
- endif
-
- n_e       = xx * nH + z1*(1.+z2) * nHe
- mu        = 4./(2.*xH*(1.+yy+2.*xx*yy)+xHe*(1+z1+z1*z2))
+ n_e = xx * nH + z1*(1.+z2) * nHe
+ if (present(mu)) mu = 4./(2.*xH*(1.+yy+2.*xx*yy)+xHe*(1.+z1+z1*z2))
 
 end subroutine nelectron_mu
+
+!-----------------------------------------------------------------------
+!+
+!  ADDITIONAL PHYSICS: LTE H2 dissociation and H, He, He+ ionisation
+!                      fractions from SAHA equations
+!                      (following D'Angelo & Bodenheimer 2013)
+!+
+!-----------------------------------------------------------------------
+pure subroutine saha_fractions(T_gas, rho_gas, XH, YHe, xx, yy, z1, z2)
+
+ use physcon, only:kboltz, mass_proton_cgs, mass_electron_cgs, planckhbar, pi
+
+ real, intent(in)  :: T_gas, rho_gas, XH, YHe  ! H and He mass fractions
+ real, intent(out) :: xx, yy, z1, z2
+
+ real, parameter  :: H2_diss = 52490.*kboltz !  4.52 eV in erg 
+ real, parameter  :: H_ion   = 2.179d-11     ! 13.60 eV in erg
+ real, parameter  :: He_ion  = 3.940d-11     ! 24.59 eV in erg
+ real, parameter  :: He2_ion = 8.720d-11     ! 54.42 eV in erg
+ real, parameter  :: Kmin    = 1.d-300       
+ real             :: KH, KH2, KHe, KHe2, B, cst
+
+ cst  = mass_proton_cgs/rho_gas*sqrt(mass_electron_cgs*kboltz*T_gas/(2.*pi*planckhbar**2))**3
+
+ KH2  = max(2.11/(rho_gas*XH) * exp(-H2_diss/(kboltz*T_gas)), Kmin)
+ yy   = 2./(1. + sqrt(1. + 4./KH2)) !Eq. 15
+
+ KH   = max(cst/XH * exp(-H_ion/(kboltz*T_gas)), Kmin)
+ xx   = 2./(1. + sqrt(1. + 4./KH)) ! Eq. 16
+
+ KHe  = max(4.*cst * exp(-He_ion/(kboltz*T_gas)), Kmin)
+ KHe2 = max(   cst * exp(-He2_ion/(kboltz*T_gas)), Kmin)
+
+ z1   = 2.*KHe/(sqrt((KHe+XH)**2 + KHe*YHe) + KHe + XH) ! Eq. 17
+ B    = KHe2 + XH + 0.25*YHe
+ z2   = 2.*KHe2/(sqrt(B**2 + KHe2*YHe) + B) ! Eq. 18
+
+end subroutine saha_fractions
 
 !-----------------------------------------------------------------------
 !+
