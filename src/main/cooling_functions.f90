@@ -23,6 +23,7 @@ module cooling_functions
  real, public :: lambda_shock_cgs = 1.d0
  real, public :: T1_factor = 20., T0_value = 0.
  real, public :: kappa_dust_min = 1e-3  ! dust opacity value below which dust cooling is not calculated
+ real, public :: CO_abun = 3.e-4       
 
  public :: cool_dust_discrete_contact, cool_coulomb, &
            cool_HI, cool_H_ionisation, cool_He_ionisation, &
@@ -39,11 +40,12 @@ module cooling_functions
            cooling_Bowen_relaxation, &
            cooling_dust_collision, &
            cooling_radiative_relaxation, &
-           cooling_H2, &
-           testing_cooling_functions
+           cooling_H2, cooling_CO_rot, &
+           testing_cooling_functions, &
+           saha_fractions
 
- private
- real, parameter  :: xH = 0.7, xHe = 0.28 !assumed H and He mass fractions
+  private
+  real, parameter  :: xH = 0.7, xHe = 0.28 !assumed H and He mass fractions
 
 contains
 !-----------------------------------------------------------------------
@@ -232,6 +234,69 @@ end subroutine cooling_H2
 
 !-----------------------------------------------------------------------
 !+
+!  CO cooling fit from Ceulemans et al. (2026) 
+!+
+!-----------------------------------------------------------------------
+subroutine cooling_CO_rot(T, rho_cgs, divv_cgs, Q_cgs, dlnQ_dlnT)
+
+ use physcon, only:mass_proton_cgs
+
+ real, intent(in)  :: T, rho_cgs, divv_cgs   ! divv in s^-1
+ real, intent(out) :: Q_cgs, dlnQ_dlnT
+
+ real, parameter :: a    = -17.424938947711073
+ real, parameter :: b(3) = [1.08678135, -0.06837165, 0.0308211]
+ real, parameter :: c(4) = [-6.13253761, 1.01649680, -5.32517202e-2, 9.04689294e-4]
+ real, parameter :: d(1) = [0.9611932140011241]
+ real, parameter :: e(2) = [0.22329612, -0.00630373]
+ ! validity range of the fit (SI)
+ real, parameter :: Tmin = 14., Tmax = 3000.
+ real, parameter :: nH2_min = 1.4e8, nH2_max = 1.9e15
+ real, parameter :: xCO_min = 1.e-4, xCO_max = 1.e-3
+ real, parameter :: ndv_min = 1.5e13, ndv_max = 4.2e23
+ real :: nH2, logT, lognH2, logxCO, logndv, logL
+ integer :: i
+
+ Q_cgs     = 0.
+ dlnQ_dlnT = 0.
+ if (T < Tmin) return
+
+ nH2    = 0.5*rho_cgs/(1.4*mass_proton_cgs)*1.e6   ! m^-3
+ logT   = log10(min(T, Tmax))
+ lognH2 = log10(min(max(nH2, nH2_min), nH2_max))
+ logxCO = log10(min(max(CO_abun, xCO_min), xCO_max))
+ if (abs(divv_cgs) > tiny(0.)) then
+    logndv = log10(min(max(CO_abun*nH2/abs(divv_cgs), ndv_min), ndv_max))
+ else
+    logndv = log10(ndv_max)
+ endif
+
+ logL = a
+ do i = 1,size(b)
+    logL = logL + b(i)*logT**i
+ enddo
+ do i = 1,size(c)
+    logL = logL + c(i)*lognH2**i
+ enddo
+ do i = 1,size(d)
+    logL = logL + d(i)*logxCO**i
+ enddo
+ do i = 1,size(e)
+    logL = logL + e(i)*logndv**i
+ enddo
+
+ ! W/m^3 -> erg/s/cm^3 (x10)
+ Q_cgs = -10.*10.**logL/rho_cgs
+ if (T <= Tmax) then
+    do i = 1,size(b)
+       dlnQ_dlnT = dlnQ_dlnT + i*b(i)*logT**(i-1)
+    enddo
+ endif
+
+end subroutine cooling_CO_rot
+
+!-----------------------------------------------------------------------
+!+
 !  compute electron equilibrium abundance per nH atom (Palla et al 1983)
 !+
 !-----------------------------------------------------------------------
@@ -295,54 +360,55 @@ end subroutine testing_cooling_functions
 !-----------------------------------------------------------------------
 subroutine nelectron_mu(T_gas, rho_gas, nH, nHe, n_e, mu)
 
- use physcon, only:kboltz, mass_proton_cgs, mass_electron_cgs, planckhbar, pi
-
  real, intent(in)  :: T_gas, rho_gas, nH, nHe
  real, intent(out) :: n_e
  real, intent(out), optional :: mu
+ real              :: xx, yy, z1, z2
 
- real, parameter  :: H2_diss = 7.178d-12    !  4.48 eV in erg
- real, parameter  :: H_ion   = 2.179d-11    ! 13.60 eV in erg
- real, parameter  :: He_ion  = 3.940d-11    ! 24.59 eV in erg
- real, parameter  :: He2_ion = 8.720d-11    ! 54.42 eV in erg
- real             :: KH, KH2, xx, yy, KHe, KHe2, z1, z2, cst
+ call saha_fractions(T_gas, rho_gas, xH, xHe, xx, yy, z1, z2)
 
- cst = mass_proton_cgs/rho_gas*sqrt(mass_electron_cgs*kboltz*T_gas/(2.*pi*planckhbar**2))**3
- if (T_gas > 1.d5) then
-    ! all hydrogen is ionized
-    xx = 1.
- else
-    KH   = cst/xH * exp(-H_ion /(kboltz*T_gas))
-    ! solution to quadratic SAHA equations (Eq. 16 in D'Angelo et al 2013)
-    xx   = 0.5 * (-KH + sqrt(KH**2+4.*KH))
- endif
-
- if (T_gas > 1.d4) then
-    ! all H2 has been dissociated
-    yy = 1.
- else
-    KH2  = 0.5*cst/xH * sqrt(0.5*mass_proton_cgs/mass_electron_cgs)**3 * exp(-H2_diss/(kboltz*T_gas))
-    ! solution to quadratic SAHA equations (Eq. 15 in D'Angelo et al 2013)
-    yy   = 0.5 * (-KH2 + sqrt(KH2**2+4.*KH2))
- endif
-
- if (T_gas > 4.d5) then
-    ! all helium has been ionized twice
-    z1 = 1.
-    z2 = 1.
- else
-    KHe    = 4.*cst * exp(-He_ion/(kboltz*T_gas))
-    KHe2   =    cst * exp(-He2_ion/(kboltz*T_gas))
-    ! solution to quadratic SAHA equations (Eq. 17 in D'Angelo et al 2013)
-    z1     = (2./XHe) * (-KHe-xH + sqrt((KHe+xH)**2+KHe*xHe))
-    ! solution to quadratic SAHA equations (Eq. 18 in D'Angelo et al 2013)
-    z2     = (2./xHe) * (-KHe2-xH-xHe/4. + sqrt((KHe2+xH+xHe/4.)**2+KHe2*xHe))
- endif
-
- n_e       = xx * nH + z1*(1.+z2) * nHe
- mu        = 4./(2.*xH*(1.+yy+2.*xx*yy)+xHe*(1+z1+z1*z2))
+ n_e = xx * nH + z1*(1.+z2) * nHe
+ if (present(mu)) mu = 4./(2.*xH*(1.+yy+2.*xx*yy)+xHe*(1.+z1+z1*z2))
 
 end subroutine nelectron_mu
+
+!-----------------------------------------------------------------------
+!+
+!  ADDITIONAL PHYSICS: LTE H2 dissociation and H, He, He+ ionisation
+!                      fractions from SAHA equations
+!                      (following D'Angelo & Bodenheimer 2013)
+!+
+!-----------------------------------------------------------------------
+pure subroutine saha_fractions(T_gas, rho_gas, XH, YHe, xx, yy, z1, z2)
+
+ use physcon, only:kboltz, mass_proton_cgs, mass_electron_cgs, planckhbar, pi
+
+ real, intent(in)  :: T_gas, rho_gas, XH, YHe  ! H and He mass fractions
+ real, intent(out) :: xx, yy, z1, z2
+
+ real, parameter  :: H2_diss = 52490.*kboltz !  4.52 eV in erg
+ real, parameter  :: H_ion   = 2.179d-11     ! 13.60 eV in erg
+ real, parameter  :: He_ion  = 3.940d-11     ! 24.59 eV in erg
+ real, parameter  :: He2_ion = 8.720d-11     ! 54.42 eV in erg
+ real, parameter  :: Kmin    = 1.d-300
+ real             :: KH, KH2, KHe, KHe2, B, cst
+
+ cst  = mass_proton_cgs/rho_gas*sqrt(mass_electron_cgs*kboltz*T_gas/(2.*pi*planckhbar**2))**3
+
+ KH2  = max(2.11/(rho_gas*XH) * exp(-H2_diss/(kboltz*T_gas)), Kmin)
+ yy   = 2./(1. + sqrt(1. + 4./KH2)) !Eq. 15
+
+ KH   = max(cst/XH * exp(-H_ion/(kboltz*T_gas)), Kmin)
+ xx   = 2./(1. + sqrt(1. + 4./KH)) ! Eq. 16
+
+ KHe  = max(4.*cst * exp(-He_ion/(kboltz*T_gas)), Kmin)
+ KHe2 = max(   cst * exp(-He2_ion/(kboltz*T_gas)), Kmin)
+
+ z1   = 2.*KHe/(sqrt((KHe+XH)**2 + KHe*YHe) + KHe + XH) ! Eq. 17
+ B    = KHe2 + XH + 0.25*YHe
+ z2   = 2.*KHe2/(sqrt(B**2 + KHe2*YHe) + B) ! Eq. 18
+
+end subroutine saha_fractions
 
 !-----------------------------------------------------------------------
 !+
@@ -586,7 +652,7 @@ real function cool_HI(T_gas, rho_gas, mu, nH, nHe)
  ! all hydrogen atomic, so nH = n_gas
  ! Dalgarno & McCray (1972) provide data starting at 3000K
  ! (1+sqrt(T_gas/1.d5))**(-1) correction factor added by Cen 1992
- if (T_gas > 200000.) then
+ if (T_gas > 3000.) then
     n_gas   = rho_gas/(mu*mass_proton_cgs)
     !nH      = XH*n_gas
     call nelectron_mu(T_gas, rho_gas, nH, nHe, n_e)
