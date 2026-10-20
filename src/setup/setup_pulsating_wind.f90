@@ -91,7 +91,7 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
  use timestep,  only: tmax,dtmax,C_cool
  use cooling,          only:Tfloor,use_bound
  use cooling_solver,   only:icool_method,excitation_HI,relax_Bowen,relax_Stefan, &
-                            dust_collision,shock_problem,high_temp,H2_cooling
+                            dust_collision,shock_problem,high_temp, CO_cooling
  use cooling_functions,only:bowen_Cprime
  use dust_formation,   only:idust_opacity,kappa_gas,bowen_kmax
  use ptmass_radiation, only:isink_radiation,iget_tdust,iray_resolution,tdust_exp
@@ -129,7 +129,7 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
     dust_collision  = 0
     shock_problem   = 0
     high_temp       = 0
-    H2_cooling      = 0
+    CO_cooling      = 0
     bowen_Cprime    = 3.e-5
     Tfloor          = 10.
     use_bound       = 1

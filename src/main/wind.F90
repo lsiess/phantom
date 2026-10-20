@@ -214,7 +214,7 @@ subroutine wind_step(params,state)
  type(wind_state),  intent(inout) :: state
  type(wind_params), intent(in)    :: params
  real :: rvT(3), dt_next, v_old, dlnQ_dlnT, Q_code, pH, pH_tot
- real :: alpha_old, kappa_old, rho_old, Q_old, tau_lucy_bounded, mu_old, dt_old
+ real :: alpha_old, kappa_old, rho_old, Q_old, tau_lucy_bounded, mu_old, dt_old, divv_code
 
  rvT(1) = state%r
  rvT(2) = state%v
@@ -319,8 +319,9 @@ subroutine wind_step(params,state)
  !apply cooling
  if (icooling > 0) then
     Q_old = state%Q
+    divv_code = (state%a/state%v + 2.*state%v/state%r)*utime   ! spherical wind: dv/dr + 2v/r
     call calc_cooling_rate(Q_code,dlnQ_dlnT,state%rho/unit_density,state%Tg,state%Tdust,&
-         state%mu,state%gamma,state%K2,state%kappa)
+         state%mu,state%gamma,state%K2,state%kappa,divv=divv_code)
     state%Q = Q_code*unit_ergg/utime
     state%dQ_dr = (state%Q-Q_old)/(1.e-10+state%r-state%r_old)
  endif
@@ -364,7 +365,7 @@ subroutine wind_step(params,state)
  type(wind_state),  intent(inout) :: state
  type(wind_params), intent(in)    :: params
  real :: rvT(3), dt_next, v_old,dlnQ_dlnT,Q_code,pH,pH_tot
- real :: alpha_old,kappa_old,rho_old,Q_old,tau_lucy_bounded
+ real :: alpha_old,kappa_old,rho_old,Q_old,tau_lucy_bounded,divv_code
 
  kappa_old  = state%kappa
  alpha_old  = state%alpha
@@ -461,8 +462,9 @@ subroutine wind_step(params,state)
  !apply cooling
  if (icooling > 0) then
     Q_old = state%Q
+    divv_code = (state%a/state%v + 2.*state%v/state%r)*utime   ! spherical wind: dv/dr + 2v/r
     call calc_cooling_rate(Q_code,dlnQ_dlnT,real(state%rho/unit_density),state%Tg,state%Tdust,&
-                           state%mu,state%gamma,state%K2,state%kappa)
+                           state%mu,state%gamma,state%K2,state%kappa,divv=divv_code)
     state%Q = Q_code*unit_ergg/utime
     state%dQ_dr = (state%Q-Q_old)/(1.e-10+state%r-state%r_old)
  endif

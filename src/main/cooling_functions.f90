@@ -23,6 +23,7 @@ module cooling_functions
  real, public :: lambda_shock_cgs = 1.d0
  real, public :: T1_factor = 20., T0_value = 0.
  real, public :: kappa_dust_min = 1e-3  ! dust opacity value below which dust cooling is not calculated
+ real, public :: CO_abun = 3.e-4       
 
  public :: cool_dust_discrete_contact, cool_coulomb, &
            cool_HI, cool_H_ionisation, cool_He_ionisation, &
@@ -39,7 +40,7 @@ module cooling_functions
            cooling_Bowen_relaxation, &
            cooling_dust_collision, &
            cooling_radiative_relaxation, &
-           cooling_H2, &
+           cooling_H2, cooling_CO_rot, &
            testing_cooling_functions, &
            saha_fractions
 
@@ -233,6 +234,69 @@ end subroutine cooling_H2
 
 !-----------------------------------------------------------------------
 !+
+!  CO cooling fit from Ceulemans et al. (2026) 
+!+
+!-----------------------------------------------------------------------
+subroutine cooling_CO_rot(T, rho_cgs, divv_cgs, Q_cgs, dlnQ_dlnT)
+
+ use physcon, only:mass_proton_cgs
+
+ real, intent(in)  :: T, rho_cgs, divv_cgs   ! divv in s^-1
+ real, intent(out) :: Q_cgs, dlnQ_dlnT
+
+ real, parameter :: a    = -17.424938947711073
+ real, parameter :: b(3) = [1.08678135, -0.06837165, 0.0308211]
+ real, parameter :: c(4) = [-6.13253761, 1.01649680, -5.32517202e-2, 9.04689294e-4]
+ real, parameter :: d(1) = [0.9611932140011241]
+ real, parameter :: e(2) = [0.22329612, -0.00630373]
+ ! validity range of the fit (SI)
+ real, parameter :: Tmin = 14., Tmax = 3000.
+ real, parameter :: nH2_min = 1.4e8, nH2_max = 1.9e15
+ real, parameter :: xCO_min = 1.e-4, xCO_max = 1.e-3
+ real, parameter :: ndv_min = 1.5e13, ndv_max = 4.2e23
+ real :: nH2, logT, lognH2, logxCO, logndv, logL
+ integer :: i
+
+ Q_cgs     = 0.
+ dlnQ_dlnT = 0.
+ if (T < Tmin) return
+
+ nH2    = 0.5*rho_cgs/(1.4*mass_proton_cgs)*1.e6   ! m^-3
+ logT   = log10(min(T, Tmax))
+ lognH2 = log10(min(max(nH2, nH2_min), nH2_max))
+ logxCO = log10(min(max(CO_abun, xCO_min), xCO_max))
+ if (abs(divv_cgs) > tiny(0.)) then
+    logndv = log10(min(max(CO_abun*nH2/abs(divv_cgs), ndv_min), ndv_max))
+ else
+    logndv = log10(ndv_max)
+ endif
+
+ logL = a
+ do i = 1,size(b)
+    logL = logL + b(i)*logT**i
+ enddo
+ do i = 1,size(c)
+    logL = logL + c(i)*lognH2**i
+ enddo
+ do i = 1,size(d)
+    logL = logL + d(i)*logxCO**i
+ enddo
+ do i = 1,size(e)
+    logL = logL + e(i)*logndv**i
+ enddo
+
+ ! W/m^3 -> erg/s/cm^3 (x10)
+ Q_cgs = -10.*10.**logL/rho_cgs
+ if (T <= Tmax) then
+    do i = 1,size(b)
+       dlnQ_dlnT = dlnQ_dlnT + i*b(i)*logT**(i-1)
+    enddo
+ endif
+
+end subroutine cooling_CO_rot
+
+!-----------------------------------------------------------------------
+!+
 !  compute electron equilibrium abundance per nH atom (Palla et al 1983)
 !+
 !-----------------------------------------------------------------------
@@ -286,7 +350,7 @@ subroutine testing_cooling_functions(ifunct, T, Q, dlnQ_dlnT)
     dlnQ_dlnT = 0.
  end select
 
-end function testing_cooling_functions
+end subroutine testing_cooling_functions
 
 !-----------------------------------------------------------------------
 !+
