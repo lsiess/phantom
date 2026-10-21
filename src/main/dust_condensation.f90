@@ -195,9 +195,9 @@ contains
       else
 
          call solve_olivine (eps(iMg), eps(iOx), eps(iC), eps(iSi), G_ol, tol_rel, max_iter, fol_dec, ok)
-         print *, 'G_qu = ', G_qu, eps(iMg), eps(iOx), eps(iC), eps(iSi)
+         !print *, 'G_qu = ', G_qu, eps(iMg), eps(iOx), eps(iC), eps(iSi)
          call solve_quartz  (eps(iMg), eps(iOx), eps(iC), eps(iSi), G_qu, tol_rel, max_iter, fqu_dec, ok)
-         print *, 'fqu_dec = ', fqu_dec
+         !print *, 'fqu_dec = ', fqu_dec
          call solve_pyroxene(eps(iMg), eps(iOx), eps(iC), eps(iSi), G_py, tol_rel, max_iter, fpy_dec, ok)
       endif
 !        elseif (wind_CO_ratio >= 1.1) then
@@ -223,7 +223,7 @@ contains
       elseif (Jgr_ol == 0.5*Jgr_Mg_ol) then
          pv_Mg = max(0., (eps(iMg) - 2.0*fol_dec*eps(iSi))*pH_tot)
          Jdec_ol = alpha_ol * Vth_Mg * pv_Mg *patm / kT !patm to have cgs units
-      elseif (Jgr_ol == 0.333*Jgr_H2O_ol) then
+      else
          pv_H2O = max(0.,(eps(iOx)-eps(iC)-(1.0+3.0*fol_dec)*eps(iSi))*pH_tot)
          Jdec_ol = alpha_ol * Vth_H2O * pv_H2O * patm / kT  !patm to have cgs units
       endif
@@ -231,7 +231,7 @@ contains
       if (Jgr_qu == Jgr_SiO_qu) then
          pv_SiO = max(0., (1.-fqu_dec)*eps(iSi)* pH_tot)
          Jdec_qu = alpha_qu * Vth_SiO * pv_SiO *patm / kT !!patm to have cgs units
-      elseif (Jgr_qu == Jgr_H2O_qu) then
+      else
          pv_H2O = max(0.,(eps(iOx)-eps(iC)-(1.0+fqu_dec)*eps(iSi))*pH_tot)
          Jdec_qu = alpha_qu * Vth_H2O * pv_H2O *patm / kT  !patm to have cgs units
       endif
@@ -239,12 +239,12 @@ contains
       if (Jgr_py == Jgr_SiO_py) then
          pv_SiO = max(0.,(1.-fpy_dec)*eps(iSi)* pH_tot)
          Jdec_py = alpha_py * Vth_SiO * pv_SiO *patm / kT  !!patm to have cgs units
-      elseif (Jgr_py == Jgr_Mg_py) then
-         pv_Mg = max(0., (eps(iMg) - fpy_dec*eps(iSi))*pH_tot)
-         Jdec_py = alpha_py * Vth_Mg * pv_Mg *patm / kT   !patm to have cgs units
       elseif (Jgr_py == 0.5*Jgr_H2O_py) then
          pv_H2O = max(0., (eps(iOx)-eps(iC)-(1.0+2.0*fpy_dec)*eps(iSi))*pH_tot)
          Jdec_py = alpha_py * Vth_H2O * pv_H2O *patm / kT  !patm to have cgs units
+      else
+         pv_Mg = max(0., (eps(iMg) - fpy_dec*eps(iSi))*pH_tot)
+         Jdec_py = alpha_py * Vth_Mg * pv_Mg *patm / kT   !patm to have cgs units
       endif
 
       pv_ir   = max(0.,  (1.-fir_dec)  * eps(iFe) * pH_tot)
@@ -359,13 +359,14 @@ contains
          if (abs(dfx) < tiny(1.)) exit
 
          dx = - fx / dfx
-         x = x + dx
+         x = max(0.0, min(x_max, x + dx))
          ! check relative convergence on step size or relative residual
          if (abs(fx) <= tol_rel * max(g, A**2*B*si*D**3) .or. abs(dx) < 1.d-6*x_max) then
             ok = .true.; exit
          end if
-         print *, i, max_iter, A, B, D, fx, dfx, x
+         !print *, i, max_iter, A, B, D, fx, dfx, x
       end do
+      x = max(0.0, min(x_max, x))
    end subroutine solve_olivine
 
    subroutine solve_quartz(mg, o, c, si, g, tol_rel, max_iter, x, ok)

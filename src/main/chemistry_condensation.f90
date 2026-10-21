@@ -416,7 +416,7 @@ contains
          nit = nit + 1
       enddo
 
-      write(*,*)'nit=', nit,',T=',T,', C/O=',wind_CO_ratio
+      !write(*,*)'nit=', nit,',T=',T,', C/O=',wind_CO_ratio
 
       pmol(iH2)    = Kd(iH2)*pelm(iH)**2
       pmol(iOH)    = Kd(iOH)*pelm(iOx)*pelm(iH)
@@ -756,7 +756,7 @@ contains
          else
             exit
          end if
-!         print *, iter, exp(u)
+!         !print *, iter, exp(u)
       end do
 
       ! Convert back from log space

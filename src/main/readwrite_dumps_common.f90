@@ -576,11 +576,12 @@ subroutine check_arrays(i1,i2,noffset,npartoftype,npartread,nptmass,nsinkpropert
                         got_iseed_sink,got_apr_level,iphase,xyzh,vxyzu,pxyzu,alphaind,xyzmh_ptmass,Bevol,&
                         iorig,iseed_sink,iprint,ierr)
  use dim,  only:maxp,maxvxyzu,maxalpha,maxBevol,mhd,h2chemistry,use_dustgrowth,gr,&
-                do_radiation,store_dust_temperature,do_nucleation,do_condensation,use_krome,use_apr,inject_parts
+                do_radiation,store_dust_temperature,do_nucleation,do_condensation,use_krome,use_apr,inject_parts,&
+                ndust_prop
  use eos,  only:ieos,polyk,gamma,eos_is_non_ideal
  use part, only:maxphase,isetphase,set_particle_type,igas,ihacc,ihsoft,imacc,ilum,ikappa,&
                 xyzmh_ptmass_label,vxyz_ptmass_label,get_pmass,rhoh,dustfrac,ndusttypes,norig,&
-                itemp,iX,iZ,imu,apr_level
+                itemp,iX,iZ,imu,apr_level,n_nucleation,n_condensation
  use io,   only:warning,id,master
  use options,        only:alpha,use_dustfrac,use_var_comp
  use sphNGutils,     only:itype_from_sphNG_iphase,isphNG_accreted
@@ -821,6 +822,7 @@ subroutine check_arrays(i1,i2,noffset,npartoftype,npartread,nptmass,nsinkpropert
  ! Dust nucleation arrays
  !
  if (do_nucleation) then
+    ndust_prop = n_nucleation
     if (.not.all(got_nucleation)) then
        write(*,"(/,1x,a,/)") 'WARNING: DUST_NUCLEATION=yes but nucleation arrays not found in Phantom dump file'
        call init_dust_formation()
@@ -830,6 +832,7 @@ subroutine check_arrays(i1,i2,noffset,npartoftype,npartread,nptmass,nsinkpropert
  ! Dust condensation arrays
  !
  if (do_condensation) then
+    ndust_prop = n_condensation
     if (.not.all(got_condensation)) then
        write(*,"(/,1x,a,/)") 'WARNING: DUST_NUCLEATION=yes but condensation arrays not found in Phantom dump file'
        call init_dust_formation()

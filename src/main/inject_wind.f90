@@ -461,7 +461,8 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,rho,xyzmh_ptmass,vxyz_ptmass,
  use wind,              only:interp_wind_profile
  use dim,               only:ndust_prop
  use part,              only:massoftype,igas,iReff,iboundary,nptmass,delete_particles_outside_sphere,&
-                             delete_dead_particles_inside_radius,n_nucleation,ieject,imloss,ivwind,Bevol,Bxyz
+                             delete_dead_particles_inside_radius,n_nucleation,n_condensation,&
+                             ieject,imloss,ivwind,Bevol,Bxyz
  use partinject,        only:add_or_update_particle
  use units,             only:udist,umass,utime
  use dust_formation,    only:idust_opacity
@@ -480,7 +481,10 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,rho,xyzmh_ptmass,vxyz_ptmass,
  real    :: mass_of_spheres,time_between_spheres,rinject,wind_injection_speed
  character(len=*), parameter :: label = 'inject_particles'
  logical, save :: released = .false.
- real :: dust_prop(ndust_prop)
+ real :: dust_prop(max(n_nucleation,n_condensation))
+
+ if (idust_opacity == 2 .and. ndust_prop <= 0) ndust_prop = n_nucleation
+ if (idust_opacity == 3 .and. ndust_prop <= 0) ndust_prop = n_condensation
 
  dum  = 0.
  dtinject = huge(dtinject)
@@ -572,7 +576,7 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,rho,xyzmh_ptmass,vxyz_ptmass,
           !call pulsating_wind_profile(time,local_time,r,v,u,rhoi,e,GM,i,inner_sphere)
        else
           if (idust_opacity == 2 .or. idust_opacity == 3) then
-             call interp_wind_profile(time,local_time,r,v,u,rhoi,e,GM,fdone,isink,dust_prop)
+             call interp_wind_profile(time,local_time,r,v,u,rhoi,e,GM,fdone,isink,dust_prop(1:ndust_prop))
           else
              call interp_wind_profile(time,local_time,r,v,u,rhoi,e,GM,fdone,isink)
           endif
@@ -598,7 +602,8 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,rho,xyzmh_ptmass,vxyz_ptmass,
                time,local_time,r/xyzmh_ptmass(iReff,isink),v,u,rhoi,xyzmh_ptmass(imloss,isink)/(solarm/umass)*(years/utime)
        endif
        if (idust_opacity == 2 .or. idust_opacity == 3) then
-          call inject_sphere(i,ifirst,npart_per_sphere,r,v,u,npart,npartoftype,xyzh,vxyzu,rhoi,itype,x0,v0,isink,dust_prop)
+          call inject_sphere(i,ifirst,npart_per_sphere,r,v,u,npart,npartoftype,xyzh,vxyzu,rhoi,itype,x0,v0,isink, &
+                             dust_prop(1:ndust_prop))
        else
           call inject_sphere(i,ifirst,npart_per_sphere,r,v,u,npart,npartoftype,xyzh,vxyzu,rhoi,itype,x0,v0,isink)
        endif

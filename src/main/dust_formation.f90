@@ -293,7 +293,8 @@ contains
    subroutine read_options_dust_formation(db,nerr)
       use io,      only:error
       use dim,     only:nucleation,do_nucleation,inucleation,condensation,&
-         do_condensation,icondensation,store_dust_temperature
+         do_condensation,icondensation,store_dust_temperature,ndust_prop
+      use part,    only:n_nucleation,n_condensation
       use eos,     only:ieos
       use infile_utils, only:inopts,read_inopt
       type(inopts), intent(inout) :: db(:)
@@ -312,12 +313,14 @@ contains
          do_nucleation = .true.
          do_condensation = .false.
          inucleation = 1
+         ndust_prop = n_nucleation
       endif
       ! dust condensation
       if (idust_opacity == 3) then
          do_condensation = .true.
          do_nucleation = .false.
          icondensation = 1
+         ndust_prop = n_condensation
       endif
       if ((nucleation .or. condensation) .and. (idust_opacity == 2 .or. idust_opacity == 3)) then
          call read_inopt(kappa_gas,'kappa_gas',db,errcount=nerr,min=0.)

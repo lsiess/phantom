@@ -41,7 +41,8 @@ contains
 !+
 !-----------------------------------------------------------------------
 subroutine add_or_update_particle(itype,position,velocity,h,u,particle_number,npart,npartoftype,xyzh,vxyzu,dust_prop,isink)
- use part, only:maxp,iamtype,iphase,maxvxyzu,iboundary,nucleation,condensation,eos_vars,abundance
+ use part, only:maxp,iamtype,iphase,maxvxyzu,iboundary,nucleation,condensation,eos_vars,abundance,&
+                n_nucleation,n_condensation,idmu,idgamma,icmu,icgamma
  use part, only:maxalpha,alphaind,maxgradh,gradh,fxyzu,fext,set_particle_type
  use part, only:mhd,Bevol,dBevol,Bxyz,divBsymm,gr,pxyzu,apr_level
  use part, only:divcurlv,divcurlB,ndivcurlB,ntot,ibin,imu,igamma
@@ -51,6 +52,7 @@ subroutine add_or_update_particle(itype,position,velocity,h,u,particle_number,np
  use dim,  only:ind_timesteps,do_nucleation,do_condensation,update_muGamma,h2chemistry,use_apr,inject_parts
  use timestep_ind, only:nbinmax
  use cooling_ism,  only:abund_default
+ use dust_formation, only:a_init_dust
  integer, intent(in)    :: itype
  real,    intent(in)    :: position(3), velocity(3), h, u
  real,    intent(in), optional :: dust_prop(:)
@@ -126,11 +128,22 @@ subroutine add_or_update_particle(itype,position,velocity,h,u,particle_number,np
  if (ind_timesteps) ibin(particle_number) = nbinmax
  if (present(dust_prop)) then
     if (do_nucleation) then
-       nucleation(:,particle_number) = dust_prop(:)
+       nucleation(:,particle_number) = dust_prop(1:n_nucleation)
     elseif (do_condensation) then
-       condensation(:,particle_number) = dust_prop(:)
+       condensation(:,particle_number) = dust_prop(1:n_condensation)
     else
        call fatal('Add particle','dust_prop provided but neither nucleation nor condensation is enabled')
+    endif
+ else
+    if (do_nucleation) then
+       nucleation(:,particle_number) = 0.
+       nucleation(idmu,particle_number) = gmw
+       nucleation(idgamma,particle_number) = gamma
+    elseif (do_condensation) then
+       condensation(:,particle_number) = 0.
+       condensation(1:6,particle_number) = a_init_dust
+       condensation(icmu,particle_number) = gmw
+       condensation(icgamma,particle_number) = gamma
     endif
  endif
  if (update_muGamma) then
