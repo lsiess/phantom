@@ -82,20 +82,21 @@ end subroutine init_cooling_solver
 !+
 !-----------------------------------------------------------------------
 subroutine energ_cooling_solver(ui,dudt,rho,dt,mu,gamma,divvi,Tdust,K2,kappa)
+ use units,   only:utime
  real(kind=4), intent(in)   :: divvi               ! in code units
  real, intent(in)  :: ui,rho,dt           ! in code units
  real, intent(in)  :: Tdust,mu,gamma,K2,kappa  ! in cgs
  real, intent(out) :: dudt                     ! in code units
- real :: divv
+ real :: divv_cgs
 
- divv = real(divvi)
+ divv_cgs = real(divvi)/utime
 
  if (icool_method == 2) then
-    call exact_cooling(ui,dudt,rho,dt,mu,gamma,divv,Tdust,K2,kappa)
+    call exact_cooling(ui,dudt,rho,dt,mu,gamma,divv_cgs,Tdust,K2,kappa)
  elseif (icool_method == 0) then
-    call implicit_cooling(ui,dudt,rho,dt,mu,gamma,divv,Tdust,K2,kappa)
+    call implicit_cooling(ui,dudt,rho,dt,mu,gamma,divv_cgs,Tdust,K2,kappa)
  else
-    call explicit_cooling(ui,dudt,rho,dt,mu,gamma,divv,Tdust,K2,kappa)
+    call explicit_cooling(ui,dudt,rho,dt,mu,gamma,divv_cgs,Tdust,K2,kappa)
  endif
 
 end subroutine energ_cooling_solver
@@ -324,7 +325,7 @@ end subroutine exact_cooling
 !  calculate cooling rates
 !+
 !-----------------------------------------------------------------------
-subroutine calc_cooling_rate(Q, dlnQ_dlnT, rho, T, Teq, mu, gamma, divv, K2, kappa)
+subroutine calc_cooling_rate(Q, dlnQ_dlnT, rho, T, Teq, mu, gamma, divv_cgs, K2, kappa)
  use units,   only:unit_ergg,unit_density,utime
  use physcon, only:mass_proton_cgs
  use cooling_functions, only:cooling_neutral_hydrogen,&
@@ -334,7 +335,7 @@ subroutine calc_cooling_rate(Q, dlnQ_dlnT, rho, T, Teq, mu, gamma, divv, K2, kap
  !use cooling_molecular, only:do_molecular_cooling,calc_cool_molecular
 
  real, intent(in)  :: rho, T, Teq     !rho in code units
- real, intent(in)  :: mu, gamma, divv
+ real, intent(in)  :: mu, gamma, divv_cgs
  real, intent(in)  :: K2, kappa       !cgs
  real, intent(out) :: Q, dlnQ_dlnT    !code units
 
@@ -355,7 +356,6 @@ subroutine calc_cooling_rate(Q, dlnQ_dlnT, rho, T, Teq, mu, gamma, divv, K2, kap
  Q_shock           = 0.
  Q_molec           = 0.
  Q_hightemp        = 0.
-
  dlnQ_H0           = 0.
  dlnQ_H2           = 0.
  dlnQ_CO           = 0.
@@ -371,7 +371,7 @@ subroutine calc_cooling_rate(Q, dlnQ_dlnT, rho, T, Teq, mu, gamma, divv, K2, kap
 
  if (excitation_HI  == 1) call cooling_neutral_hydrogen(T, rho_cgs, Q_H0, dlnQ_H0)
  if (cool_H2        == 1) call cooling_H2(T, rho_cgs, Q_H2, dlnQ_H2)
- if (cool_CO        == 1) call rotational_CO_cooling_WJ(T, rho_cgs, CO_ab, divv, Q_CO, dlnQ_CO)
+ if (cool_CO        == 1) call rotational_CO_cooling_WJ(T, rho_cgs, CO_ab, divv_cgs, Q_CO, dlnQ_CO)
  if (relax_Bowen    == 1) call cooling_Bowen_relaxation(T, Teq, rho_cgs, mu, gamma, &
                                                         Q_relax_Bowen, dlnQ_relax_Bowen)
  if (dust_collision == 1 .and. K2 > 0.) call cooling_dust_collision(T, Teq, rho_cgs, K2,&
@@ -395,6 +395,7 @@ subroutine calc_cooling_rate(Q, dlnQ_dlnT, rho, T, Teq, mu, gamma, divv, K2, kap
  !limit exponent to prevent overflow
  dlnQ_dlnT = sign(min(50.,abs(dlnQ_dlnT)),dlnQ_dlnT)
  Q         = Q_cgs/(unit_ergg/utime)
+! if (T < 900) print *,'cooling',Q_H2,Q_CO,cool_CO,divv
 
  !call testfunc()
  !call exit
