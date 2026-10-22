@@ -316,9 +316,9 @@ end subroutine rotational_CO_cooling_C
 !  CO rotational cooling using the fit of Whitworth & Jaffa (2018)
 !+
 !-------------------------------------------------------------------------
-subroutine rotational_CO_cooling_WJ(T, rho_cgs, CO_ab, div_v, Q_CO, dlnQ_dlnT)
+subroutine rotational_CO_cooling_WJ(T, rho_cgs, CO_ab, div_v_cgs, Q_CO, dlnQ_dlnT)
     use dust_formation, only:mass_per_H 
-    real, intent(in)  :: T, rho_cgs, CO_ab, div_v
+    real, intent(in)  :: T, rho_cgs, CO_ab, div_v_cgs
     real, intent(out) :: Q_CO, dlnQ_dlnT
 
     real :: nH2, nCO
@@ -329,7 +329,7 @@ subroutine rotational_CO_cooling_WJ(T, rho_cgs, CO_ab, div_v, Q_CO, dlnQ_dlnT)
     nH2 = rho_cgs / mass_per_H * 0.5  ! Assuming H2 is the dominant species
     nCO = rho_cgs / mass_per_H * CO_ab
 
-    div_v_kms_pc = abs(div_v) / KM_S_PC_TO_S  ! convert s^-1 -> km/s/pc
+    div_v_kms_pc = abs(div_v_cgs) / KM_S_PC_TO_S  ! convert s^-1 -> km/s/pc
 
     Lambda_LO_per_nCO = 2.16d-27 * nH2 * T**1.5
     Lambda_HI_per_nCO = 2.21d-28 / (CO_ab / div_v_kms_pc) / nH2 * T**4
@@ -939,16 +939,14 @@ end function heat_H2_recombination
 !  RADIATIVE: optically thin CO ro-vibrational cooling (Hollenbach & McKee 1979, McKee et al. 1982)
 !+
 !-----------------------------------------------------------------------
-subroutine cool_CO_rovib(T_gas, rho_gas, mu, nH, nH2, nCO, Q_CO_rot, Q_CO_vib)
+real function cool_CO_rovib(T_gas, rho_gas, mu, nH, nH2, nCO)
 
  use physcon, only:kboltz, mass_proton_cgs
- use dust_formation, only:mass_per_H
 
  real, intent(in) :: T_gas, rho_gas, mu, nH, nH2, nCO
- real, intent(out) :: Q_CO_rot, Q_CO_vib
 
  real              :: Qrot, QvibH2, QvibH
- real              :: n_gas, n_crit, sigma, n_a
+ real              :: n_gas, n_crit, sigma
  real              :: v_crit, nfCO
 
 ! CO bond dissociation energy = 11.11 eV = 1.78e-11 erg
@@ -956,15 +954,13 @@ subroutine cool_CO_rovib(T_gas, rho_gas, mu, nH, nH2, nCO, Q_CO_rot, Q_CO_vib)
 ! to account for collisions that destroy CO
 
  if (T_gas > 3000. .or. T_gas < 250.) then
-    Q_CO_rot = 0.0
-    Q_CO_vib = 0.0
+    cool_CO_rovib = 0.0
     return
  endif
  v_crit = sqrt( 2.*1.78d-11/(mu*mass_proton_cgs) )  ! kinetic energy
  nfCO   = MaxBol_cumul(T_gas, mu,  v_crit) * nCO
 
  n_gas  = rho_gas/(mu*mass_proton_cgs)
- n_a = 0.5*(nH+sqrt(2.d0)*nH2)
  n_crit = 3.3d6*(T_gas/1000.)**0.75      !McKee et al. 1982 eq. 5.3
  sigma  = 3.d-16*(T_gas/1000.)**(-0.25)  !McKee et al. 1982 eq. 5.4
  !v_th = sqrt((8.*kboltz*T_gas)/(pi*mH2_cgs)) !3.1
@@ -974,10 +970,9 @@ subroutine cool_CO_rovib(T_gas, rho_gas, mu, nH, nH2, nCO, Q_CO_rot, Q_CO_vib)
  QvibH2 = 1.83d-26*nH2*nfCO*T_gas*exp(-3080./T_gas)*exp(-68./(T_gas**(1./3.)))  !Smith & Rosen
  QvibH  = 1.28d-24*nH *nfCO*sqrt(T_gas)*exp(-3080./T_gas)*exp(-(2000./T_gas)**3.43) !Smith & Rosen
 
- Q_CO_rot = Qrot
- Q_CO_vib = QvibH+QvibH2
+ cool_CO_rovib = Qrot+QvibH+QvibH2
 
-end subroutine cool_CO_rovib
+end function cool_CO_rovib
 
 !-----------------------------------------------------------------------
 !+
