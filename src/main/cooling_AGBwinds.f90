@@ -827,15 +827,21 @@ subroutine cool_func(temp, Tdust, yn, dl, divv, abundances, ylam, rates)
     rates(9)  = 0d0
     rates(24) = 0d0
  else
-    co_vib_L0_rate = cl12 * abh2 + cl13 * abhI
-    co_vib_inv = (1d0 / co_vib_L0_rate) + (yn / co_vib_LTE_rate)
-    rates(8) = abco * yn * neff * (1d0 / co_vib_inv)
+   !  co_vib_L0_rate = cl12 * abh2 + cl13 * abhI
+   !  co_vib_inv = (1d0 / co_vib_L0_rate) + (yn / co_vib_LTE_rate)
+   !  rates(8) = abco * yn * neff * (1d0 / co_vib_inv)
     
-    co_vib_inv = (1d0 / co_vib_L0_rate) + (yn / c13o_vib_LTE_rate)
-    rates(9) = 1d-2 * abco * yn * neff * (1d0 / co_vib_inv)
+   !  co_vib_inv = (1d0 / co_vib_L0_rate) + (yn / c13o_vib_LTE_rate)
+   !  rates(9) = 1d-2 * abco * yn * neff * (1d0 / co_vib_inv)
     
-    co_vib_inv = (1d0 / co_vib_L0_rate) + (yn / co18_vib_LTE_rate)
-    rates(24) = 2d-3 * abco * yn * neff * (1d0 / co_vib_inv)
+   !  co_vib_inv = (1d0 / co_vib_L0_rate) + (yn / co18_vib_LTE_rate)
+   !  rates(24) = 2d-3 * abco * yn * neff * (1d0 / co_vib_inv)
+
+   ! Setting CO vibrational cooling to zero, as IR pumping is supposed to suppress 
+   ! this cooling rate close to the AGB, due to populating the upper vibrational levels.
+    rates(8) = 0.d0
+    rates(9) = 0.d0
+    rates(24) = 0.d0
  endif
 !
 ! (r10) -- oh cooling
