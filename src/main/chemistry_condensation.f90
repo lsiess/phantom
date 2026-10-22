@@ -511,9 +511,11 @@ contains
 ! all quantities are in cgs
       real, intent(in) :: coefs(5), T
       real, parameter :: R = 1.987165
-      real :: G, d
-      G = coefs(1)/T + coefs(2) + (coefs(3)+(coefs(4)+coefs(5)*T)*T)*T
-      d = max(-exp_lim,min(-G/(R*T),exp_lim)) !222
+      real :: G, d, T_cap
+      ! limit T to avoid numerical issues
+      T_cap = max(T,400.d0)
+      G = coefs(1)/T_cap + coefs(2) + (coefs(3)+(coefs(4)+coefs(5)*T_cap)*T_cap)*T_cap
+      d = max(-exp_lim,min(-G/(R*T_cap),exp_lim)) !222
       calc_Kd = exp(d)
    end function calc_Kd
 
@@ -522,8 +524,10 @@ contains
       use physcon, only:patm
       real, intent(in) :: T
       real, parameter :: a = 1.3316d1, b = -6.2216, c = 4.5829d-1, d = -6.4903d-2, e = 3.2788d-3
-      real :: theta, logKd
-      theta = 5040./T
+      real :: theta, logKd, T_cap
+      ! limit T to avoid numerical issues
+      T_cap = max(T,400.d0)
+      theta = 5040./T_cap
       logKd = max(-log_lim,min(a+(b+(c+(d+e*theta)*theta)*theta)*theta,log_lim))
       calc_Kd_TiS = 10.**(-logKd)*patm
    end function calc_Kd_TiS
@@ -533,8 +537,10 @@ contains
       use physcon, only:patm
       real, intent(in) :: T
       real, parameter :: a = 2.46640e1, b = -6.88730, c = 8.377100e-2, d = -1.00580e-2, e = 4.92910e-4
-      real :: theta, logKd
-      theta = 5040./T
+      real :: theta, logKd, T_cap
+      ! limit T to avoid numerical issues
+      T_cap = max(T,400.d0)
+      theta = 5040./T_cap
       logKd = max(-log_lim,min(a+(b+(c+(d+e*theta)*theta)*theta)*theta,log_lim))
       calc_Kd_SiH2 = 10.**(-logKd)*patm
    end function calc_Kd_SiH2
@@ -544,8 +550,10 @@ contains
       use physcon, only:patm
       real, intent(in) :: T
       real, parameter :: a = 3.63290d1, b = -1.05560d1, c = 8.09450d-2, d = -8.62120d-3, e = 3.98640d-4
-      real :: theta, logKd
-      theta = 5040./T
+      real :: theta, logKd, T_cap
+      ! limit T to avoid numerical issues
+      T_cap = max(T,400.d0)
+      theta = 5040./T_cap
       logKd = max(-log_lim,min(a+(b+(c+(d+e*theta)*theta)*theta)*theta,log_lim))
       calc_Kd_SiH3 = 10.**(-logKd)*patm
    end function calc_Kd_SiH3

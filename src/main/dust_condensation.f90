@@ -84,7 +84,7 @@ contains
       use dust_formation, only : wind_CO_ratio
       use units,  only:utime,unit_density
       use eos,    only:ieos,get_temperature
-      use part,   only:icmu,icgamma,ickappa,ifol,ifqu,ifpy,ifir,ifsc,ifcarb,irol,irqu,irpy,irir,irsc,ircarb
+      use part,   only:icmu,icgamma,ickappa,ifol,ifqu,ifpy,ifir,ifsc,ifcarb,irol,irqu,irpy,irir,irsc,ircarb,iJgr,iJdec
 
       real,    intent(in) :: dtsph,rho,u,xyzh(4)
       real,    intent(inout) :: dust_prop(:)
@@ -98,7 +98,7 @@ contains
       call dust_growth_condensation(T, rho_cgs, dt_cgs,wind_CO_ratio,&
          dust_prop(ifol),dust_prop(ifqu),dust_prop(ifpy),dust_prop(ifir),dust_prop(ifsc),dust_prop(ifcarb),&
          dust_prop(irol),dust_prop(irqu),dust_prop(irpy),dust_prop(irir),dust_prop(irsc),dust_prop(ircarb),&
-         dust_prop(ickappa),dust_prop(icmu),dust_prop(icgamma),pH_tot)
+         dust_prop(ickappa),dust_prop(icmu),dust_prop(icgamma),pH_tot,dust_prop(iJgr),dust_prop(iJdec))
 
    end subroutine evolve_condensation
 
@@ -108,13 +108,13 @@ contains
 !+
 !-----------------------------------------------------------------------
    subroutine dust_growth_condensation(T,rho_cgs,dt,wind_CO_ratio,fol,fqu,fpy,fir,fsc,fcarb,&
-      r_ol,r_qu,r_py,r_ir,r_sc,r_carb,kappa_dust,mu,gamma,pH_tot,abund,pressure_cgs)
+      r_ol,r_qu,r_py,r_ir,r_sc,r_carb,kappa_dust,mu,gamma,pH_tot,Jgr,Jdec,abund,pressure_cgs)
       use physcon, only:patm,kboltz,pi,twopi,fourpi
       use chemistry_condensation, only: network, iSiO, iH2O, iH2, eps, &
          iH,iHe,iC,iOx,iN,iSi,iS,iFe,iTi,iMg, iSi2C, mass_per_H, ncols
       use dust_formation, only: kappa_gas,a_init_dust
       real, intent(in)           :: dt,wind_CO_ratio
-      real, intent(inout)        :: T,rho_cgs,fol,fqu,fpy,fir,fsc,fcarb,r_ol,r_qu,r_py,r_ir,r_sc,r_carb
+      real, intent(inout)        :: T,rho_cgs,fol,fqu,fpy,fir,fsc,fcarb,r_ol,r_qu,r_py,r_ir,r_sc,r_carb,Jgr,Jdec
       real, intent(out)          :: kappa_dust
       real, intent(out)          :: mu,gamma,pH_tot
       real, intent(out),optional :: abund(ncols)
@@ -263,6 +263,9 @@ contains
       r_sc = max(r_sc + Vo_sc * (Jgr_sc-Jdec_sc) * dt , a_init_dust)
       r_carb = max(r_carb + Vo_carb * (Jgr_carb-Jdec_carb) * dt , a_init_dust)
 
+
+      Jgr = Jgr_ol
+      Jdec = Jdec_ol
 
       fol_max = max(0.,min(1.0, min(0.5*eps(iMg)/eps(iSi),(eps(iOx)-eps(iC)-eps(iSi))/3./eps(iSi))))
       fol = min(fol_max, max(0., fourpi*(r_ol**3-a_init_dust**3)*1.d-13/3./Vo_ol/eps(iSi))) !fol
