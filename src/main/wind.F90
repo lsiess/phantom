@@ -458,7 +458,7 @@ subroutine wind_step(params,state)
  if (icooling > 0) then
     Q_old = state%Q
     call calc_cooling_rate(Q_code,dlnQ_dlnT,real(state%rho/unit_density),state%Tg,state%Tdust,&
-         state%mu,state%gamma,state%K2,state%K3,state%kappa,r_in=state%r/udist)
+         state%mu,state%gamma,state%K2,state%K3,state%kappa)
     state%Q = Q_code*unit_ergg/utime
     state%dQ_dr = (state%Q-Q_old)/(1.e-10+state%r-state%r_old)
  endif
