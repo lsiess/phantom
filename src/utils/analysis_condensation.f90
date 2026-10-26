@@ -143,7 +143,7 @@ contains
       use dust_condensation, only: dust_growth_condensation
       use dust_formation,    only: a_init_dust,wind_CO_ratio,set_abundances
 
-      real :: T, rho_cgs, mu, gamma, abundance(ncols), pH_tot, dt
+      real :: T, rho_cgs, mu, gamma, abundance(ncols), pH_tot, dt, Jgr, Jdec
       real :: fol, fqu, fpy, fir, fsc, fcarb, kappa_dust
       real :: r_ol,r_qu,r_py,r_ir,r_sc,r_carb
       integer :: i, k, nCO
@@ -160,7 +160,7 @@ contains
       CO_min = 0.9
       CO_max = 1.05
       nCO = 100
-      wind_CO_ratio = CO_min
+      wind_CO_ratio = 0.33
       write(*,'(/,"Input parameters : pressure =",es10.3,", C/O = ",f8.5,", rho = ",es10.4,", T = ",f7.1)') &
          pressure_cgs,wind_CO_ratio,rho_cgs,T
       write(*,*)'********************************************************************************'
@@ -189,11 +189,11 @@ contains
          if (pressure_cgs > 0.) then
             call dust_growth_condensation(T, rho_cgs, dt,wind_CO_ratio,&
                fol,fqu,fpy,fir,fsc,fcarb,r_ol,r_qu,r_py,r_ir,r_sc,r_carb,&
-               kappa_dust, mu, gamma, pH_tot, abundance, pressure_cgs)
+               kappa_dust, mu, gamma, pH_tot, Jgr, Jdec, abundance, pressure_cgs)
          else
             call dust_growth_condensation(T, rho_cgs, dt,wind_CO_ratio,&
                fol,fqu,fpy,fir,fsc,fcarb,r_ol,r_qu,r_py,r_ir,r_sc,r_carb,&
-               kappa_dust, mu, gamma, pH_tot, abundance)
+               kappa_dust, mu, gamma, pH_tot, Jgr, Jdec, abundance)
          endif
          dust_properties(1) = fol
          dust_properties(2) = fqu
@@ -223,7 +223,7 @@ contains
       use dust_condensation, only: dust_growth_condensation
       use dust_formation,    only: a_init_dust,wind_CO_ratio,set_abundances
 
-      real :: T, rho_cgs, mu, gamma, abundance(ncols), pH_tot, dt
+      real :: T, rho_cgs, mu, gamma, abundance(ncols), pH_tot, dt, Jgr, Jdec
       real, allocatable :: fol(:), fqu(:), fpy(:), fir(:), fsc(:), fcarb(:), kappa_dust(:)
       real, allocatable :: r_ol(:),r_qu(:),r_py(:),r_ir(:),r_sc(:),r_carb(:)
       integer :: i, k, timestep, nTstep, size_array
@@ -290,12 +290,12 @@ contains
                call dust_growth_condensation(T, rho_cgs, dt,wind_CO_ratio,&
                   fol(timestep),fqu(timestep),fpy(timestep),fir(timestep),fsc(timestep),fcarb(timestep),&
                   r_ol(timestep),r_qu(timestep),r_py(timestep),r_ir(timestep),r_sc(timestep),r_carb(timestep),&
-                  kappa_dust(timestep), mu, gamma, pH_tot, abundance, pressure_cgs)
+                  kappa_dust(timestep), mu, gamma, pH_tot, Jgr, Jdec, abundance, pressure_cgs)
             else
                call dust_growth_condensation(T, rho_cgs, dt,wind_CO_ratio,&
                   fol(timestep),fqu(timestep),fpy(timestep),fir(timestep),fsc(timestep),fcarb(timestep),&
                   r_ol(timestep),r_qu(timestep),r_py(timestep),r_ir(timestep),r_sc(timestep),r_carb(timestep),&
-                  kappa_dust(timestep), mu, gamma, pH_tot, abundance)
+                  kappa_dust(timestep), mu, gamma, pH_tot, Jgr, Jdec, abundance)
             endif
 
             dust_properties(1) = fol(timestep)

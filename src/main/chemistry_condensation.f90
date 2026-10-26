@@ -542,7 +542,7 @@ contains
       T_cap = max(T,400.d0)
       theta = 5040./T_cap
       logKd = max(-log_lim,min(a+(b+(c+(d+e*theta)*theta)*theta)*theta,log_lim))
-      calc_Kd_SiH2 = 10.**(-logKd)*patm
+      calc_Kd_SiH2 = 10.**(-logKd)*patm**2
    end function calc_Kd_SiH2
 
    pure real function calc_Kd_SiH3(T)
@@ -555,7 +555,7 @@ contains
       T_cap = max(T,400.d0)
       theta = 5040./T_cap
       logKd = max(-log_lim,min(a+(b+(c+(d+e*theta)*theta)*theta)*theta,log_lim))
-      calc_Kd_SiH3 = 10.**(-logKd)*patm
+      calc_Kd_SiH3 = 10.**(-logKd)*patm**3
    end function calc_Kd_SiH3
 
 ! To be implemented if the one above works.

@@ -111,7 +111,7 @@ contains
       r_ol,r_qu,r_py,r_ir,r_sc,r_carb,kappa_dust,mu,gamma,pH_tot,Jgr,Jdec,abund,pressure_cgs)
       use physcon, only:patm,kboltz,pi,twopi,fourpi
       use chemistry_condensation, only: network, iSiO, iH2O, iH2, eps, &
-         iH,iHe,iC,iOx,iN,iSi,iS,iFe,iTi,iMg, iSi2C, mass_per_H, ncols
+         iH,iHe,iC,iOx,iN,iSi,iS,iFe,iTi,iMg, iSi2C, iC2H2, mass_per_H, ncols
       use dust_formation, only: kappa_gas,a_init_dust
       real, intent(in)           :: dt,wind_CO_ratio
       real, intent(inout)        :: T,rho_cgs,fol,fqu,fpy,fir,fsc,fcarb,r_ol,r_qu,r_py,r_ir,r_sc,r_carb,Jgr,Jdec
@@ -119,14 +119,14 @@ contains
       real, intent(out)          :: mu,gamma,pH_tot
       real, intent(out),optional :: abund(ncols)
       real, intent(in),optional  :: pressure_cgs
-      real :: Vth_SiO, Vth_Mg, Vth_H2O, Vth_ir, Vth_Si2C, Vth_carb
+      real :: Vth_SiO, Vth_Mg, Vth_H2O, Vth_ir, Vth_Si2C, Vth_carb, Vth_C2H2
       real :: pv_ir, pv_SiO, pv_Mg, pv_H2O, pv_carb, pv_Si2C
       real :: Jgr_SiO_ol, Jgr_Mg_ol, Jgr_H2O_ol, Jgr_SiO_qu, Jgr_Mg_qu, Jgr_H2O_qu, Jgr_SiO_py, Jgr_Mg_py, Jgr_H2O_py
       real :: Jgr_ol,  Jgr_qu,  Jgr_py,  Jgr_ir,  Jgr_sc,  Jgr_carb
       real :: Jdec_ol, Jdec_qu, Jdec_py, Jdec_ir, Jdec_sc, Jdec_carb
       real :: kappa_ol,kappa_qu,kappa_py,kappa_ir,kappa_sc,kappa_carb
       real :: fol_dec, fqu_dec ,fpy_dec, fir_dec ,fsc_dec, fcarb_dec
-      real :: P_H2, P_Si, kT !fol, kappa_dust
+      real :: P_H2, P_Si, kT, S_ol, S_qu, S_py, S_ir, S_sc, S_carb !fol, kappa_dust
       real :: fol_max, fpy_max, fqu_max, G_ol, G_py, G_qu
       real :: abundance(ncols)
       logical :: ok
@@ -149,9 +149,10 @@ contains
       Vth_H2O = sqrt(kT / twopi / m_H2O)
       Vth_ir  = sqrt(kT / twopi / m_ir)
       !Vth_Si = sqrt(kT / twopi / m_Si)
-      !Vth_C2H2 = sqrt(kT / twopi / m_C2H2)
+      Vth_C2H2 = sqrt(kT / twopi / m_C2H2)
       Vth_Si2C = sqrt(kT / twopi / m_Si2C)
-      Vth_carb = sqrt(kT / twopi / m_carb)
+      !Vth_carb = sqrt(kT / twopi / m_carb) ! Orsola commented and uncommented Vth_C2H2
+
 
       Jgr_SiO_ol = alpha_ol * abundance(iSiO) * Vth_SiO !abundance comes from chemical equilibrium
       Jgr_Mg_ol  = alpha_ol * abundance(78)   * Vth_Mg !Mg = 78 in subroutine network
@@ -174,7 +175,9 @@ contains
       Jgr_ir = alpha_ir * abundance(77) * Vth_ir !Fe = 77 in subroutine network
       !Jgr_sc = min(Jgr_Si_sc, Jgr_C2H2_sc)
       Jgr_sc = alpha_sc * abundance(iSi2C) * Vth_Si2C
-      Jgr_carb = alpha_carb * abundance(72) *Vth_carb !C = 72 in subroutine network
+      !Jgr_carb = alpha_carb * abundance(72) *Vth_carb !C = 72 in subroutine network
+      ! Above is wrong below is right: the abundnace of atomic C is tiny, because free C is locked into C2H2 which having 2 atoms of C needs a 2.
+      Jgr_carb = 2.0 * alpha_carb * abundance(iC2H2) * Vth_C2H2
 
       !pH_tot = pH_tot !!!!%%%%  *patm !now in cgs
       P_H2 = abundance(iH2)*kT/patm !H2 pressure from abundance
@@ -217,43 +220,95 @@ contains
       !      + eps(iSi)*eps(iOx) - eps(iC)*eps(iSi) - eps(iSi)**2 &
       !      - P_H2 / (calc_Kp(coefficients(:,2), T)*pH_tot**2))
 
-      if (Jgr_ol == Jgr_SiO_ol) then ! JgrSiO < JgrMg and JgrSiO < JgrH2O
-         pv_SiO = max(0., (1.-fol_dec) * eps(iSi) * pH_tot) !Check units
-         Jdec_ol = alpha_ol * Vth_SiO * pv_SiO *patm / kT !patm to have cgs units
-      elseif (Jgr_ol == 0.5*Jgr_Mg_ol) then
-         pv_Mg = max(0., (eps(iMg) - 2.0*fol_dec*eps(iSi))*pH_tot)
-         Jdec_ol = alpha_ol * Vth_Mg * pv_Mg *patm / kT !patm to have cgs units
+      ! Luis code - wrong
+      !if (Jgr_ol == Jgr_SiO_ol) then ! JgrSiO < JgrMg and JgrSiO < JgrH2O
+      !pv_SiO = max(0., (1.-fol_dec) * eps(iSi) * pH_tot) !Check units
+      !Jdec_ol = alpha_ol * Vth_SiO * pv_SiO *patm / kT !patm to have cgs units
+      !elseif (Jgr_ol == 0.5*Jgr_Mg_ol) then
+      !   pv_Mg = max(0., (eps(iMg) - 2.0*fol_dec*eps(iSi))*pH_tot)
+      !   Jdec_ol = alpha_ol * Vth_Mg * pv_Mg *patm / kT !patm to have cgs units
+      !else
+      !   pv_H2O = max(0.,(eps(iOx)-eps(iC)-(1.0+3.0*fol_dec)*eps(iSi))*pH_tot)
+      !   Jdec_ol = alpha_ol * Vth_H2O * pv_H2O * patm / kT  !patm to have cgs units
+      !endif
+
+      ! Orsola's code, obviously correct!
+      S_ol = calc_kp(coefficients(:,1),T) * &
+         (abundance(78) * kt / patm)**2 * &
+         (abundance(iSiO) * kt / patm) * &
+         (abundance(iH2O) * kt / patm)**3 / max(P_H2**3, 1.0d-30)
+      if (S_ol > 1.0d-30) then
+         Jdec_ol = Jgr_ol / S_ol
       else
-         pv_H2O = max(0.,(eps(iOx)-eps(iC)-(1.0+3.0*fol_dec)*eps(iSi))*pH_tot)
-         Jdec_ol = alpha_ol * Vth_H2O * pv_H2O * patm / kT  !patm to have cgs units
+         Jdec_ol = 0.0d0
       endif
 
-      if (Jgr_qu == Jgr_SiO_qu) then
-         pv_SiO = max(0., (1.-fqu_dec)*eps(iSi)* pH_tot)
-         Jdec_qu = alpha_qu * Vth_SiO * pv_SiO *patm / kT !!patm to have cgs units
+      !if (Jgr_qu == Jgr_SiO_qu) then
+      !   pv_SiO = max(0., (1.-fqu_dec)*eps(iSi)* pH_tot)
+      !   Jdec_qu = alpha_qu * Vth_SiO * pv_SiO *patm / kT !!patm to have cgs units
+      !else
+      !   pv_H2O = max(0.,(eps(iOx)-eps(iC)-(1.0+fqu_dec)*eps(iSi))*pH_tot)
+      !   Jdec_qu = alpha_qu * Vth_H2O * pv_H2O *patm / kT  !patm to have cgs units
+      !endif
+
+      S_qu = calc_kp(coefficients(:,2),T) * &
+         (abundance(iSiO) * kt / patm) * &
+         (abundance(iH2O) * kt / patm) / max(P_H2, 1.0d-30)
+      if (S_qu > 1.0d-30) then
+         Jdec_qu = Jgr_qu / S_qu
       else
-         pv_H2O = max(0.,(eps(iOx)-eps(iC)-(1.0+fqu_dec)*eps(iSi))*pH_tot)
-         Jdec_qu = alpha_qu * Vth_H2O * pv_H2O *patm / kT  !patm to have cgs units
+         Jdec_qu = 0.0d0
       endif
 
-      if (Jgr_py == Jgr_SiO_py) then
-         pv_SiO = max(0.,(1.-fpy_dec)*eps(iSi)* pH_tot)
-         Jdec_py = alpha_py * Vth_SiO * pv_SiO *patm / kT  !!patm to have cgs units
-      elseif (Jgr_py == 0.5*Jgr_H2O_py) then
-         pv_H2O = max(0., (eps(iOx)-eps(iC)-(1.0+2.0*fpy_dec)*eps(iSi))*pH_tot)
-         Jdec_py = alpha_py * Vth_H2O * pv_H2O *patm / kT  !patm to have cgs units
+      !if (Jgr_py == Jgr_SiO_py) then
+      !   pv_SiO = max(0.,(1.-fpy_dec)*eps(iSi)* pH_tot)
+      !   Jdec_py = alpha_py * Vth_SiO * pv_SiO *patm / kT  !!patm to have cgs units
+      !elseif (Jgr_py == 0.5*Jgr_H2O_py) then
+      !   pv_H2O = max(0., (eps(iOx)-eps(iC)-(1.0+2.0*fpy_dec)*eps(iSi))*pH_tot)
+      !   Jdec_py = alpha_py * Vth_H2O * pv_H2O *patm / kT  !patm to have cgs units
+      !else
+      !   pv_Mg = max(0., (eps(iMg) - fpy_dec*eps(iSi))*pH_tot)
+      !   Jdec_py = alpha_py * Vth_Mg * pv_Mg *patm / kT   !patm to have cgs units
+      !endif
+
+      S_py = calc_kp(coefficients(:,3),T) * &
+         (abundance(78) * kt / patm) * &
+         (abundance(iSiO) * kt / patm) * &
+         (abundance(iH2O) * kt / patm)**2 / max(P_H2**2, 1.0d-30)
+      if (S_py > 1.0d-30) then
+         Jdec_py = Jgr_py / S_py
       else
-         pv_Mg = max(0., (eps(iMg) - fpy_dec*eps(iSi))*pH_tot)
-         Jdec_py = alpha_py * Vth_Mg * pv_Mg *patm / kT   !patm to have cgs units
+         Jdec_py = 0.0d0
       endif
 
-      pv_ir   = max(0.,  (1.-fir_dec)  * eps(iFe) * pH_tot)
-      pv_Si2C = max(0.,  (1.-fsc_dec)  * eps(iSi) * pH_tot)  !0.5 *
-      pv_carb = max(0., ((1.-fcarb_dec)* eps(iC)-eps(iOx)) * pH_tot)
+      !pv_ir   = max(0.,  (1.-fir_dec)  * eps(iFe) * pH_tot)
+      !pv_Si2C = max(0.,  (1.-fsc_dec)  * eps(iSi) * pH_tot)  !0.5 *
+      !pv_carb = max(0., ((1.-fcarb_dec)* eps(iC)-eps(iOx)) * pH_tot)
 
-      Jdec_ir = alpha_ir * Vth_ir * pv_ir *patm / kT   !!patm to have cgs units
-      Jdec_sc = 2.0* alpha_sc * Vth_Si2C * pv_Si2C *patm / kT  !eqn. 21 of Ferrarotti & Gail 2002
-      Jdec_carb = alpha_carb * Vth_carb * pv_carb *patm / kT
+      !Jdec_ir = alpha_ir * Vth_ir * pv_ir *patm / kT   !!patm to have cgs units
+      !Jdec_sc = 2.0* alpha_sc * Vth_Si2C * pv_Si2C *patm / kT  !eqn. 21 of Ferrarotti & Gail 2002
+      !Jdec_carb = alpha_carb * Vth_carb * pv_carb *patm / kT
+
+      S_ir = calc_kp(coefficients(:,4), T) * (abundance(77) * kT / patm)
+      if (S_ir > 1.0d-30) then
+         Jdec_ir = Jgr_ir / S_ir
+      else
+         Jdec_ir = 0.0d0
+      endif
+      S_sc = calc_kp(coefficients(:,5), T) * &
+         (abundance(iSi2C) * kT / patm) / max(abundance(75) * kT / patm, 1.0d-30)
+      if (S_sc > 1.0d-30) then
+         Jdec_sc = Jgr_sc / S_sc
+      else
+         Jdec_sc = 0.0d0
+      endif
+      S_carb = calc_kp(coefficients(:,6), T) * &
+         (abundance(iC2H2) * kT / patm) / max(P_H2, 1.0d-30)
+      if (S_carb > 1.0d-30) then
+         Jdec_carb = Jgr_carb / S_carb
+      else
+         Jdec_carb = 0.0d0
+      endif
 
 
       r_ol = max(r_ol + Vo_ol * (Jgr_ol-Jdec_ol) * dt , a_init_dust)
