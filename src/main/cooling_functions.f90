@@ -109,7 +109,7 @@ subroutine AGB_cooling(T, Tdust, rho_cgs, mu, gamma, K3, Q_cgs, dlnQ_cgs, divv, 
  use dim,              only:nabn_AGB
  use cooling_AGBwinds, only:energ_cooling_AGB
  use dust_formation,   only:mass_per_H, eps, chemical_equilibrium_light, &
-                           icoolTi,Tmol
+                           icoolTi
  use physcon,          only:kboltz,mass_proton_cgs
  use units,            only:unit_density
  real, intent(in)  :: mu, gamma, K3
@@ -366,7 +366,7 @@ subroutine rotational_CO_cooling_McKee(T, rho_cgs, CO_ab, Q_CO, dlnQ_dlnT)
     Q_CO = 8.3d-21 * (T / 1000.0)**2 * CO_ab/3.7d-4 * ngas
     dlnQ_dlnT = 0.0
  else
-    Q_CO = 2.5d-27 * (T / 1000.0)**(5/4) * CO_ab/3.7d-4 * ngas**2
+    Q_CO = 2.5d-27 * (T / 1000.0)**(5./4.) * CO_ab/3.7d-4 * ngas**2
     dlnQ_dlnT = 0.0
  endif
 
@@ -487,7 +487,6 @@ end subroutine nelectron_mu
 
 subroutine rad_temp(Tref, Trad, xi, yi, zi, r_in)
  use part, only:xyzmh_ptmass,iReff
- use units, only:udist
  real, intent(in)  :: Tref
  real, intent(out) :: Trad
  real, intent(in), optional  :: xi, yi, zi
@@ -506,13 +505,6 @@ subroutine rad_temp(Tref, Trad, xi, yi, zi, r_in)
  endif
  W = 0.5*( 1. - sqrt( 1 - (Rstar/r)**2 ) )
  Trad = Tref * W**0.20    ! p=1 for carbon dust
-
- print*, 'Rstar: ', Rstar, 'r: ', r, 'Trad: ', Trad
-
-!  print*, 'Rstar: ', xyzmh_ptmass(iReff,1), 'r: ', r, 'Trad: ', Trad
-!  print*, 'x star: ', xyzmh_ptmass(1,1), 'y star: ', xyzmh_ptmass(2,1), 'z star: ', xyzmh_ptmass(3,1)
-!  print*, 'x: ', xi, 'y: ', yi, 'z: ', zi
-!  print*, 'udist: ', udist
 
 end subroutine rad_temp
 

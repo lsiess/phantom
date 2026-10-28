@@ -256,7 +256,7 @@ subroutine cool_func(temp, Tdust, yn, dl, divv, abundances, ylam, rates)
             co_rot_L0, co_rot_LTE, co_rot_n05, co_rot_alpha, co_vib_LTE_rate, & 
             c13o_rot_L0, c13o_rot_LTE, c13o_rot_n05, c13o_rot_alpha, c13o_vib_LTE_rate, &
             co18_rot_L0, co18_rot_LTE, co18_rot_n05, co18_rot_alpha, co18_vib_LTE_rate, &
-            co_vib_L0_rate, co_vib_inv, co_rot_inv, h2o_rot_inv, &
+            co_rot_inv, h2o_rot_inv, &
             neff, dv, sigma_h2
 
  real    :: h2o_rot_L0_ortho,  h2o_rot_LTE_ortho, h2o_rot_n05_ortho, h2o_rot_alpha_ortho

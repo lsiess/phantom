@@ -383,7 +383,6 @@ subroutine calc_cooling_rate(Q, dlnQ_dlnT, rho, T, Teq, mu, gamma, K2, K3, kappa
  real, intent(in)  :: K2, K3, kappa       !cgs
  real, intent(out) :: Q, dlnQ_dlnT    !code units
  real :: abundi(nabn_AGB)
- real :: Trad, Q_radHeat, dlnQ_radHeat, Tref
 
  real :: Q_cgs,Q_H0, Q_relax_Bowen, Q_col_dust, Q_relax_Stefan, Q_coolingAGB, Q_molec, Q_shock
  real :: dlnQ_H0, dlnQ_relax_Bowen, dlnQ_col_dust, dlnQ_relax_Stefan, dlnQ_coolingAGB, &
@@ -445,7 +444,7 @@ subroutine calc_cooling_rate(Q, dlnQ_dlnT, rho, T, Teq, mu, gamma, K2, K3, kappa
 
 
  Q_cgs = Q_H0 + Q_relax_Bowen + Q_col_dust + Q_relax_Stefan + Q_coolingAGB &
-	+ Q_molec + Q_shock + Q_hightemp
+ + Q_molec + Q_shock + Q_hightemp
  if (Q_cgs == 0.) then
     dlnQ_dlnT = 0.
  else
