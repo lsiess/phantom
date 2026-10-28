@@ -77,6 +77,7 @@ contains
       u_to_temperature_ratio = u_to_T
       time_end = tmax*utime
       T0 = params%Twind
+      rsonic = -1.
 
       if (idust_opacity == 2 .or. idust_opacity == 3) then
          call set_abundances
@@ -211,16 +212,16 @@ contains
 ! all quantities in cgs
 
       use wind_equations,    only:evolve_hydro
-      use ptmass_radiation,  only:iget_tdust,tdust_exp,isink_radiation
+      use ptmass_radiation,  only:iget_tdust,tdust_exp,isink_radiation,calc_alpha
       use physcon,           only:pi,Rg
       use dust_formation,    only:calc_kappa_dust,calc_kappa_bowen,&
-         calc_Eddington_factor,idust_opacity,calc_muGamma,wind_CO_ratio
+         calc_Eddington_factor,idust_opacity, calc_muGamma,wind_CO_ratio
       use dust_moments,      only:evolve_chem
       use dust_condensation, only:dust_growth_condensation
       use part,              only:idK3,idmu,idgamma,idsat,idkappa
       use cooling_solver,    only:calc_cooling_rate
       use options,           only:icooling
-      use units,             only:unit_ergg,unit_density,utime
+      use units,             only:unit_ergg,unit_density,utime,umass,unit_velocity,udist
       use dim,               only:itau_alloc,update_muGamma
 
       type(wind_state),  intent(inout) :: state
@@ -248,25 +249,22 @@ contains
       alpha_old = state%alpha
       mu_old    = state%mu
       if (idust_opacity == 2) then
-         !state%Tg   = state%u*(state%gamma-1.)/Rg*state%mu
          call evolve_chem(state%dt,state%Tg,state%rho,state%dust_array)
-         state%K2    = state%dust_array(idK2)
-         state%mu    = state%dust_array(idmu)
-         state%gamma = state%dust_array(idgamma)
-         state%kappa = calc_kappa_dust(state%dust_array(idK3), state%Tdust, state%rho)
-         state%dust_array(idalpha) = state%alpha_Edd+params%alpha_rad
+         state%K2        = state%dust_array(idK2)
+         state%mu        = state%dust_array(idmu)
+         state%gamma     = state%dust_array(idgamma)
+         state%kappa     = calc_kappa_dust(state%dust_array(idK3), state%Tdust, state%rho)
       elseif (idust_opacity == 3) then
-         !state%Tg   = state%u*(state%gamma-1.)/Rg*state%mu
          call  dust_growth_condensation(state%Tg, state%rho, state%dt,wind_CO_ratio,&
-            dust_array(ifol),dust_array(ifqu),dust_array(ifpy),dust_array(ifir),dust_array(ifsc),dust_array(ifcarb),&
-            dust_array(irol),dust_array(irqu),dust_array(irpy),dust_array(irir),dust_array(irsc),dust_array(ircarb),&
-            dust_array(ickappa),dust_array(icmu),dust_array(icgamma),pH_tot,dust_array(iJgr),dust_array(iJdec))
+            state%dust_array(ifol),state%dust_array(ifqu),state%dust_array(ifpy),state%dust_array(ifir),&
+            state%dust_array(ifsc),state%dust_array(ifcarb),state%dust_array(irol),state%dust_array(irqu),&
+            state%dust_array(irpy),state%dust_array(irir),state%dust_array(irsc),state%dust_array(ircarb),&
+            state%dust_array(ickappa),state%dust_array(icmu),state%dust_array(icgamma),pH_tot,&
+            state%dust_array(iJgr),state%dust_array(iJdec))
          state%mu    = state%dust_array(icmu)
          state%gamma = state%dust_array(icgamma)
          state%kappa = state%dust_array(ickappa)
          state%dust_array(icalpha) = state%alpha_Edd+params%alpha_rad
-         state%dust_array(iJgr)=dust_array(iJgr)
-         state%dust_array(iJdec)=dust_array(iJdec)
       else
          if (idust_opacity == 1) state%kappa = calc_kappa_bowen(state%Tdust)
          if (update_muGamma) call calc_muGamma(state%rho,state%Tg,state%mu,state%gamma,pH,pH_tot,pH2)
@@ -280,15 +278,17 @@ contains
       select case (isink_radiation)
        case (1)
          state%alpha     = params%alpha_rad
-         state%dalpha_dr = (params%alpha_rad-alpha_old)/(1.e-10+state%r-state%r_old)
+         state%dalpha_dr = (params%alpha_rad-alpha_old)/max(1.,state%r-state%r_old)
        case (2)
          state%alpha     = state%alpha_Edd
-         state%dalpha_dr = (state%alpha_Edd-alpha_old)/(1.e-10+state%r-state%r_old)
+         state%dalpha_dr = (state%alpha_Edd-alpha_old)/max(1.,state%r-state%r_old)
        case (3)
          state%alpha     = state%alpha_Edd+params%alpha_rad
-         state%dalpha_dr = (state%alpha_Edd+params%alpha_rad-alpha_old)/(1.e-10+state%r-state%r_old)
+         state%dalpha_dr = (state%alpha_Edd+params%alpha_rad-alpha_old)/max(1.,state%r-state%r_old)
        case (4)
-         call calc_alpha(state%r/udist,params%Mstar/umass,state%Rstar/udist,state%vinfty/unit_velocity,state%alpha,state%dalpha_dr)
+         call calc_alpha(real(state%r/udist),real(params%Mstar/umass),&
+            real(state%Rstar/udist),real(state%vinfty/unit_velocity),&
+            state%alpha,state%dalpha_dr)
        case default
          state%alpha     = 0.
          state%dalpha_dr = 0.
@@ -296,6 +296,8 @@ contains
       state%c    = sqrt(state%gamma*Rg*state%Tg/state%mu)
       state%p    = state%rho*Rg*state%Tg/state%mu
       if (.not.isothermal) state%u    = state%p/((state%gamma-1.)*state%rho)
+      if (idust_opacity == 2) state%dust_array(idalpha) = state%alpha
+      if (idust_opacity == 3) state%dust_array(icalpha) = state%alpha
       !state%Tg   = state%p/(state%rho*Rg)*state%mu
 
       !calculate dust temperature using new r and old tau
@@ -410,7 +412,6 @@ contains
          state%mu    = state%dust_array(icmu)
          state%gamma = state%dust_array(icgamma)
          state%kappa = state%dust_array(ickappa)
-         state%dust_array(icalpha) = state%alpha_Edd+params%alpha_rad
       else
          if (idust_opacity == 1) state%kappa = calc_kappa_bowen(state%Tdust)
          if (update_muGamma) call calc_muGamma(state%rho,state%Tg,state%mu,state%gamma,pH,pH_tot,pH2)
@@ -437,7 +438,7 @@ contains
       end select
       if (idust_opacity == 2) state%dust_array(idalpha) = state%alpha
       if (idust_opacity == 3) state%dust_array(icalpha) = state%alpha
-      if (state%time > 0.)    state%dalpha_dr      = (state%alpha-alpha_old)/(1.e-10+state%r-state%r_old)
+      if (state%time > 0.)    state%dalpha_dr = (state%alpha-alpha_old)/max(1.,state%r-state%r_old)
 
       rvT(1) = state%r
       rvT(2) = state%v
@@ -1053,7 +1054,7 @@ contains
       if (idust_opacity == 2 .and. .not. allocated(dust_tmp)) allocate (dust_tmp(n_nucleation,nlmax))
       if (idust_opacity == 3 .and. .not. allocated(dust_tmp)) allocate (dust_tmp(n_condensation,nlmax))
 
-      write (*,'("Saving 1D model to ",A)') trim(filename)
+      write (*,'("compute 1D wind model : ",A)') trim(filename)
       if (rfill > 0.) then
          !set a large time_end so the time integration allows the particles to reach rfill
          time_end = 1e7*utime

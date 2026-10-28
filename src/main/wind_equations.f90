@@ -63,8 +63,8 @@ subroutine evolve_hydro(dt, rvT, Rstar_cgs, Mdot_cgs, mu, gamma, alpha, dalpha_d
     else
        call RK6_step_dr(dt, rvT, Rstar_cgs, Mdot_cgs, mu, gamma, alpha, dalpha_dr, Q, dQ_dr, err, new_rvT, numerator, denominator)
     endif
-    if (dt < 1.0) then
-       dt_next = 1.
+    if (dt < 1.e2) then
+       dt_next = 100.
        exit
     endif
     if (dt_force) then

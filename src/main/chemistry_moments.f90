@@ -38,6 +38,7 @@ module chemistry_moments
 
  private
  integer, parameter :: nMolecules = 25
+ !Coefficients can be found in  Sharp, C. M. ; Huebner, W. F. 1990, ApJS, 72, 417
  real, parameter :: coefs(5,nMolecules) = reshape([&
        4.25321d+05, -1.07123d+05, 2.69980d+01, 5.48280d-04, -3.81498d-08, & !H2-
        4.15670d+05, -1.05260d+05, 2.54985d+01, 4.78020d-04, -2.82416d-08, & !OH-

@@ -15,8 +15,10 @@ module chemistry_condensation
 ! Indices for elements and molecules:
    integer, parameter, public :: nElements = 11
    real, public :: mass_per_H, eps(nElements)
+! Indices for initial elemental composition
    integer, parameter, public :: iH=1, iHe=2, iC=3, iOx=4, iN=5, iNe=6, iSi=7, iS=8, iFe=9, iTi=10, iMg=11
 
+! Indices for molecules
    integer, parameter, public :: iH2=1, iOH=2, iH2O=3, iCO=4, iCO2=5, iCH4=6, iC2H=7, iC2H2=8, iN2=9, iNH3=10, iCN=11, &
       iHCN=12, iSi2=13, iSi3=14, iSiO=15, iSi2C=16, iSiH4=17, iS2=18, iHS=19, iH2S=20, iSiS=21, &
       iSiH=22, iTiO=23, iTiO2=24, iC2=25, iO2=26, iCH=27,iCOH=28, iC2O=29, iCH2=30, iH2CO=31, iCH3=32, &
@@ -24,6 +26,8 @@ module chemistry_condensation
       iNH2=43, iNO2=44, INO3=45, iN2O=46, iN2O4=47, iMgH=48, iMgOH=49, iMgO2H2=50, iMgN=51, iMgO=52, &
       iSiC=53, iSiH2=54, iSiH3=55, iSiN=56, iSiO2=57, iFeO=58, iFeO2H2=59, iCOS=60, iCS=61, &
       iCS2=62, iFeS=63, iH2SO4=64, iMgS=65, iSN=66, iSO=67, iSO2=68, iSO3=69, iTiS=70
+! Indices for atomic abundances
+   integer, parameter, public :: iaH=70, iaHe=71, iaC=72, iaO=73, iaN=74, iaSi=75, iaS=76, iaFe=77, iaMg=78
 
    private
    integer, parameter :: nMolecules = 69
@@ -31,7 +35,7 @@ module chemistry_condensation
 
    real :: Aw(nElements) = [1.0079, 4.0026, 12.011, 15.9994, 14.0067, 20.17, 28.0855, 32.06, 55.847, 47.867, 24.305]
 
-   !Coefficients can be found in the appendix of the book by Gail & Sedlmayr
+   !Coefficients can be found in  Sharp, C. M. ; Huebner, W. F. 1990, ApJS, 72, 417
    real, parameter :: coefs(5,nMolecules) = reshape([&
       4.25321d+05, -1.07123d+05, 2.69980d+01, 5.48280d-04, -3.81498d-08, & !H2-
       4.15670d+05, -1.05260d+05, 2.54985d+01, 4.78020d-04, -2.82416d-08, & !OH-
@@ -110,7 +114,6 @@ contains
 
 
    subroutine set_abundances_condensation(wind_CO_ratio)
-! all quantities in cgs
       use physcon, only:atomic_mass_unit
       real, intent(in) :: wind_CO_ratio
       logical :: ferrarotti = .true. !A&A 2002, 382, 256
@@ -195,23 +198,19 @@ contains
 !+
 !-----------------------------------------------------------------------
    subroutine network(T,rho_cgs,mu,gamma,wind_CO_ratio,pH_tot,fol,fpy,fqu,fir,fsc,fcarb,abundance,pressure_cgs)
+! all pressures are in bar
       use physcon, only:patm,kboltz
-      real, intent(in)     :: wind_CO_ratio, fol, fpy, fqu, fir, fsc, fcarb !rho_cgs
+      real, intent(in)     :: wind_CO_ratio, fol, fpy, fqu, fir, fsc, fcarb
       real, intent(out)    :: mu,gamma,pH_tot
       real, intent(inout)  :: T, rho_cgs
       real, intent(out)    :: abundance(ncols)
       real, intent(in), optional :: pressure_cgs
-!       real :: epsC, nH_tot
-!       real :: v1
       integer :: j
-      real, dimension(nMolecules)    :: pmol  !, nmol=0.
+      real, dimension(nMolecules)    :: pmol
       real                           :: pelm(nElements),fac
 
       pelm = 0.
       pmol = 0.
-
-      !  call set_abundances_condensation(wind_CO_ratio)
-      !  print *,'SHOULD  BE DONE ONLY ONCE '
 
       if (present(pressure_cgs)) then
          call init_muGamma_condensation(rho_cgs,T,mu,gamma,pH_tot,pelm(iH),pmol(iH2),pressure_cgs)
@@ -223,29 +222,27 @@ contains
       call chemical_equilibrium(rho_cgs, T, pmol, pelm, mu, gamma, &
          wind_CO_ratio, pH_tot, fol, fpy, fqu, fir, fsc, fcarb) !, nMolecules)
 
-      !convert the pressure of the molecules in number density
+      !convert the pressure of the molecules in number density (cgs, hence the factor patm in fac)
       fac = patm/(kboltz*T)
       do j=1,ncols-9
-         abundance(j) = max(1.d-50,pmol(j)*fac)  !*patm
+         abundance(j) = max(1.d-50,pmol(j)*fac)
       enddo
-
-      !convert the pressure of the elements in number density
-      abundance(70) = max(1.d-50,pelm(iH) *fac) !*patm
-      abundance(71) = max(1.d-50,pelm(iHe)*fac) !*patm
-      abundance(72) = max(1.d-50,pelm(iC) *fac) !*patm
-      abundance(73) = max(1.d-50,pelm(iOx)*fac) !*patm
-      abundance(74) = max(1.d-50,pelm(iN) *fac) !*patm
-      abundance(75) = max(1.d-50,pelm(iSi)*fac) !*patm
-      abundance(76) = max(1.d-50,pelm(iS) *fac) !*patm
-      abundance(77) = max(1.d-50,pelm(iFe)*fac) !*patm
-      abundance(78) = max(1.d-50,pelm(iMg)*fac) !*patm
+      abundance(iaH)  = max(1.d-50,pelm(iH) *fac)
+      abundance(iaHe) = max(1.d-50,pelm(iHe)*fac)
+      abundance(iaC)  = max(1.d-50,pelm(iC) *fac)
+      abundance(iaO)  = max(1.d-50,pelm(iOx)*fac)
+      abundance(iaN)  = max(1.d-50,pelm(iN) *fac)
+      abundance(iaSi) = max(1.d-50,pelm(iSi)*fac)
+      abundance(iaS)  = max(1.d-50,pelm(iS) *fac)
+      abundance(iaFe) = max(1.d-50,pelm(iFe)*fac)
+      abundance(iaMg) = max(1.d-50,pelm(iMg)*fac)
 
       !abundance(iH2O) = abundance(iH2O) - (3.*fol + 2.*fpy + fqu) * eps(iSi)*fac *pH_tot
       !abundance(iSiO) = abundance(iSiO) - (fol + fpy + fqu) * eps(iSi)*fac * pH_tot
-      !abundance(78) = abundance(78) - (2.*fol + fpy) * eps(iSi)*fac * pH_tot
+      !abundance(iaMg) = abundance(iaMg) - (2.*fol + fpy) * eps(iSi)*fac * pH_tot
       !if (abundance(iH2O) < 0.0) abundance(iH2O) = 0.0
       !if (abundance(iSiO) < 0.0) abundance(iSiO) = 0.0
-      !if (abundance(78) < 0.0)   abundance(78) = 0.0
+      !if (abundance(iaMg) < 0.0) abundance(iaMg) = 0.0
 
       !!Update the abundance of Si and Oxygen.
 
@@ -258,7 +255,7 @@ contains
 !---------------------------------------------------------------
    subroutine chemical_equilibrium(rho_cgs,T,pmol,pelm,mu,gamma,&
       wind_CO_ratio, pH_tot, fol, fpy, fqu, fir, fsc, fcarb)
-! all quantities are in cgs
+! all pressures are in bar
       real, intent(inout) :: T, mu, gamma, pmol(nMolecules), pelm(nElements), rho_cgs
       real, intent(in)    :: wind_CO_ratio, pH_tot, fol, fpy, fqu, fir, fsc, fcarb
       real, dimension(nMolecules)    :: pmol_old
@@ -279,7 +276,7 @@ contains
       do i=1,nMolecules
          Kd(i) = calc_Kd(coefs(:,i), T)
       enddo
-      Kd(iTiS) = calc_Kd_TiS(T)
+      Kd(iTiS)  = calc_Kd_TiS(T)
       Kd(iSiH2) = calc_Kd_SiH2(T)
       Kd(iSiH3) = calc_Kd_SiH3(T)
 
@@ -508,51 +505,47 @@ contains
    end function solve_q
 
    pure real function calc_Kd(coefs, T)
-! all quantities are in cgs
       real, intent(in) :: coefs(5), T
-      real, parameter :: R = 1.987165
+      real, parameter :: R = 1.987165 !in cal/mol/K
       real :: G, d, T_cap
       ! limit T to avoid numerical issues
-      T_cap = max(T,400.d0)
+      T_cap = max(T,400.)
       G = coefs(1)/T_cap + coefs(2) + (coefs(3)+(coefs(4)+coefs(5)*T_cap)*T_cap)*T_cap
       d = max(-exp_lim,min(-G/(R*T_cap),exp_lim)) !222
       calc_Kd = exp(d)
    end function calc_Kd
 
    pure real function calc_Kd_TiS(T)
-! all quantities are in cgs
       use physcon, only:patm
       real, intent(in) :: T
       real, parameter :: a = 1.3316d1, b = -6.2216, c = 4.5829d-1, d = -6.4903d-2, e = 3.2788d-3
       real :: theta, logKd, T_cap
       ! limit T to avoid numerical issues
-      T_cap = max(T,400.d0)
+      T_cap = max(T,400.)
       theta = 5040./T_cap
       logKd = max(-log_lim,min(a+(b+(c+(d+e*theta)*theta)*theta)*theta,log_lim))
       calc_Kd_TiS = 10.**(-logKd)*patm
    end function calc_Kd_TiS
 
    pure real function calc_Kd_SiH2(T)
-! all quantities are in cgs
       use physcon, only:patm
       real, intent(in) :: T
       real, parameter :: a = 2.46640e1, b = -6.88730, c = 8.377100e-2, d = -1.00580e-2, e = 4.92910e-4
       real :: theta, logKd, T_cap
       ! limit T to avoid numerical issues
-      T_cap = max(T,400.d0)
+      T_cap = max(T,400.)
       theta = 5040./T_cap
       logKd = max(-log_lim,min(a+(b+(c+(d+e*theta)*theta)*theta)*theta,log_lim))
       calc_Kd_SiH2 = 10.**(-logKd)*patm**2
    end function calc_Kd_SiH2
 
    pure real function calc_Kd_SiH3(T)
-! all quantities are in cgs
       use physcon, only:patm
       real, intent(in) :: T
       real, parameter :: a = 3.63290d1, b = -1.05560d1, c = 8.09450d-2, d = -8.62120d-3, e = 3.98640d-4
       real :: theta, logKd, T_cap
       ! limit T to avoid numerical issues
-      T_cap = max(T,400.d0)
+      T_cap = max(T,400.)
       theta = 5040./T_cap
       logKd = max(-log_lim,min(a+(b+(c+(d+e*theta)*theta)*theta)*theta,log_lim))
       calc_Kd_SiH3 = 10.**(-logKd)*patm**3
@@ -605,11 +598,10 @@ contains
 !
 !----------------------------------------
    subroutine calc_muGamma_condensation(rho_cgs,T, mu, gamma, pH, pH_tot, pH2, pressure_cgs)
-! all quantities are in cgs
+! unless specified, pressures are in bar
       !use io, only:fatal
 
       use physcon, only:patm,kboltz
-      !real, intent(in)   :: mass_per_H,eps(nElements) !rho_cgs
       real, intent(in)    :: rho_cgs
       real, intent(inout) :: mu, gamma, T
       real, intent(out)   :: pH, pH_tot, pH2
