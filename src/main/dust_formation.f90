@@ -689,9 +689,6 @@ subroutine calc_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot, ppH2)
        else
           T = T_old*mu/mu_old/(gamma_old-1.)*2.*real(x)/(real(x)+4.+4.*eps(iHe))
           converged = (abs(T-T_old)/T_old) < tol
-          if (converged) then
-             print*, '[dust_formation] converged on T(mu,gamma) in',i,'iterations, T=',T,', gamma=',gamma,', mu=',mu
-          endif
           if (i>=itermax .and. .not.converged) then
              if (isolve==0) then
                 isolve = isolve+1
