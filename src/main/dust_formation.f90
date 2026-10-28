@@ -680,12 +680,18 @@ subroutine calc_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot, ppH2)
        mu        = (1.+4.*eps(iHe))/(.5+eps(iHe)+0.5*real(pH)/real(pH_tot))
        x         = 2.*(1.+4.*eps(iHe))/mu
        gamma     = (3.*x+4.+4.*eps(iHe))/(x+4.+4.*eps(iHe))
-       converged = (abs(T-T_old)/T_old) < tol
+       
        if (i == 1) then
           mu_old = mu
           gamma_old = gamma
+          T_old = T
+          T = 0.9*T
        else
           T = T_old*mu/mu_old/(gamma_old-1.)*2.*real(x)/(real(x)+4.+4.*eps(iHe))
+          converged = (abs(T-T_old)/T_old) < tol
+          if (converged) then
+             print*, '[dust_formation] converged on T(mu,gamma) in',i,'iterations, T=',T,', gamma=',gamma,', mu=',mu
+          endif
           if (i>=itermax .and. .not.converged) then
              if (isolve==0) then
                 isolve = isolve+1
@@ -804,7 +810,6 @@ subroutine chemical_equilibrium_light(rho_cgs, T_in, epsC, mu, gamma, abundi)
     Kd(i) = calc_Kd(coefs(:,i), T)
  enddo
  Kd(iTiS) = calc_Kd_TiS(T)
- pCO      = epsC*pH_tot
  pH       = solve_q(2.*Kd(iH2), 1., -pH_tot)
 
  ! These are initial guesses
