@@ -721,7 +721,7 @@ subroutine get_TempPresCs(eos_type,xyzi,vxyzui,rhoi,tempi,presi,spsoundi,gammai,
  if (present(presi))    presi    = ponrhoi*rhoi
  if (present(spsoundi)) spsoundi = csi
  if (present(mui))     mui = mu
- if (present(gammai)) gammai = gamma
+ if (present(gammai) .and. .not. use_gamma) gammai = gamma
 
 end subroutine get_TempPresCs
 
