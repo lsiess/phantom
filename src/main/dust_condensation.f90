@@ -18,7 +18,6 @@ module dust_condensation
 !   physcon, units
 !
 
-
    use physcon, only:atomic_mass_unit
 
    implicit none
@@ -81,7 +80,6 @@ module dust_condensation
       m_C2H2 = 26.038*atomic_mass_unit, &
       m_Si2C = 68.182*atomic_mass_unit, &
       m_carb = 12.01*atomic_mass_unit
-
 
 contains
 
@@ -165,7 +163,6 @@ contains
       Vth_C2H2  = sqrt(kT / twopi / m_C2H2)
       Vth_Si2C  = sqrt(kT / twopi / m_Si2C)
       !Vth_carb = sqrt(kT / twopi / m_carb) ! Orsola commented and uncommented Vth_C2H2
-
 
       Jgr_SiO_ol = alpha_ol * abundance(iSiO) * Vth_SiO
       Jgr_Mg_ol  = alpha_ol * abundance(iaMg) * Vth_Mg
@@ -328,14 +325,12 @@ contains
          Jdec_carb = 0.0d0
       endif
 
-
       r_ol = max(r_ol + Vo_ol * (Jgr_ol-Jdec_ol) * dt , a_init_dust)
       r_qu = max(r_qu + Vo_qu * (Jgr_qu-Jdec_qu) * dt , a_init_dust)
       r_py = max(r_py + Vo_py * (Jgr_py-Jdec_py) * dt , a_init_dust)
       r_ir = max(r_ir + Vo_ir * (Jgr_ir-Jdec_ir) * dt , a_init_dust)
       r_sc = max(r_sc + Vo_sc * (Jgr_sc-Jdec_sc) * dt , a_init_dust)
       r_carb = max(r_carb + Vo_carb * (Jgr_carb-Jdec_carb) * dt , a_init_dust)
-
 
       Jgr = Jgr_ol
       Jdec = Jdec_ol
@@ -349,7 +344,6 @@ contains
       fir = min(1.,max(0., fourpi*(r_ir**3-a_init_dust**3)*1.d-13/3./Vo_ir/eps(iFe)))
       fsc = min(1.,max(0., fourpi*(r_sc**3-a_init_dust**3)*1.d-13/3./Vo_sc/ eps(iSi)))
       fcarb = 0. !min(1.,max(0., fourpi*(r_carb**3-a_init_dust**3)*1.d-13/3./Vo_carb/eps(iC)))
-
 
       !Eq 90, paper 1
       kappa_ol = 1./sqrt(1./(6.147d-07 * T**2.444)**2 &
@@ -380,7 +374,6 @@ contains
 
       kappa_dust = kappa_gas + fol * kappa_ol + fqu * kappa_qu &
          + fpy * kappa_py + fir * kappa_ir + fsc * kappa_sc + fcarb * kappa_carb
-
 
    end subroutine dust_growth_condensation
 

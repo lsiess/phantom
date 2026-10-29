@@ -68,7 +68,6 @@ module chemistry_moments
 
 contains
 
-
 subroutine set_abundances_moments(wind_CO_ratio)
 ! all quantities in cgs
  use physcon, only:atomic_mass_unit
@@ -87,7 +86,6 @@ subroutine set_abundances_moments(wind_CO_ratio)
  !XH  = atomic_mass_unit*eps(iH)/mass_per_H  ! H mass fraction
  !XHe = atomic_mass_unit*eps(iHe)/mass_per_H ! He mass fraction
 end subroutine set_abundances_moments
-
 
 !-----------------------------------------------------------------------
 !+
@@ -257,7 +255,6 @@ subroutine chemical_equilibrium_light(rho_cgs, T, epsC, pC, pC2, pC2H, pC2H2, mu
  endif
 end subroutine chemical_equilibrium_light
 
-
 !----------------------------------------
 !
 !  Calculate mean molecular weight, gamma
@@ -367,7 +364,6 @@ subroutine init_muGamma_moments(rho_cgs, T, mu, gamma, ppH, ppH2)
  if (present(ppH2)) ppH2 = pH2
 
 end subroutine init_muGamma_moments
-
 
 !-------------------------------------------------------------------------
 !

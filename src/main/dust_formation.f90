@@ -232,7 +232,6 @@ contains
 
    end subroutine write_headeropts_dust_formation
 
-
 !-----------------------------------------------------------------------
 !+
 !  write relevant options to the header of the dump file
@@ -254,7 +253,6 @@ contains
       endif
 
    end subroutine read_headeropts_dust_formation
-
 
 !-----------------------------------------------------------------------
 !+

@@ -141,8 +141,6 @@ contains
 
    end subroutine do_analysis
 
-
-
 !------------------------------------------------
 !
 !  chemical profiles as a function of wind_CO
@@ -176,7 +174,6 @@ contains
       write(*,'(/,"Input parameters : pressure =",es10.3,", C/O = ",f8.5,", rho = ",es10.4,", T = ",f7.1)') &
          pressure_cgs,wind_CO_ratio,rho_cgs,T
       write(*,*)'********************************************************************************'
-
 
       do i = 1,nCO
          wind_CO_ratio = CO_min+(i-1)*(CO_max-CO_min)/(nCO-1)
@@ -220,7 +217,6 @@ contains
 !            print *,'dust_prop=',dust_properties
 
       end do
-
 
    end subroutine CO_dependence
 

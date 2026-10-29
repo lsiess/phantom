@@ -123,7 +123,6 @@ module chemistry_condensation
 
 contains
 
-
    subroutine set_abundances_condensation(wind_CO_ratio)
       use physcon, only:atomic_mass_unit
       real, intent(in) :: wind_CO_ratio
@@ -291,7 +290,6 @@ contains
       Kd(iSiH2) = calc_Kd_SiH2(T)
       Kd(iSiH3) = calc_Kd_SiH3(T)
 
-
       err   = 1.
       nit   = 0
       ipass = 0
@@ -333,7 +331,6 @@ contains
                   (eps(iSi)*(4.*fol+3.*fpy+2.*fqu)-eps(iOx))*pH_tot, &
                   eps(iOx)*pH_tot)
 
-
             endif !ipass
 
             pelm(iC) = solve_q(2.*(Kd(iC2)+pelm(iH)*Kd(iC2H)+pelm(iOx)*Kd(iC2O)+pelm(iH)**2*Kd(iC2H2)+pelm(iH)**4*Kd(iC2H4) &
@@ -346,7 +343,6 @@ contains
                (fcarb-1.0)*eps(iC)*pH_tot)
 
          else !%% wind_CO is larger than 1.0
-
 
             if (ipass == 0) then
                pelm(iC) = solve_q(2.*(Kd(iC2)+pelm(iH)*Kd(iC2H)+pelm(iOx)*Kd(iC2O)+pelm(iH)**2*Kd(iC2H2)+pelm(iH)**4*Kd(iC2H4) &
@@ -495,7 +491,6 @@ contains
       pmol(iSO3)   = Kd(iSO3)*pelm(iOx)**3*pelm(iS)
 
    end subroutine chemical_equilibrium
-
 
    pure real function solve_q(a, b, c)
 ! Note that this solve_q uses the Citardauq/Miller formula to avoid catastrophic cancellation.
@@ -699,7 +694,6 @@ contains
          gamma  = (5.*eps(iHe)+3.5)/(3.*eps(iHe)+2.5)
       endif
    end subroutine calc_muGamma_condensation
-
 
 !Fortran subroutine that implements Newton's method for
 !root-finding with the given polynomial function
