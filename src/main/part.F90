@@ -168,8 +168,8 @@ module part
 !
  integer, public :: ien_type
  integer, public, parameter :: ien_entropy = 1, &
-      ien_etotal  = 2, &
-      ien_entropy_s = 3
+                               ien_entropy_s = 2, &
+                               ien_etotal  = 3   ! internal to cons2primsolver, not a runtime option
 !
 !--one-fluid dust (small grains)
 !
@@ -192,6 +192,8 @@ module part
  real, allocatable :: sqrtgs(:) ! sqrtg(maxgr)
 ! cached GR metric-gradient force from kickdrift_gr (reused in get_force)
  real, allocatable :: fgr(:,:)       ! fgr(3,maxgr)
+! coordinate acceleration dv/dt, used in the Cullen & Dehnen shock detector
+ real, allocatable :: agr(:,:)       ! agr(3,maxgr)
 !
 !--sink particles in General relativity
 !
@@ -328,19 +330,20 @@ module part
 !
  real, allocatable  :: radprop(:,:)
  integer, parameter :: ifluxx = 1, &
-      ifluxy = 2, &
-      ifluxz = 3, &
-      ikappa = 4, &
-      ithick = 5, &
-      inumph = 6, &
-      ivorcl = 7, &
-      iradP  = 8, &
-      ilambda = 9, &
-      iedd   = 10, &
-      icv    = 11, &
-      maxradprop = 11
+                       ifluxy = 2, &
+                       ifluxz = 3, &
+                       ikappa = 4, &
+                       ithick = 5, &
+                       inumph = 6, &
+                       ivorcl = 7, &
+                       iradP  = 8, &
+                       ilambda = 9, &
+                       iedd   = 10, &
+                       icv    = 11, &
+                       itlastrad = 12, & ! time of the last implicit radiation update
+                       maxradprop = 12
  character(len=*), parameter :: radprop_label(maxradprop) = &
-      (/'radFx ','radFy ','radFz ','kappa ','thick ','numph ','vorcl ','radP  ','lambda','edd   ','cv    '/)
+    (/'radFx ','radFy ','radFz ','kappa ','thick ','numph ','vorcl ','radP  ','lambda','edd   ','cv    ','tlast '/)
 !
 !--lightcurves, store du/dt for each particle
 !
@@ -430,9 +433,12 @@ module part
 !
 !
 !--size of the buffer required for transferring particle
-!  information between MPI threads
+!  information between MPI threads: an upper bound on the values packed by
+!  fill_sendbuf, i.e. 142 for all optional fields that do not depend on the
+!  number of dust species, plus the dust arrays and the chemical abundances
 !
- integer, parameter :: ipartbufsize = 131
+ integer, parameter :: ipartbufsize = 142 + 6*maxdustsmall + 2*maxdusttypes &
+                                    + max(nabundances,krome_nmols)
 
  real            :: hfact,Bextx,Bexty,Bextz,tolh
  integer         :: npart
@@ -523,6 +529,7 @@ subroutine allocate_part
  call allocate_array('sqrtgs', sqrtgs, maxgr)
  if (gr) then
     call allocate_array('fgr', fgr, 3, maxgr)
+    call allocate_array('agr', agr, 3, maxgr)
     call allocate_array('fgr_ptmass', fgr_ptmass, 3, maxptmassgr)
  endif
  call allocate_array('pxyzu_ptmass', pxyzu_ptmass, maxvxyzu, maxptmassgr)
@@ -625,6 +632,7 @@ subroutine deallocate_part
  if (allocated(tmunus))       deallocate(tmunus)
  if (allocated(sqrtgs))       deallocate(sqrtgs)
  if (allocated(fgr))          deallocate(fgr)
+ if (allocated(agr))          deallocate(agr)
  if (allocated(fgr_ptmass))     deallocate(fgr_ptmass)
  if (allocated(pxyzu_ptmass)) deallocate(pxyzu_ptmass)
  if (allocated(metrics_ptmass))  deallocate(metrics_ptmass)
@@ -690,6 +698,7 @@ end subroutine deallocate_part
 !+
 !----------------------------------------------------------------
 subroutine init_part
+ use io, only:id,nprocs
  integer :: i
 
  npart = 0
@@ -708,6 +717,10 @@ subroutine init_part
 !--initialise sinktree array
  shortsinktree = 1
  fxyz_ptmass_tree = 0.
+!--initialise external forces and GR metric derivatives, used before being recomputed
+ fext = 0.
+ metricderivs = 0.
+ if (gr) agr = 0.
  ! initialise arrays not passed to setup routine to zero
  rho = 0. ! flags density as not yet computed, see init_rho_from_h
  if (mhd) then
@@ -765,38 +778,54 @@ subroutine init_part
 
  ideadhead = 0
 !
-!--Initialise particle id's
+!--Initialise particle id's, unique across MPI tasks
 !
 !$omp parallel do default(none) &
-!$omp shared(iorig,maxp) &
+!$omp shared(iorig,maxp,id) &
 !$omp private(i)
  do i = 1,maxp
-    iorig(i) = i
+    iorig(i) = i + int(id,kind=8)*maxp
  enddo
 !$omp end parallel do
- norig = maxp
+ norig = int(nprocs,kind=8)*maxp
 
 end subroutine init_part
 
 !----------------------------------------------------------------
 !+
-!  this function determines the mass of the particle
+!  a new particle ID. IDs above norig are given out in turn by the
+!  MPI tasks (task id gives norig+1+id, then norig increases by nprocs),
+!  so no two tasks give out the same ID while every task has the same norig
+!+
+!----------------------------------------------------------------
+integer(kind=8) function new_iorig()
+ use io, only:id,nprocs
+
+ new_iorig = norig + 1 + id
+ norig = norig + nprocs
+
+end function new_iorig
+
+!----------------------------------------------------------------
+!+
+!  this function determines the mass of the particle,
+!  including the refinement level under adaptive particle refinement
 !  where use_gas == .not. (maxphase==maxp)
-!  currently used only in readwrite_dump
 !+
 !----------------------------------------------------------------
 real function get_pmass(i,use_gas)
  integer, intent(in) :: i
  logical, intent(in) :: use_gas
+ integer :: itype
 
- if (use_gas) then
-    get_pmass = massoftype(igas)
+ itype = igas
+ if (.not.use_gas) then
+    if (iphase(i) /= 0) itype = iamtype(iphase(i))
+ endif
+ if (use_apr) then
+    get_pmass = aprmassoftype(itype,apr_level(i))
  else
-    if (iphase(i) /= 0) then
-       get_pmass = massoftype(iamtype(iphase(i)))
-    else
-       get_pmass = massoftype(igas)
-    endif
+    get_pmass = massoftype(itype)
  endif
 
 end function get_pmass
@@ -942,6 +971,8 @@ subroutine init_rho_from_h(i1,i2)
  if (present(i1)) ia = i1
  if (present(i2)) ib = i2
  iamtypei = igas
+ ! massoftype may have just been set by the calling routine
+ call sync_aprmassoftype()
 
  do i=ia,ib
     if (.not. isdead_or_accreted(xyzh(4,i))) then
@@ -1107,6 +1138,24 @@ subroutine recount_npartoftype
  enddo
 
 end subroutine recount_npartoftype
+
+!----------------------------------------------------------------
+!+
+!  set the mass of each particle type at every refinement level
+!  from massoftype (each level halves the mass of the previous one)
+!+
+!----------------------------------------------------------------
+subroutine sync_aprmassoftype
+ integer :: l,nlevels
+
+ ! loop bound is a variable because apr_maxlevel=0 without APR and
+ ! gfortran warns of a zero-trip loop for constant bounds, even inside an if
+ nlevels = apr_maxlevel
+ do l=1,nlevels
+    aprmassoftype(:,l) = massoftype(:)/2.**(l-1)
+ enddo
+
+end subroutine sync_aprmassoftype
 
 !----------------------------------------------
 !+
@@ -1378,6 +1427,7 @@ subroutine copy_particle(src,dst,new_part)
  if (gr) then
     pxyzu(:,dst) = pxyzu(:,src)
     if (allocated(fgr)) fgr(:,dst) = fgr(:,src)
+    if (allocated(agr)) agr(:,dst) = agr(:,src)
  endif
  divcurlv(:,dst)  = divcurlv(:,src)
  if (maxalpha ==maxp) alphaind(:,dst) = alphaind(:,src)
@@ -1406,8 +1456,7 @@ subroutine copy_particle(src,dst,new_part)
  if (itauL_alloc == 1) tau_lucy(dst) = tau_lucy(src)
 
  if (new_part) then
-    norig      = norig + 1
-    iorig(dst) = norig      ! we are creating a new particle; give it the new ID
+    iorig(dst) = new_iorig() ! we are creating a new particle; give it a new ID
  else
     iorig(dst) = iorig(src) ! we are moving the particle within the list; maintain ID
  endif
@@ -1463,6 +1512,7 @@ subroutine copy_particle_all(src,dst,new_part)
     endif
     dens(dst) = dens(src)
     if (allocated(fgr)) fgr(:,dst) = fgr(:,src)
+    if (allocated(agr)) agr(:,dst) = agr(:,src)
  endif
 
  divcurlv(:,dst) = divcurlv(:,src)
@@ -1521,8 +1571,7 @@ subroutine copy_particle_all(src,dst,new_part)
  endif
 
  if (new_part) then
-    norig      = norig + 1
-    iorig(dst) = norig      ! we are creating a new particle; give it the new ID
+    iorig(dst) = new_iorig() ! we are creating a new particle; give it a new ID
  else
     iorig(dst) = iorig(src) ! we are moving the particle within the list; maintain ID
  endif
@@ -1788,10 +1837,17 @@ subroutine fill_sendbuf(i,xtemp,nbuf)
        call fill_buffer(xtemp,pxyzu(:,i),nbuf)
        call fill_buffer(xtemp,ppred(:,i),nbuf)
        call fill_buffer(xtemp,dens(i),nbuf)
+       call fill_buffer(xtemp,agr(:,i),nbuf)
+       call fill_buffer(xtemp,fgr(:,i),nbuf)
     endif
     call fill_buffer(xtemp,fxyzu(:,i),nbuf)
     call fill_buffer(xtemp,fext(:,i),nbuf)
-    call fill_buffer(xtemp,divcurlv(1,i),nbuf)
+    !--derived quantities are also sent: with individual timesteps an
+    !  inactive particle keeps them until it is next active
+    call fill_buffer(xtemp,divcurlv(:,i),nbuf)
+    if (ndivcurlB > 0) call fill_buffer(xtemp,divcurlB(:,i),nbuf)
+    if (maxdvdx==maxp) call fill_buffer(xtemp,dvdx(:,i),nbuf)
+    if (maxlum==maxp)  call fill_buffer(xtemp,luminosity(i),nbuf)
     if (maxalpha==maxp) then
        call fill_buffer(xtemp,alphaind(:,i),nbuf)
     endif
@@ -1802,6 +1858,8 @@ subroutine fill_sendbuf(i,xtemp,nbuf)
     if (mhd) then
        call fill_buffer(xtemp,Bevol(:,i),nbuf)
        call fill_buffer(xtemp,Bpred(:,i),nbuf)
+       if (maxmhdan==maxp) call fill_buffer(xtemp,dBevol(:,i),nbuf)
+       if (maxmhdni==maxp) call fill_buffer(xtemp,eta_nimhd(:,i),nbuf)
     endif
     if (do_radiation) then
        call fill_buffer(xtemp,rad(:,i),nbuf)
@@ -1816,11 +1874,19 @@ subroutine fill_sendbuf(i,xtemp,nbuf)
        call fill_buffer(xtemp, dustfrac(:,i),nbuf)
        call fill_buffer(xtemp, dustevol(:,i),nbuf)
        call fill_buffer(xtemp, dustpred(:,i),nbuf)
+       if (maxdustan==maxp) then
+          call fill_buffer(xtemp, ddustevol(:,i),nbuf)
+          if (maxdusttypes > 0) call fill_buffer(xtemp, tstop(:,i),nbuf)
+       endif
+       call fill_buffer(xtemp, reshape(deltav(:,:,i),(/size(deltav(:,:,i))/)),nbuf)
        if (use_dustgrowth) then
           call fill_buffer(xtemp, dustprop(:,i),nbuf)
           call fill_buffer(xtemp, dustproppred(:,i),nbuf)
           call fill_buffer(xtemp, dustgasprop(:,i),nbuf)
           call fill_buffer(xtemp, Vrel_disp(i),nbuf)
+          call fill_buffer(xtemp, ddustprop(:,i),nbuf)
+          call fill_buffer(xtemp, VrelVf(:,i),nbuf)
+          call fill_buffer(xtemp, filfacpred(i),nbuf)
        endif
        call fill_buffer(xtemp,fxyz_drag(:,i),nbuf)
        call fill_buffer(xtemp,fxyz_dragold(:,i),nbuf)
@@ -1829,6 +1895,7 @@ subroutine fill_sendbuf(i,xtemp,nbuf)
        call fill_buffer(xtemp, abundance(:,i),nbuf)
     endif
     call fill_buffer(xtemp, eos_vars(:,i),nbuf)
+    if (use_krome) call fill_buffer(xtemp, T_gas_cool(i),nbuf)
     if (store_dust_temperature) then
        call fill_buffer(xtemp, dust_temp(i),nbuf)
     endif
@@ -1880,10 +1947,15 @@ subroutine unfill_buffer(ipart,xbuf)
     pxyzu(:,ipart)       = unfill_buf(xbuf,j,maxvxyzu)
     ppred(:,ipart)       = unfill_buf(xbuf,j,maxvxyzu)
     dens(ipart)          = unfill_buf(xbuf,j)
+    agr(:,ipart)         = unfill_buf(xbuf,j,3)
+    fgr(:,ipart)         = unfill_buf(xbuf,j,3)
  endif
  fxyzu(:,ipart)         = unfill_buf(xbuf,j,maxvxyzu)
  fext(:,ipart)          = unfill_buf(xbuf,j,3)
- divcurlv(1,ipart)      = real(unfill_buf(xbuf,j),kind=kind(divcurlv))
+ divcurlv(:,ipart)      = real(unfill_buf(xbuf,j,size(divcurlv,1)),kind=kind(divcurlv))
+ if (ndivcurlB > 0) divcurlB(:,ipart) = real(unfill_buf(xbuf,j,size(divcurlB,1)),kind=kind(divcurlB))
+ if (maxdvdx==maxp) dvdx(:,ipart) = real(unfill_buf(xbuf,j,size(dvdx,1)),kind=kind(dvdx))
+ if (maxlum==maxp)  luminosity(ipart) = real(unfill_buf(xbuf,j),kind=kind(luminosity))
  if (maxalpha==maxp) then
     alphaind(:,ipart)   = real(unfill_buf(xbuf,j,nalpha),kind(alphaind))
  endif
@@ -1894,6 +1966,8 @@ subroutine unfill_buffer(ipart,xbuf)
  if (mhd) then
     Bevol(:,ipart)      = real(unfill_buf(xbuf,j,maxBevol),kind=kind(Bevol))
     Bpred(:,ipart)      = real(unfill_buf(xbuf,j,maxBevol),kind=kind(Bevol))
+    if (maxmhdan==maxp) dBevol(:,ipart) = real(unfill_buf(xbuf,j,size(dBevol,1)),kind=kind(dBevol))
+    if (maxmhdni==maxp) eta_nimhd(:,ipart) = unfill_buf(xbuf,j,size(eta_nimhd,1))
  endif
  if (do_radiation) then
     rad(:,ipart)     = real(unfill_buf(xbuf,j,maxirad))
@@ -1908,19 +1982,28 @@ subroutine unfill_buffer(ipart,xbuf)
     dustfrac(:,ipart)   = unfill_buf(xbuf,j,maxdusttypes)
     dustevol(:,ipart)   = unfill_buf(xbuf,j,maxdustsmall)
     dustpred(:,ipart)   = unfill_buf(xbuf,j,maxdustsmall)
+    if (maxdustan==maxp) then
+       ddustevol(:,ipart) = unfill_buf(xbuf,j,size(ddustevol,1))
+       if (maxdusttypes > 0) tstop(:,ipart) = unfill_buf(xbuf,j,size(tstop,1))
+    endif
+    deltav(:,:,ipart) = reshape(unfill_buf(xbuf,j,size(deltav(:,:,ipart))),shape(deltav(:,:,ipart)))
     if (use_dustgrowth) then
        dustprop(:,ipart)       = unfill_buf(xbuf,j,2)
        dustproppred(:,ipart)   = unfill_buf(xbuf,j,2)
        dustgasprop(:,ipart)    = unfill_buf(xbuf,j,4)
        Vrel_disp(ipart)        = unfill_buf(xbuf,j)
+       ddustprop(:,ipart)      = unfill_buf(xbuf,j,size(ddustprop,1))
+       VrelVf(:,ipart)         = unfill_buf(xbuf,j,size(VrelVf,1))
+       filfacpred(ipart)       = unfill_buf(xbuf,j)
     endif
     fxyz_drag(:,ipart)   = unfill_buf(xbuf,j,3)
     fxyz_dragold(:,ipart)   = unfill_buf(xbuf,j,3)
  endif
  if (maxp_h2==maxp .or. maxp_krome==maxp) then
-    abundance(:,ipart)  = unfill_buf(xbuf,j,nabundances)
+    abundance(:,ipart)  = unfill_buf(xbuf,j,size(abundance,1))
  endif
  eos_vars(:,ipart) = unfill_buf(xbuf,j,maxeosvars)
+ if (use_krome) T_gas_cool(ipart) = unfill_buf(xbuf,j)
  if (store_dust_temperature) then
     dust_temp(ipart)    = unfill_buf(xbuf,j)
  endif

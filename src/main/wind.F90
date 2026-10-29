@@ -10,7 +10,7 @@ module wind
 !
 ! :References: Lamers & Cassinelli "Introduction to stellar winds"
 !
-! :Owner: Orsola De Marco
+! :Owner: Lionel Siess
 !
 ! :Runtime parameters: None
 !

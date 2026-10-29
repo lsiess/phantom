@@ -30,6 +30,7 @@ module dim
 
  ! maximum number of particles
  integer :: maxp = 0 ! memory not allocated initially
+ integer :: maxp_requested = 0 ! number of particles memory was requested for
  !
  ! how much memory to allocate, e.g. to allow space for injected particles
  ! this can be changed with the --maxp= option on the command line and
@@ -123,8 +124,9 @@ module dim
 #else
  logical, parameter :: do_radiation = .false.
 #endif
- ! rhosum (two extra slots for number density and dWtilde/dh)
- integer, parameter :: maxrhosum = 41 + &
+ ! rhosum (two extra slots for number density and dWtilde/dh,
+ ! plus 38 for derivative sums with grad Wtilde used with unequal masses)
+ integer, parameter :: maxrhosum = 79 + &
                                    maxdustlarge - 1 + &
                                    radensumden
 
@@ -371,6 +373,7 @@ subroutine update_max_sizes(n,ntot)
  integer,         intent(in) :: n
  integer(kind=8), intent(in), optional :: ntot
 
+ maxp_requested = n
  maxp = n
  if (use_apr) then
     maxp = 8*n
@@ -379,7 +382,7 @@ subroutine update_max_sizes(n,ntot)
 
  maxpsph = maxp
  if (use_sinktree) then
-    maxp = n+maxptmass
+    maxp = maxpsph + maxptmass
  endif
 
  if (use_krome) maxp_krome = maxp
@@ -399,11 +402,8 @@ subroutine update_max_sizes(n,ntot)
  ncellsmaxglobal = NCELLSMAX
 #else
  ncellsmax = 2*maxp
- if (present(ntot)) then
-    ncellsmaxglobal = 2*ntot
- else
-    ncellsmaxglobal = ncellsmax
- endif
+ ! the global tree is limited to the size of the local tree (see maketreeglobal)
+ ncellsmaxglobal = ncellsmax
 #endif
 
  nnodeptmassmax = 2*maxptmass

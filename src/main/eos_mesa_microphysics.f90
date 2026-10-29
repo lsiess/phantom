@@ -14,9 +14,10 @@ module mesa_microphysics
 !
 ! :Runtime parameters: None
 !
-! :Dependencies: datafiles, physcon
+! :Dependencies: datafiles, io
 !
  use datafiles, only:find_phantom_datafile
+ use io,        only:fatal
 
  implicit none
  public
@@ -76,14 +77,15 @@ contains
 ! Get the constants to be used in the MESA opacities
 subroutine get_opacity_constants_mesa
  character(len=500) :: opacs_file,filename
- integer            :: fnum
+ integer            :: fnum,ierr
 
  ! Find the opacity table
  filename   = 'opacs'//trim(mesa_opacs_suffix)//'.bindata'
  opacs_file = find_phantom_datafile(filename,'eos/mesa_opac')
 
  ! Read the constants from the header of the opacity file
- open(newunit=fnum,file=trim(opacs_file),status='old',action='read',form='unformatted')
+ open(newunit=fnum,file=trim(opacs_file),status='old',action='read',form='unformatted',iostat=ierr)
+ if (ierr /= 0) call fatal('mesa_microphysics','data file not found: '//trim(opacs_file))
  read(fnum) mesa_opacs_nz,mesa_opacs_nx,mesa_opacs_nr,mesa_opacs_nt
  close(fnum)
 
@@ -102,7 +104,7 @@ subroutine read_opacity_mesa(x,z)
  real :: dz, dx
  real, allocatable :: kappas(:,:,:,:)
  character(len=500) :: opacs_file,filename
- integer :: zz, xx, k, i
+ integer :: zz, xx, k, i, ierr
  character(len=7) :: empty
  integer :: nz2,nx2
  integer :: fnum
@@ -115,7 +117,8 @@ subroutine read_opacity_mesa(x,z)
  filename = trim(mesa_opacs_dir)//'opacs'//trim(mesa_opacs_suffix)//'.bindata'
 ! filename = trim(mesa_opacs_dir)//'/'//'opacs'//trim(mesa_opacs_suffix)//'.bindata'
  opacs_file = find_phantom_datafile(filename,'eos/mesa_opac')
- open(unit=fnum,file=trim(opacs_file),status='old',action='read',form='unformatted')
+ open(unit=fnum,file=trim(opacs_file),status='old',action='read',form='unformatted',iostat=ierr)
+ if (ierr /= 0) call fatal('mesa_microphysics','data file not found: '//trim(opacs_file))
  read(fnum) mesa_opacs_nz,mesa_opacs_nx,mesa_opacs_nr,mesa_opacs_nt
 
  ! Read in the size of the table and the data
@@ -650,9 +653,8 @@ end subroutine getvalue_mesa
 ! The columns in the data are:
 ! 1. logP          2. logu       3. logT         4. Gamma1
 ! Note: ivout=1,2,3,4 returns the unlogged quantity
-! inputted s should be in cgs units, then it has to be converted to log10(S/(k_B*N_A)) in cgs units (because the MESA tables are in these units)
+! inputted s should be the specific entropy S in cgs units (erg/g/K), as tabulated (in log10) in the MESA tables
 pure subroutine getvalue_mesa_gr(rho,s,ivout,vout,ierr)
- use physcon, only:kboltz,avogadro
  real,    intent(in)  :: rho, s
  real,    intent(out) :: vout
  integer, intent(in)  :: ivout
@@ -662,7 +664,7 @@ pure subroutine getvalue_mesa_gr(rho,s,ivout,vout,ierr)
  real :: dx
  integer :: nx
 
- logs = log10(s/(kboltz*avogadro))  ! convert to log10(S/(k_B*N_A)) in cgs units (because the MESA tables are in these units)
+ logs = log10(s)
  logrho = log10(rho)
 
  ! Get the s and rho indices for looking up the tables

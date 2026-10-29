@@ -166,12 +166,17 @@ endif
 ifdef STACKSIZE
     FPPFLAGS += -DSTACKSIZE=${STACKSIZE}
 endif
+
+
 # Set other optional flags depending on settings
 
 ifeq ($(DEBUG), yes)
     FFLAGS += ${DEBUGFLAG}
     FFLAGS := $(FFLAGS:-O3=-O0)
     FFLAGS := $(FFLAGS:-ipo= )
+    CCFLAGS := $(CCFLAGS:-ipo= )
+    FFLAGS := $(filter-out -flto%,$(FFLAGS))
+    CCFLAGS := $(filter-out -flto%,$(CCFLAGS))
 endif
 
 ifeq ($(ENDIAN), BIG)
@@ -204,10 +209,6 @@ endif
 
 ifeq ($(GR), yes)
     FPPFLAGS += -DGR
-ifeq ($(ISENTROPIC), yes)
-    FPPFLAGS += -DISENTROPIC
-endif
-    CONST_AV=yes
 endif
 
 ifeq ($(DUST), yes)
@@ -510,10 +511,10 @@ SOURCES= physcon.f90 ${CONFIG} ${SRCKERNEL} io.F90 units.f90 geometry.f90 \
          cons2primsolver.f90 cons2prim.f90 \
          centreofmass.f90 ${SRCPOT} checkconserved.f90 \
          utils_filenames.f90 utils_summary.F90 ${SRCCHEM} ${SRCDUST} \
-         mpi_memory.f90 mpi_derivs.F90 mpi_tree.F90 kdtree.F90 neigh_kdtree.f90 utils_healpix.f90 utils_raytracer.f90 \
-         chemistry_moments.f90 chemistry_condensation.f90 dust_formation.f90 \
-	 dust_moments.f90 dust_condensation.f90 partinject.f90 utils_inject.f90 ptmass_radiation.f90 ptmass_heating.f90 ptmass_tree.f90 \
-         utils_deriv.f90 utils_implicit.f90 radiation_implicit.f90 ${SRCTURB} \
+         mpi_memory.f90 mpi_derivs.F90 mpi_tree.F90 kdtree.F90 neigh_kdtree.F90 utils_healpix.f90 utils_raytracer.f90 \
+         chemistry_moments.f90 chemistry_condensation.f90 dust_formation.f90 dust_moments.f90 dust_condensation.f90 \
+         partinject.f90 utils_inject.f90 ptmass_radiation.f90 ptmass_heating.f90 ptmass_tree.f90 \
+         utils_deriv.f90 utils_neighcompact.f90 utils_implicit.f90 mpi_radiation.F90 radiation_implicit.f90 ${SRCTURB} \
          grids_for_setup.f90\
          ${SRCINJECT_DEPS} wind_equations.f90 wind.F90  \
          krome.F90 memory.f90 ${SRCRW_DUMPS} ${SRCINJECT} injection.f90 \
@@ -521,7 +522,7 @@ SOURCES= physcon.f90 ${CONFIG} ${SRCKERNEL} io.F90 units.f90 geometry.f90 \
          quitdump.f90 dens.F90\
          ptmass.F90 force.F90 deriv.f90 ${SRCAPR} readwrite_infile.f90 energies.f90 sort_particles.f90 \
          utils_shuffleparticles.F90 evwrite.f90 substepping.F90 step_leapfrog.f90 writeheader.f90 ${SRCAN} \
-         mf_write.f90 egg.f90 evolve_utils.F90 evolve.f90 utils_linalg.f90 \
+         mf_write.f90 egg.f90 evolve_utils.F90 utils_pcg.f90 divb_projection.f90 evolve.f90 utils_linalg.f90 \
          checksetup.f90 initial.F90
 
 # Needed as einsteintk_wrapper depends on initial
@@ -591,10 +592,10 @@ edit: checksetup
 #----------------------------------------------------
 # these are the sources for anything which uses the readwrite_dumps module
 #
-SRCDUMP= physcon.f90 ${CONFIG} ${SRCKERNEL} utils_omp.f90 io.F90 units.f90 mpi_utils.F90 \
+SRCDUMP= physcon.f90 ${CONFIG} ${SRCKERNEL} utils_omp.f90 io.F90 units.f90 mpi_dens.F90 mpi_force.F90 mpi_utils.F90 \
          utils_timing.f90 utils_infiles.f90 dtype_kdtree.f90 utils_allocate.f90 part.F90 \
-         ${DOMAIN} mpi_dens.F90 mpi_force.F90 boundary.f90 boundary_dynamic.f90 \
-         mpi_balance.F90 mpi_memory.f90 mpi_derivs.F90 mpi_tree.F90 kdtree.F90 neigh_kdtree.f90 ptmass_tree.f90\
+         ${DOMAIN} boundary.f90 boundary_dynamic.f90 \
+         mpi_balance.F90 mpi_memory.f90 mpi_derivs.F90 mpi_tree.F90 kdtree.F90 neigh_kdtree.F90 ptmass_tree.f90\
          utils_dumpfiles.f90 utils_vectors.f90 utils_mathfunc.f90 cubicsolve.f90 \
          utils_datafiles.f90 utils_filenames.f90 utils_system.f90 utils_tables.f90 datafiles.f90 gitinfo.f90 \
          centreofmass.f90 dynamic_dtmax.f90 \
@@ -670,15 +671,16 @@ SRCSPLITPART=utils_indtimesteps.f90 utils_getneighbours.F90 utils_splitmerge.f90
 # 22/4/24: added setup_params to avoid weird build failure with ifort on Mac OS
 SRCTESTS=utils_testsuite.f90 test_kernel.f90 \
          ${SRCAPR} test_apr.f90 test_dust.f90 test_growth.f90 test_coala.F90 \
-         test_nonidealmhd.f90 directsum.f90 test_gravity.f90 \
+         test_nonidealmhd.f90 directsum.f90 set_disc.f90 test_gravity.f90 \
          test_derivs.f90 test_cooling.f90 test_eos_stratified.f90 \
          test_eos_stam.f90 test_eos.f90 test_externf.f90 test_rwdump.f90 \
          test_step.F90 test_indtstep.f90 ${SRCSETSTAR} utils_filenames.f90 utils_tables.f90 \
-         grids_for_setup.f90 set_disc.f90 test_setdisc.f90 test_setstar.f90 \
+         grids_for_setup.f90 test_setdisc.f90 test_setstar.f90 \
          test_hierarchical.f90 test_damping.f90 test_wind.f90 test_iorig.f90 \
          test_neigh.f90 test_kdtree.F90 test_orbits.f90 test_part.f90 test_ptmass.f90 test_luminosity.f90\
          test_gnewton.f90 test_corotate.f90 test_gr.f90 test_geometry.f90 \
-         test_mpi.f90 test_sedov.f90 test_poly.f90 test_linalg.f90 test_radiation.f90 test_units.f90 \
+         test_mpi.f90 test_sedov.f90 test_poly.f90 test_linalg.f90 test_divb_projection.f90 \
+         test_radiation.f90 test_units.f90 test_infile.f90 \
          testsuite.f90 setup_params.f90 phantomtest.f90
 
 ifeq (X$(SRCTEST), X)
@@ -778,7 +780,7 @@ ifndef MODDUMPBIN
 MODDUMPBIN=phantommoddump
 endif
 OBJMOD1 = ${OBJSETSTAR} eos_stamatellos.o velfield_fromcubes.o set_vfield.o\
-          set_disc.o set_Bfield.o utils_omp.o\
+          set_disc.o set_Bfield.o utils_omp.o utils_moddump.o\
 	  ${MODFILE:.f90=.o} phantom_moddump.o
 OBJMOD = ${OBJMOD1:.F90=.o}
 
@@ -829,10 +831,14 @@ allmoddumps:
 .PHONY: allkernels
 allkernels:
 	@echo "Building all kernel modules"
+	@# clean between kernels: without module dependencies, objects using the
+	@# kernel module would otherwise keep the previous kernel's definitions
+	@# (also clean at the end, so later targets do not link the last kernel)
 	@for file in $(wildcard ../src/main/kernel_*.f90); do \
 	   echo "Building $$file"; \
-	   $(MAKE) SRCKERNEL="$$(basename $$file)" || exit 1; \
+	   $(MAKE) clean && $(MAKE) SRCKERNEL="$$(basename $$file)" || exit 1; \
 	done
+	@$(MAKE) clean
 
 #----------------------------------------------------
 # these are the sources for the phantomanalysis utility
@@ -921,7 +927,7 @@ OBJLIBA=${SRCLIBA:.f90=.o}
 LIBPHANTOMAMUSE=$(BINDIR)/libphantom-amuse.a
 
 libphantom-amuse.a: checksystem checkparams $(OBJECTS) $(OBJLIBA)
-	ar rc $(LIBPHANTOMAMUSE) $(OBJLIBA) $(OBJECTS)
+	$(LIBTOOL) $(LIBPHANTOMAMUSE) $(OBJLIBA) $(OBJECTS)
 
 libphantom-amuse.so: checksystem checkparams phantom ${OBJLIBA}
 	$(FC) -shared $(FFLAGS) $(FPPFLAGS) $(DBLFLAG) ${OBJLIBA} ${OBJECTS} $(LDFLAGS) -o $(BINDIR)/libphantom-amuse.so
@@ -1150,7 +1156,7 @@ cleanmultirun:
 # utility to plot orbits based on orbital elements (a,e,i,o,w,f)
 #
 SRCBIN = prompting.f90 utils_datafiles.f90 datafiles.f90 ${CONFIG} physcon.f90 io.F90 \
-         utils_filenames.f90 mpi_utils.F90 utils_allocate.f90 utils_orbits.f90 \
+         utils_filenames.f90 mpi_utils.F90 utils_allocate.f90 dtype_kdtree.F90 utils_orbits.f90 \
          utils_infiles.f90 units.f90 set_binary.f90 set_orbit.f90 test_binary.f90 testbinary.f90
 OBJBIN1 = ${SRCBIN:.f90=.o}
 OBJBIN = ${OBJBIN1:.F90=.o}
@@ -1206,7 +1212,7 @@ showheader: checksys $(OBJSHOWHEADER)
 	@echo ""
 	@echo "showheader: show me the header!"
 	@echo ""
-	$(FC) $(FFLAGS) -o $(BINDIR)/$@ $(OBJSHOWHEADER)
+	$(FC) $(FFLAGS) -o $(BINDIR)/$@ $(OBJSHOWHEADER) $(LDFLAGS)
 
 cleanshowheader:
 	rm -f $(BINDIR)/showheader
@@ -1387,6 +1393,7 @@ compilers:
 	@if type -p ifort > /dev/null; then echo "make SYSTEM=ifort"; fi;
 	@if type -p pathf90 > /dev/null; then echo "make SYSTEM=pathf90"; fi;
 	@if type -p pgf90 > /dev/null; then echo "make SYSTEM=pgf90"; fi;
+	@if type -p nvfortran > /dev/null; then echo "make SYSTEM=nvfortran"; fi;
 	@if type -p xlf90_r > /dev/null; then echo "make SYSTEM=ukaff1a [uses xlf90_r]"; fi;
 	@if type -p gfortran > /dev/null; then echo "make SYSTEM=gfortran"; fi;
 	@if type -p g95 > /dev/null; then echo "make SYSTEM=g95"; fi;

@@ -19,6 +19,7 @@ module checksetup
 !   metric_tools, nicil, options, part, physcon, ptmass, ptmass_radiation,
 !   sortutils, timestep, units, utils_gr
 !
+ use, intrinsic :: ieee_arithmetic, only:ieee_is_nan
  implicit none
  public :: check_setup
 
@@ -39,16 +40,17 @@ contains
 !------------------------------------------------------------------
 subroutine check_setup(nerror,nwarn,restart)
  use dim,  only:maxp,maxvxyzu,periodic,use_dust,ndim,mhd,use_dustgrowth,do_condensation, &
-                do_radiation,n_nden_phantom,mhd_nonideal,do_nucleation,use_krome,ind_timesteps,use_apr
+                do_radiation,n_nden_phantom,mhd_nonideal,do_nucleation,use_krome,ind_timesteps,use_apr,&
+                maxdvdx
  use part, only:xyzh,massoftype,hfact,vxyzu,npart,npartoftype,nptmass,gravity, &
                 iphase,maxphase,isetphase,labeltype,igas,maxtypes,&
                 idust,xyzmh_ptmass,vxyz_ptmass,iboundary,isdeadh,ll,ideadhead,&
                 kill_particle,shuffle_part,iamtype,iamdust,Bxyz,rad,radprop, &
-                remove_particle_from_npartoftype,ien_type,ien_etotal,gr,eos_vars,itemp
+                remove_particle_from_npartoftype,gr,eos_vars,itemp
  use eos,             only:gamma,polyk,eos_requires_polyk,ieos_helmholtz
  use centreofmass,    only:get_centreofmass
  use apr,             only:sync_aprmassoftype
- use options,         only:ieos,iexternalforce,use_dustfrac,use_hybrid
+ use options,         only:ieos,iexternalforce,use_dustfrac,use_hybrid,ireconav
  use io,              only:id,master
  use externalforces,  only:accrete_particles,update_externalforce,accradius1,iext_star
  use timestep,        only:time
@@ -99,11 +101,11 @@ subroutine check_setup(nerror,nwarn,restart)
     print*,'ERROR: sum of npartoftype  /=  npart: np=',npart,' but sum=',sum(npartoftype)
     nerror = nerror + 1
  endif
- if (hfact < 1. .or. isnan(hfact)) then
+ if (hfact < 1. .or. ieee_is_nan(hfact)) then
     print*,'ERROR: hfact = ',hfact,', should be >= 1'
     nerror = nerror + 1
  endif
- if (polyk < 0. .or. isnan(polyk)) then
+ if (polyk < 0. .or. ieee_is_nan(polyk)) then
     print*,'ERROR: polyk = ',polyk,', should be >= 0'
     nerror = nerror + 1
  endif
@@ -121,6 +123,11 @@ subroutine check_setup(nerror,nwarn,restart)
        if (id==master) print*,'WARNING! gamma not set (should be set > 0 even if not used)'
        nwarn = nwarn + 1
     endif
+ endif
+ ! reconstruction in the shock viscosity needs the stored velocity gradients
+ if (gr .and. ireconav >= 0 .and. maxdvdx /= maxp) then
+    print*,'ERROR: ireconav >= 0 requires velocity gradients to be stored (maxdvdx = maxp)'
+    nerror = nerror + 1
  endif
  if (npart < 0) then
     print*,'ERROR: npart = ',npart,', should be >= 0'
@@ -274,7 +281,7 @@ subroutine check_setup(nerror,nwarn,restart)
 !--check that mass of each type has been set
 !
  do itype=1,maxtypes
-    if (isnan(massoftype(itype))) then
+    if (ieee_is_nan(massoftype(itype))) then
        print*,'WARNING: massoftype = NaN for '//trim(labeltype(itype))//' particles'
        nwarn = nwarn + 1
        massoftype(itype) = 0.
@@ -380,10 +387,6 @@ subroutine check_setup(nerror,nwarn,restart)
           nerror = nerror + 1
        endif
     endif
- endif
- if (.not. gr .and. (gravity .or. mhd) .and. ien_type == ien_etotal) then
-    if (id==master) print*,'Cannot use total energy with self gravity or mhd'
-    nerror = nerror + 1
  endif
 !
 !--sanity checks on magnetic field
@@ -528,7 +531,7 @@ subroutine check_NaN(npart,array,label,nerror)
  !$omp reduction(+:nbad)
  do i=1,npart
     !--check for NaNs in xyzh
-    if (any(isnan(array(:,i)))) then
+    if (any(ieee_is_nan(array(:,i)))) then
        if (nbad < 10) print*,'NaN in '//trim(label)//' : ', i
        nbad = nbad + 1
     endif
@@ -967,7 +970,7 @@ subroutine check_gr(npart,nerror,xyzh,vxyzu)
  use metric_tools, only:pack_metric,unpack_metric,imet_rn,imetric
  use metric,       only:charge,mass1
  use utils_gr,     only:get_u0
- use part,         only:isdead_or_accreted,ien_type,ien_entropy,ien_etotal,ien_entropy_s
+ use part,         only:isdead_or_accreted,ien_type,ien_entropy,ien_entropy_s
  use units,        only:in_geometric_units,get_G_code,get_c_code
  integer, intent(in)    :: npart
  integer, intent(inout) :: nerror
@@ -1003,10 +1006,9 @@ subroutine check_gr(npart,nerror,xyzh,vxyzu)
     nerror = nerror + 1
  endif
 
- if (ien_type /= ien_etotal .and. ien_type /= ien_entropy .and. ien_type /= ien_entropy_s) then
+ if (ien_type /= ien_entropy .and. ien_type /= ien_entropy_s) then
     print "(/,a,i1,a,i1,a,i3,/)",' ERROR: ien_type is incorrect for GR, need ', &
-                                 ien_entropy, ', ', ien_etotal, ' or ', ien_entropy_s, &
-                                 ' but get ', ien_type
+                                 ien_entropy, ' or ', ien_entropy_s, ' but get ', ien_type
     nerror = nerror + 1
  endif
 
@@ -1119,7 +1121,7 @@ subroutine check_setup_radiation(npart,nerror,nwarn,radprop,rad)
  do i=1,npart
     if (radprop(ithick, i) < 0.5) nthin = nthin + 1
     if (rad(iradxi, i) < 0.) nradEn = nradEn + 1
-    if (radprop(ikappa, i) <= 0.0 .or. isnan(radprop(ikappa,i))) nkappa = nkappa + 1
+    if (radprop(ikappa, i) <= 0.0 .or. ieee_is_nan(radprop(ikappa,i))) nkappa = nkappa + 1
     if (rad(iradxi, i) <= 0.) nwarn_en = nwarn_en + 1
  enddo
 

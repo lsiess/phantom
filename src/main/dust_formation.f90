@@ -10,7 +10,7 @@ module dust_formation
 !
 ! :References: Gail & Sedlmayr textbook Physics and chemistry of Circumstellar dust shells
 !
-! :Owner: Orsola De Marco
+! :Owner: Lionel Siess
 !
 ! :Runtime parameters:
 !   - bowen_Tcond   : *dust condensation temperature (K)*

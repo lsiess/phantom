@@ -1153,11 +1153,11 @@ subroutine ptmass_create(nptmass,npart,itest,xyzh,pxyzu,fxyzu,fext,divcurlv,pote
  real,    intent(inout) :: xyzmh_ptmass(:,:),dptmass(ndptmass,maxptmass)
  real,    intent(inout) :: pxyzu_ptmass(:,:),fxyz_ptmass(4,maxptmass),fxyz_ptmass_sinksink(4,maxptmass)
  real,    intent(in)    :: time
- integer(kind=1)    :: iphasei,ibin_wakei,ibin_itest
+ integer(kind=1)    :: iphasei,ibin_wakei,ibin_itest,apr_leveli
  integer            :: nneigh
  integer, parameter :: maxcache      = 12000
  integer, parameter :: nneigh_thresh = 1024 ! approximate epot if neigh>neigh_thresh; (-ve for off)
- real, save :: xyzcache(3,maxcache)
+ real, allocatable, save :: xyzcache(:,:)
  real    :: xi,yi,zi,hi,hi1,hi21,xj,yj,zj,hj1,hj21,xk,yk,zk,hk1
  real    :: rij2,rik2,rjk2,dx,dy,dz
  real    :: vxi,vyi,vzi,dv2,dvx,dvy,dvz,rhomax
@@ -1173,6 +1173,7 @@ subroutine ptmass_create(nptmass,npart,itest,xyzh,pxyzu,fxyzu,fext,divcurlv,pote
 
  ifail       = 0
  ifail_array = 0
+ apr_leveli  = 1_1
  poteni      = 0._4
  potenj_min  = huge(poteni)
 !
@@ -1206,6 +1207,7 @@ subroutine ptmass_create(nptmass,npart,itest,xyzh,pxyzu,fxyzu,fext,divcurlv,pote
     vyi = pxyzu(2,itest)
     vzi = pxyzu(3,itest)
     iphasei = iphase(itest)
+    if (use_apr) apr_leveli = apr_level(itest)
     divvi = divcurlv(1,itest)
     if (ind_timesteps) ibin_itest = ibin(itest)
     if (gravity) poteni = poten(itest)
@@ -1221,6 +1223,7 @@ subroutine ptmass_create(nptmass,npart,itest,xyzh,pxyzu,fxyzu,fext,divcurlv,pote
  call bcast_mpi(vyi,id_rhomax)
  call bcast_mpi(vzi,id_rhomax)
  call bcast_mpi(iphasei,id_rhomax)
+ if (use_apr) call bcast_mpi(apr_leveli,id_rhomax)
  call bcast_mpi(divvi,id_rhomax)
  if (ind_timesteps) call bcast_mpi(ibin_itest,id_rhomax)
  if (gravity) call bcast_mpi(poteni,id_rhomax)
@@ -1240,7 +1243,11 @@ subroutine ptmass_create(nptmass,npart,itest,xyzh,pxyzu,fxyzu,fext,divcurlv,pote
  else
     itype = igas
  endif
- pmassi = massoftype(itype)
+ if (use_apr) then
+    pmassi = aprmassoftype(itype,apr_leveli)
+ else
+    pmassi = massoftype(itype)
+ endif
  pmassj = massoftype(igas)
  pmassk = pmassj
  itypej = igas
@@ -1291,6 +1298,7 @@ subroutine ptmass_create(nptmass,npart,itest,xyzh,pxyzu,fxyzu,fext,divcurlv,pote
 
  ! CHECK 3: all neighbours are all active ( & perform math for checks 4-6)
  ! find neighbours within the checking radius of hcheck
+ if (.not. allocated(xyzcache)) allocate(xyzcache(3,maxcache))
  call getneigh_pos((/xi,yi,zi/),0.,hcheck,listneigh,nneigh,xyzcache,maxcache,leaf_is_active)
  ! determine if we should approximate epot
  calc_exact_epot = .true.
@@ -2629,7 +2637,7 @@ subroutine write_options_ptmass(iunit)
     call write_inopt(r_neigh, 'r_neigh', 'searching radius to detect subgroups', iunit)
  endif
  if (use_sinktree) then
-    call write_inopt(use_regnbody, 'use_sinktree', 'allow ptmasses to be pushed in the kd-tree', iunit)
+    call write_inopt(use_sinktree,'use_sinktree','allow ptmasses to be pushed in the kd-tree',iunit)
  endif
 
 end subroutine write_options_ptmass
@@ -2640,7 +2648,7 @@ end subroutine write_options_ptmass
 !+
 !-----------------------------------------------------------------------
 subroutine read_options_ptmass(db,nerr)
- use io,           only:warning,fatal
+ use io,           only:warning,error
  use subgroup,     only:r_neigh
  use dim,          only:use_sinktree
  use infile_utils, only:inopts,read_inopt
@@ -2670,7 +2678,10 @@ subroutine read_options_ptmass(db,nerr)
 
  if (icreate_sinks==1 .and. r_crit < 2.0*h_acc) call warning(label,'Strongly suggest r_crit >= 2.0*h_acc')
 
- if (f_crit_override > 0. .and. f_crit_override < 10. ) call fatal(label,'Give star formation a chance! Reset to > 10')
+ if (f_crit_override > 0. .and. f_crit_override < 10. ) then
+    call error(label,'Give star formation a chance! Reset to > 10')
+    nerr = nerr + 1
+ endif
  if (f_crit_override > 0.) l_crit_override = .true.
 
  if (icreate_sinks==1 .and. r_merge_uncond < 2.0*h_acc) call warning(label,'Strongly suggest r_merge_uncond >= 2.0*h_acc')

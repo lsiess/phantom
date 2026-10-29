@@ -56,7 +56,7 @@ subroutine write_infile(infile,logfile,evfile,dumpfile,iwritein,iprint)
  use dust_formation,   only:write_options_dust_formation
  use nicil_sup,        only:write_options_nicil
  use metric,           only:write_options_metric
- use eos,              only:write_options_eos
+ use eos,              only:write_options_eos,ishock_heating
  use ptmass,           only:write_options_ptmass
  use ptmass_radiation, only:write_options_ptmass_radiation
  use cooling,          only:write_options_cooling
@@ -108,7 +108,8 @@ subroutine write_infile(infile,logfile,evfile,dumpfile,iwritein,iprint)
  call write_inopt(hfact,'hfact','h in units of particle spacing [h = hfact*n^(-1/3)]',iwritein)
  call write_inopt(tolh,'tolh','tolerance on h-n iterations',iwritein,exp=.true.)
 
- call write_options_shock_capturing(iwritein)
+ ! in GR energy variable is an entropy, so ishock_heating=0 also switches off conductivity
+ call write_options_shock_capturing(iwritein,use_conductivity=.not.(gr .and. ishock_heating == 0))
  call write_options_damping(iwritein)
  !
  ! thermodynamics
@@ -165,7 +166,7 @@ end subroutine write_infile
 subroutine read_infile(infile,logfile,evfile,dumpfile)
  use io,           only:ireadin,iwritein,iprint,warn,die,error,fatal,id,master,fileprefix
  use infile_utils, only:open_db_from_file,close_db,inopts,check_and_unroll_infile
- use mpiutils,     only:bcast_mpi
+ use mpiutils,     only:bcast_mpi,barrier_mpi
  character(len=*), intent(inout) :: infile
  character(len=*), intent(out)   :: logfile,evfile,dumpfile
  character(len=*), parameter   :: label = 'read_infile'
@@ -177,7 +178,7 @@ subroutine read_infile(infile,logfile,evfile,dumpfile)
 
  ierr     = 0
  idot     = index(infile,'.in') - 1
- if (idot <= 1) idot = len_trim(infile)
+ if (idot < 1) idot = len_trim(infile)
  logfile    = infile(1:idot)//'01.log'
  dumpfile   = infile(1:idot)//'_00000.tmp'
  fileprefix = infile(1:idot)
@@ -192,7 +193,7 @@ subroutine read_infile(infile,logfile,evfile,dumpfile)
        dumpfilenew = trim(fileprefix)
        ! prefix is the string before the last underscore
        idot = index(dumpfilenew,'_',back=.true.) - 1
-       if (idot <= 1) idot = len_trim(dumpfilenew)
+       if (idot < 1) idot = len_trim(dumpfilenew)
        fileprefix = dumpfilenew(1:idot)
        ! set the infile name to prefix.in
        infile = trim(fileprefix)//'.in'
@@ -217,6 +218,7 @@ subroutine read_infile(infile,logfile,evfile,dumpfile)
 
  ! if the input file is not found, create a default one
  if (ierr /= 0) then
+    call barrier_mpi()  ! wait for all ranks to finish opening before writing
     if (id == master) then
        call error('Phantom','input file '//trim(infile)//' not found')
        if (adjustl(infile(1:1)) /= ' ') then
@@ -225,6 +227,7 @@ subroutine read_infile(infile,logfile,evfile,dumpfile)
           call write_infile(infilenew,logfile,evfile,dumpfile,iwritein,iprint)
        endif
     endif
+    call barrier_mpi()  ! wait for master to finish writing before aborting
     call die
  endif
 
@@ -258,6 +261,7 @@ subroutine read_infile(infile,logfile,evfile,dumpfile)
           write(*,"(/,a)") ' (try again using revised input file)'
        endif
     endif
+    call barrier_mpi()
     call die
  endif
 
@@ -375,7 +379,7 @@ function logfile2evfile(logfile) result(evfile)
  integer :: idot
 
  idot = index(logfile,'.log') - 1
- if (idot <= 1) idot = len_trim(logfile)
+ if (idot < 1) idot = len_trim(logfile)
  evfile  = logfile(1:idot)//'.ev'
 
 end function logfile2evfile

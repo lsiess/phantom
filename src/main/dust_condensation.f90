@@ -8,9 +8,9 @@ module dust_condensation
 !
 ! Dust formation routine : condensation method
 !
-! :References: None
+! :References: series of papers by Ferraroti & Gail (2000-2006) + Gail & Sedlmayr 1999, A&A
 !
-! :Owner: Orsola De Marco
+! :Owner: Lionel Siess
 !
 ! :Runtime parameters: None
 !
@@ -129,16 +129,16 @@ subroutine dust_growth_condensation(T,rho_cgs,dt,wind_CO_ratio,fol,fqu,fpy,fir,f
  real, intent(out), optional :: abund(ncols)
  real, intent(in), optional  :: pressure_cgs
  real :: Vth_SiO, Vth_Mg, Vth_H2O, Vth_ir, Vth_Si2C, Vth_carb, Vth_C2H2
- real :: pv_ir, pv_SiO, pv_Mg, pv_H2O, pv_carb, pv_Si2C
+ !real :: pv_ir, pv_SiO, pv_Mg, pv_H2O, pv_carb, pv_Si2C, fol, kappa_dust
+ !real :: fol_dec, fqu_dec ,fpy_dec, fir_dec ,fsc_dec, fcarb_dec
+ real :: Jdec_ol, Jdec_qu, Jdec_py, Jdec_ir, Jdec_sc, Jdec_carb
  real :: Jgr_SiO_ol, Jgr_Mg_ol, Jgr_H2O_ol, Jgr_SiO_qu, Jgr_Mg_qu, Jgr_H2O_qu, Jgr_SiO_py, Jgr_Mg_py, Jgr_H2O_py
  real :: Jgr_ol,  Jgr_qu,  Jgr_py,  Jgr_ir,  Jgr_sc,  Jgr_carb
- real :: Jdec_ol, Jdec_qu, Jdec_py, Jdec_ir, Jdec_sc, Jdec_carb
  real :: kappa_ol,kappa_qu,kappa_py,kappa_ir,kappa_sc,kappa_carb
- real :: fol_dec, fqu_dec ,fpy_dec, fir_dec ,fsc_dec, fcarb_dec
- real :: P_H2, P_Si, kT, S_ol, S_qu, S_py, S_ir, S_sc, S_carb, fac !fol, kappa_dust
+ real :: P_H2, P_Si, kT, S_ol, S_qu, S_py, S_ir, S_sc, S_carb, fac
  real :: fol_max, fpy_max, fqu_max, G_ol, G_py, G_qu
  real :: abundance(ncols)
- logical :: ok
+ !logical :: ok
  !root solver parameters
  real, parameter :: tol_rel = 1.0d-7 ! reasonable for double precision
  integer, parameter :: max_iter = 100
@@ -198,38 +198,74 @@ subroutine dust_growth_condensation(T,rho_cgs,dt,wind_CO_ratio,fol,fqu,fpy,fir,f
  G_qu = P_H2    / (calc_Kp(coefficients(:,2),T) * pH_tot**2) !for Quartz
  G_py = P_H2**2 / (calc_Kp(coefficients(:,3),T) * pH_tot**4) !for Pyroxene
 
- !determine degree of condensation fol, fqu, fpy
- ! to prevent overflow
- if (T > 3500.) then
-    fol_dec   = 0.
-    fqu_dec   = 0.
-    fpy_dec   = 0.
- else
-    call solve_olivine (eps(iMg), eps(iOx), eps(iC), eps(iSi), G_ol, tol_rel, max_iter, fol_dec, ok)
-    !print *, 'G_qu = ', G_qu, eps(iMg), eps(iOx), eps(iC), eps(iSi)
-    call solve_quartz  (eps(iMg), eps(iOx), eps(iC), eps(iSi), G_qu, tol_rel, max_iter, fqu_dec, ok)
-    !print *, 'fqu_dec = ', fqu_dec
-    call solve_pyroxene(eps(iMg), eps(iOx), eps(iC), eps(iSi), G_py, tol_rel, max_iter, fpy_dec, ok)
- endif
 
- fol_dec   = min(1., max(0., fol_dec))
- fqu_dec   = min(1. ,max(0., fqu_dec))
- fpy_dec   = min(1., max(0., fpy_dec))
- fir_dec   = min(1., max(0., 1.- 1./(calc_Kp(coefficients(:,4),T) * eps(iFe) * pH_tot)))     !For Iron
- fsc_dec   = min(1., max(0., 1.- P_Si / (calc_Kp(coefficients(:,5),T) * eps(iSi) * pH_tot))) !For SiC
- fcarb_dec = min(1., max(0., 1.-1./wind_CO_ratio-2.*P_H2/(calc_Kp(coefficients(:,6),T)*eps(iC)*pH_tot)))
 
- ! Luis code - wrong
- !if (Jgr_ol == Jgr_SiO_ol) then ! JgrSiO < JgrMg and JgrSiO < JgrH2O
- !   pv_SiO = max(0., (1.-fol_dec) * eps(iSi) * pH_tot) !Check units
- !   Jdec_ol = alpha_ol * Vth_SiO * pv_SiO *patm / kT !patm to have cgs units
- !elseif (Jgr_ol == 0.5*Jgr_Mg_ol) then
- !   pv_Mg = max(0., (eps(iMg) - 2.0*fol_dec*eps(iSi))*pH_tot)
- !   Jdec_ol = alpha_ol * Vth_Mg * pv_Mg *patm / kT !patm to have cgs units
- !else
- !   pv_H2O = max(0.,(eps(iOx)-eps(iC)-(1.0+3.0*fol_dec)*eps(iSi))*pH_tot)
- !   Jdec_ol = alpha_ol * Vth_H2O * pv_H2O * patm / kT  !patm to have cgs units
- !endif
+!!!!      TO_BE_REMOVED_OLD_IMPLEMENTATION
+
+
+ ! !determine degree of condensation fol, fqu, fpy
+ ! ! to prevent overflow
+ ! if (T > 3500.) then
+ !    fol_dec   = 0.
+ !    fqu_dec   = 0.
+ !    fpy_dec   = 0.
+ ! else
+ !    call solve_olivine (eps(iMg), eps(iOx), eps(iC), eps(iSi), G_ol, tol_rel, max_iter, fol_dec, ok)
+ !    !print *, 'G_qu = ', G_qu, eps(iMg), eps(iOx), eps(iC), eps(iSi)
+ !    call solve_quartz  (eps(iMg), eps(iOx), eps(iC), eps(iSi), G_qu, tol_rel, max_iter, fqu_dec, ok)
+ !    !print *, 'fqu_dec = ', fqu_dec
+ !    call solve_pyroxene(eps(iMg), eps(iOx), eps(iC), eps(iSi), G_py, tol_rel, max_iter, fpy_dec, ok)
+ ! endif
+
+ ! fol_dec   = min(1., max(0., fol_dec))
+ ! fqu_dec   = min(1. ,max(0., fqu_dec))
+ ! fpy_dec   = min(1., max(0., fpy_dec))
+ ! fir_dec   = min(1., max(0., 1.- 1./(calc_Kp(coefficients(:,4),T) * eps(iFe) * pH_tot)))     !For Iron
+ ! fsc_dec   = min(1., max(0., 1.- P_Si / (calc_Kp(coefficients(:,5),T) * eps(iSi) * pH_tot))) !For SiC
+ ! fcarb_dec = min(1., max(0., 1.-1./wind_CO_ratio-2.*P_H2/(calc_Kp(coefficients(:,6),T)*eps(iC)*pH_tot)))
+
+ ! ! Luis code - wrong
+ ! if (Jgr_ol == Jgr_SiO_ol) then ! JgrSiO < JgrMg and JgrSiO < JgrH2O
+ !    pv_SiO = max(0., (1.-fol_dec) * eps(iSi) * pH_tot) !Check units
+ !    Jdec_ol = alpha_ol * Vth_SiO * pv_SiO *patm / kT !patm to have cgs units
+ ! elseif (Jgr_ol == 0.5*Jgr_Mg_ol) then
+ !    pv_Mg = max(0., (eps(iMg) - 2.0*fol_dec*eps(iSi))*pH_tot)
+ !    Jdec_ol = alpha_ol * Vth_Mg * pv_Mg *patm / kT !patm to have cgs units
+ ! else
+ !    pv_H2O = max(0.,(eps(iOx)-eps(iC)-(1.0+3.0*fol_dec)*eps(iSi))*pH_tot)
+ !    Jdec_ol = alpha_ol * Vth_H2O * pv_H2O * patm / kT  !patm to have cgs units
+ ! endif
+
+ ! if (Jgr_qu == Jgr_SiO_qu) then
+ !    pv_SiO = max(0., (1.-fqu_dec)*eps(iSi)* pH_tot)
+ !    Jdec_qu = alpha_qu * Vth_SiO * pv_SiO *patm / kT !!patm to have cgs units
+ ! else
+ !    pv_H2O = max(0.,(eps(iOx)-eps(iC)-(1.0+fqu_dec)*eps(iSi))*pH_tot)
+ !    Jdec_qu = alpha_qu * Vth_H2O * pv_H2O *patm / kT  !patm to have cgs units
+ ! endif
+
+ ! if (Jgr_py == Jgr_SiO_py) then
+ !    pv_SiO = max(0.,(1.-fpy_dec)*eps(iSi)* pH_tot)
+ !    Jdec_py = alpha_py * Vth_SiO * pv_SiO *patm / kT  !!patm to have cgs units
+ ! elseif (Jgr_py == 0.5*Jgr_H2O_py) then
+ !    pv_H2O = max(0., (eps(iOx)-eps(iC)-(1.0+2.0*fpy_dec)*eps(iSi))*pH_tot)
+ !    Jdec_py = alpha_py * Vth_H2O * pv_H2O *patm / kT  !patm to have cgs units
+ ! else
+ !    pv_Mg = max(0., (eps(iMg) - fpy_dec*eps(iSi))*pH_tot)
+ !    Jdec_py = alpha_py * Vth_Mg * pv_Mg *patm / kT   !patm to have cgs units
+ ! endif
+
+ ! pv_ir   = max(0.,  (1.-fir_dec)  * eps(iFe) * pH_tot)
+ ! pv_Si2C = max(0.,  (1.-fsc_dec)  * eps(iSi) * pH_tot)  !0.5 *
+ ! pv_carb = max(0., ((1.-fcarb_dec)* eps(iC)-eps(iOx)) * pH_tot)
+
+ ! Jdec_ir = alpha_ir * Vth_ir * pv_ir *patm / kT   !!patm to have cgs units
+ ! Jdec_sc = 2.0* alpha_sc * Vth_Si2C * pv_Si2C *patm / kT  !eqn. 21 of Ferrarotti & Gail 2002
+ ! Jdec_carb = alpha_carb * Vth_carb * pv_carb *patm / kT
+
+
+
+
 
  ! Olivine : 2Mg + SiO + 3H20 -> Mg2SiO4_s
  S_ol = calc_kp(coefficients(:,iol),T) * &
@@ -242,14 +278,6 @@ subroutine dust_growth_condensation(T,rho_cgs,dt,wind_CO_ratio,fol,fqu,fpy,fir,f
     Jdec_ol = 0.
  endif
 
- !if (Jgr_qu == Jgr_SiO_qu) then
- !   pv_SiO = max(0., (1.-fqu_dec)*eps(iSi)* pH_tot)
- !   Jdec_qu = alpha_qu * Vth_SiO * pv_SiO *patm / kT !!patm to have cgs units
- !else
- !   pv_H2O = max(0.,(eps(iOx)-eps(iC)-(1.0+fqu_dec)*eps(iSi))*pH_tot)
- !   Jdec_qu = alpha_qu * Vth_H2O * pv_H2O *patm / kT  !patm to have cgs units
- !endif
-
  ! quartz : SiO + H2O -> SiO2_s
  S_qu = calc_kp(coefficients(:,iqu),T) * &
          (abundance(iSiO) * fac) * &
@@ -259,17 +287,6 @@ subroutine dust_growth_condensation(T,rho_cgs,dt,wind_CO_ratio,fol,fqu,fpy,fir,f
  else
     Jdec_qu = 0.
  endif
-
- !if (Jgr_py == Jgr_SiO_py) then
- !   pv_SiO = max(0.,(1.-fpy_dec)*eps(iSi)* pH_tot)
- !   Jdec_py = alpha_py * Vth_SiO * pv_SiO *patm / kT  !!patm to have cgs units
- !elseif (Jgr_py == 0.5*Jgr_H2O_py) then
- !   pv_H2O = max(0., (eps(iOx)-eps(iC)-(1.0+2.0*fpy_dec)*eps(iSi))*pH_tot)
- !   Jdec_py = alpha_py * Vth_H2O * pv_H2O *patm / kT  !patm to have cgs units
- !else
- !   pv_Mg = max(0., (eps(iMg) - fpy_dec*eps(iSi))*pH_tot)
- !   Jdec_py = alpha_py * Vth_Mg * pv_Mg *patm / kT   !patm to have cgs units
- !endif
 
  ! pyroxene : Mg + SiO + 2H2O -> Mg2SiO3_s + 2H2
  S_py = calc_kp(coefficients(:,ipy),T) * &
@@ -281,14 +298,6 @@ subroutine dust_growth_condensation(T,rho_cgs,dt,wind_CO_ratio,fol,fqu,fpy,fir,f
  else
     Jdec_py = 0.0d0
  endif
-
- !pv_ir   = max(0.,  (1.-fir_dec)  * eps(iFe) * pH_tot)
- !pv_Si2C = max(0.,  (1.-fsc_dec)  * eps(iSi) * pH_tot)  !0.5 *
- !pv_carb = max(0., ((1.-fcarb_dec)* eps(iC)-eps(iOx)) * pH_tot)
-
- !Jdec_ir = alpha_ir * Vth_ir * pv_ir *patm / kT   !!patm to have cgs units
- !Jdec_sc = 2.0* alpha_sc * Vth_Si2C * pv_Si2C *patm / kT  !eqn. 21 of Ferrarotti & Gail 2002
- !Jdec_carb = alpha_carb * Vth_carb * pv_carb *patm / kT
 
  !iron : Fe -> Fe_s
  S_ir = calc_kp(coefficients(:,iron), T) * (abundance(iaFe) * fac)

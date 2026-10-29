@@ -413,7 +413,7 @@ ifeq ($(SETUP), grbondi)
 endif
 ifeq ($(SETUP), grbondi-inject)
 #   Bondi accretion flow in GR with particle injection
-    SETUPFILE= setup_bondiinject.F90
+    SETUPFILE= setup_bondiinject.f90
     SRCINJECT=bondiexact_gr.f90 inject_bondi.f90
     KNOWN_SETUP=yes
     KERNEL=quintic
@@ -519,7 +519,6 @@ ifeq ($(SETUP), srshock)
     GR=yes
     METRIC=minkowski
     KNOWN_SETUP=yes
-    CONST_AV=yes
 endif
 
 ifeq ($(SETUP), testparticles)
@@ -682,7 +681,6 @@ ifeq ($(SETUP), srblast)
     METRIC=minkowski
     KERNEL=quintic
     KNOWN_SETUP=yes
-    CONST_AV=yes
 endif
 
 ifeq ($(SETUP), blob)
@@ -791,7 +789,7 @@ ifeq ($(SETUP), cluster)
 endif
 
 ifeq ($(SETUP), h2region)
-#   HII region(s) in a uniform cloud 
+#   HII region(s) in a uniform cloud
     SETUPFILE= setup_HII.f90
     GRAVITY=no
     IND_TIMESTEPS=yes
@@ -896,7 +894,7 @@ endif
 ifeq ($(SETUP), ismwind)
 #   wind setup with dust nucleation and ISM cooling
     SETUPFILE= setup_wind.f90
-    ANALYSIS= analysis_cooling.F90
+    ANALYSIS= analysis_cooling.f90
     H2CHEM=yes
     SINK_RADIATION=yes
     DUST_NUCLEATION=yes
@@ -1055,6 +1053,18 @@ ifeq ($(SETUP), streamerdisc)
     SRCINJECT= inject_streamer_pineda.f90
 endif
 
+ifeq ($(SETUP), infalltwophase)
+#   disc setup with optional periodic warm atomic neutral reservoir and infall injection
+    DISC_VISCOSITY=yes
+    PERIODIC=yes
+    SETUPFILE= setup_disc.f90
+    ANALYSIS= analysis_disc.f90
+    ISOTHERMAL=yes
+    IND_TIMESTEPS=yes
+    KNOWN_SETUP=yes
+    SRCINJECT= inject_streamer_pineda.f90
+endif
+
 ifeq ($(SETUP), isosgstream)
 #   isothermal self-gravitating disc with streamer of material
     SETUPFILE= setup_disc.f90
@@ -1149,8 +1159,12 @@ ifeq ($(SETUP), testgr)
 endif
 
 ifeq ($(SETUP), testapr)
-#   unit tests for apr
+#   unit tests for apr, including dust as a mixture and as particles
     APR=yes
+    MHD=yes
+    DUST=yes
+    MAXDUSTSMALL=3
+    MAXDUSTLARGE=3
     KNOWN_SETUP=yes
     PERIODIC=yes
 endif

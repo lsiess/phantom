@@ -29,8 +29,8 @@ module setstar
 !   - write_rho_to_file : *write density profile(s) to file*
 !
 ! :Dependencies: centreofmass, dim, eos, eos_piecewise, extern_densprofile,
-!   infile_utils, io, mpiutils, part, physcon, prompting, relaxstar,
-!   setstar_utils, unifdis, units, vectorutils
+!   infile_utils, io, mpiutils, options, part, physcon, prompting,
+!   relaxstar, setstar_utils, unifdis, units, vectorutils
 !
  use setstar_utils, only:ikepler,imesa,iaton,ibpwpoly,ipoly,iuniform,ifromfile,ievrard,&
                          need_polyk,need_mu
@@ -47,6 +47,7 @@ module setstar
     integer :: isofteningopt
     integer :: np
     character(len=20) :: m,r,rcore,mcore,lcore,hsoft,hacc
+    character(len=20) :: spin_period = '0 hr'
     real :: r_code,m_code,rcore_code,mcore_code,hsoft_code,lcore_code,hacc_code
     real :: ui_coef
     real :: polyk
@@ -95,6 +96,7 @@ subroutine set_defaults_star(star)
  star%ui_coef     = 0.05
  star%polyk       = 0.
  star%initialtemp = 1.0e7
+ star%spin_period = '0 hr'
  star%isoftcore   = 0
  star%isinkcore   = .false.
  star%hsoft          = '1.0'
@@ -160,13 +162,16 @@ end subroutine check_and_convert
 !  utility routine to convert the stellar properties to code units
 !+
 !--------------------------------------------------------------------------
-subroutine get_star_properties_in_code_units(star,rstar,mstar,rcore,mcore,hsoft,lcore,hacc,nerr)
+subroutine get_star_properties_in_code_units(star,rstar,mstar,rcore,mcore,hsoft,lcore,hacc,nerr,omega)
+ use, intrinsic :: ieee_arithmetic, only:ieee_is_finite
  use units,   only:is_density_unit
  use physcon, only:pi
+ use io,      only:error
  type(star_t), intent(in)    :: star
  real,         intent(out)   :: rstar,mstar,rcore,mcore,hsoft,lcore,hacc
  integer,      intent(inout) :: nerr
- real :: rho0
+ real, optional, intent(out) :: omega
+ real :: rho0,period,angular_speed
 
  call check_and_convert(star%r,'radius','length',rstar,nerr)
  if (is_density_unit(star%m)) then
@@ -180,6 +185,26 @@ subroutine get_star_properties_in_code_units(star,rstar,mstar,rcore,mcore,hsoft,
  call check_and_convert(star%hsoft,'core softening','length',hsoft,nerr)
  call check_and_convert(star%lcore,'core luminosity','luminosity',lcore,nerr)
  call check_and_convert(star%hacc,'accretion radius','length',hacc,nerr)
+ call check_and_convert(star%spin_period,'spin period','time',period,nerr)
+ if (nerr /= 0) then
+    if (present(omega)) omega = 0.
+    return
+ endif
+ angular_speed = 0.
+ if (.not.ieee_is_finite(period)) then
+    call error('set_star','spin period must be finite')
+    nerr = nerr + 1
+ elseif (abs(period) > 2.*pi/huge(period)) then
+    angular_speed = 2.*pi/period
+    if (.not.ieee_is_finite(angular_speed)) then
+       call error('set_star','spin period is too small')
+       nerr = nerr + 1
+    endif
+ elseif (period /= 0.) then
+    call error('set_star','spin period is too small')
+    nerr = nerr + 1
+ endif
+ if (present(omega)) omega = angular_speed
 
 end subroutine get_star_properties_in_code_units
 
@@ -208,6 +233,7 @@ subroutine set_star(id,master,star,xyzh,vxyzu,eos_vars,rad,&
  use physcon,            only:pi
  use units,              only:umass,udist,utime,unit_density
  use mpiutils,           only:reduceall_mpi
+ use options,            only:iexternalforce
  type(star_t),    intent(inout) :: star
  integer,         intent(in)    :: id,master
  integer,         intent(inout) :: npart,npartoftype(:),nptmass
@@ -232,7 +258,7 @@ subroutine set_star(id,master,star,xyzh,vxyzu,eos_vars,rad,&
  real, allocatable              :: r(:),den(:),pres(:),temp(:),en(:),mtab(:),Xfrac(:),Yfrac(:),mu(:)
  real, allocatable              :: composition(:,:)
  real                           :: rmin,rhocentre,rmserr,en_err
- real                           :: mstar
+ real                           :: mstar,omega
  character(len=20), allocatable :: comp_label(:)
  character(len=30)              :: lattice  ! The lattice type if stretchmap is used
  logical                        :: use_exactN,composition_exists,write_dumps
@@ -251,7 +277,15 @@ subroutine set_star(id,master,star,xyzh,vxyzu,eos_vars,rad,&
  !
  nerr = 0
  call get_star_properties_in_code_units(star,star%r_code,mstar,star%rcore_code,star%mcore_code,&
-                                        star%hsoft_code,star%lcore_code,star%hacc_code,nerr)
+                                        star%hsoft_code,star%lcore_code,star%hacc_code,nerr,omega)
+ if (omega /= 0. .and. .not.relax) then
+    call error('set_star','non-zero spin_period requires automatic relaxation (relax=T)')
+    nerr = nerr + 1
+ endif
+ if (omega /= 0. .and. (gr .or. .not.gravity .or. iexternalforce > 0)) then
+    call error('set_star','rotating relaxation requires Newtonian gravity without external forces')
+    nerr = nerr + 1
+ endif
  if (nerr /= 0) then
     ierr = ierr_part
     return
@@ -349,12 +383,12 @@ subroutine set_star(id,master,star,xyzh,vxyzu,eos_vars,rad,&
           call relax_star(npts,den,pres,temp,r,npart,xyzh,use_var_comp,Xfrac,Yfrac,&
                           mu,iptmass_core,xyzmh_ptmass,ierr_relax,&
                           npin=npart_old,label=star%label,&
-                          write_dumps=write_dumps,density_error=rmserr,energy_error=en_err,mtab=mtab)
+                          write_dumps=write_dumps,density_error=rmserr,energy_error=en_err,mtab=mtab,omega=omega)
        else
           call relax_star(npts,den,pres,temp,r,npart,xyzh,use_var_comp,Xfrac,Yfrac,&
                           mu,iptmass_core,xyzmh_ptmass,ierr_relax,&
                           npin=npart_old,label=star%label,&
-                          write_dumps=write_dumps,density_error=rmserr,energy_error=en_err)
+                          write_dumps=write_dumps,density_error=rmserr,energy_error=en_err,omega=omega)
        endif
 
        if (present(density_error)) density_error = rmserr
@@ -562,8 +596,9 @@ subroutine shift_star(npart,npartoftype,xyz,vxyz,x0,v0,itype,corotate)
     xyz(1:3,i) = xyz(1:3,i) + x0(:)
     vxyz(1:3,i) = vxyz(1:3,i) + v0(:)
     if (add_spin) then
-       call cross_product3D(xyz(1:3,i),omega,vspin)
-       vxyz(1:3,i) = vxyz(1:3,i) + (vspin(1:3)-v0)
+       ! rigid rotation about the centre of the star: v = v0 + omega x (r - x0)
+       call cross_product3D(omega,xyz(1:3,i)-x0(:),vspin)
+       vxyz(1:3,i) = vxyz(1:3,i) + vspin(1:3)
     endif
  enddo over_parts
 
@@ -595,6 +630,7 @@ subroutine shift_stars(nstar,star,x0,v0,&
 
  nptmass_in = nptmass
  ncores = 0
+ ierr = 0
  do i=1,nstar
     if (star(i)%iprofile > 0) then
        call shift_star(npart,npartoftype,xyzh,vxyzu,x0=x0(1:3,i),&
@@ -908,6 +944,7 @@ subroutine write_options_star(star,iunit,label)
          'specific internal energy (units of GM/R)',iunit)
  case(0)
     call write_inopt(star%hacc,'hacc'//trim(c),'accretion radius for sink (=0.0 for softened potential)',iunit)
+    ierr = 0
     call check_and_convert(star%hacc,'hacc','length',hacc,ierr)
     call check_and_convert(star%hsoft,'hsoft','length',hsoft,ierr)
     if (hacc < tiny(hacc) .or. hsoft > 0.) then
@@ -916,6 +953,8 @@ subroutine write_options_star(star,iunit,label)
  end select
 
  if (need_polyk(star%iprofile)) call write_inopt(star%polyk,'polyk'//trim(c),'polytropic constant (cs^2 if isothermal)',iunit)
+ if (star%iprofile > 0) call write_inopt(star%spin_period,'spin_period'//trim(c),&
+                            'signed spin period about z (0=off, e.g. -24 hr)',iunit)
 
  if (star%iprofile > 0 .and. (len_trim(c)==0 .or. c(1:1)=='1')) then
     call write_inopt(star%np,'np'//trim(c),'number of particles',iunit)
@@ -932,7 +971,7 @@ subroutine read_options_star(star,db,nerr,label)
  use infile_utils,  only:inopts,read_inopt
  use setstar_utils, only:need_inputprofile,need_rstar,nprofile_opts
  type(star_t),              intent(inout) :: star
- type(inopts), allocatable, intent(inout) :: db(:)
+ type(inopts),              intent(inout) :: db(:)
  integer,                   intent(inout) :: nerr
  character(len=*),          intent(in), optional :: label
  character(len=10) :: c
@@ -952,6 +991,8 @@ subroutine read_options_star(star,db,nerr,label)
  if (need_inputprofile(star%iprofile)) then
     call read_inopt(star%input_profile,'input_profile'//trim(c),db,errcount=nerr)
  endif
+ if (any(db%tag=='spin_period'//trim(c))) &
+    call read_inopt(star%spin_period,'spin_period'//trim(c),db,errcount=nerr)
 
  ! resolution
  if (star%iprofile > 0 .and. (len_trim(c)==0 .or. c(1:1)=='1')) then
@@ -1076,7 +1117,7 @@ subroutine read_options_stars(star,ieos,relax,write_rho_to_file,db,nerr,nstar)
  use relaxstar,    only:read_options_relax
  use infile_utils, only:inopts,read_inopt,int_to_string
  type(star_t),              intent(inout) :: star(:) ! inout because can set default options manually in calling routine
- type(inopts), allocatable, intent(inout) :: db(:)
+ type(inopts),              intent(inout) :: db(:)
  integer,                   intent(inout) :: ieos
  logical,                   intent(out)   :: relax,write_rho_to_file
  integer,                   intent(inout) :: nerr
@@ -1170,7 +1211,7 @@ subroutine read_options_stars_eos(nstars,star,label,ieos,db,nerr)
  integer,                   intent(in)    :: nstars
  type(star_t),              intent(inout) :: star(nstars)
  character(len=*),          intent(in)    :: label(nstars)
- type(inopts), allocatable, intent(inout) :: db(:)
+ type(inopts),              intent(inout) :: db(:)
  integer,                   intent(inout) :: ieos
  integer,                   intent(inout) :: nerr
  integer :: i

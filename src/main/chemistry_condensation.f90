@@ -10,7 +10,7 @@ module chemistry_condensation
 !
 ! :References: None
 !
-! :Owner: Orsola De Marco
+! :Owner: Lionel Siess
 !
 ! :Runtime parameters: None
 !
