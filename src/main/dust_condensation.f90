@@ -18,15 +18,15 @@ module dust_condensation
 !   physcon, units
 !
 
-   use physcon, only:atomic_mass_unit
+ use physcon, only:atomic_mass_unit
 
-   implicit none
+ implicit none
 
-   public :: evolve_condensation,dust_growth_condensation
+ public :: evolve_condensation,dust_growth_condensation
 
-   private
-   !Coefficients for the calculation of the free entalpy (deltaG), from table A4.1, Gail & Sedlmayr, p651
-   real, parameter :: coefficients(5,6) = reshape([&
+ private
+ !Coefficients for the calculation of the free entalpy (deltaG), from table A4.1, Gail & Sedlmayr, p651
+ real, parameter :: coefficients(5,6) = reshape([&
       3.14987E+05, -3.92876E+06, 1.03657E+03, -1.31876E-02, 0.0d+00, &      !Olivine
       0.00000E+00, -1.86046E+06, 4.54398E+02, -2.75999E-03, 0.0d+00, &      !Quartz
       3.66094E+04, -2.89963E+06, 7.44735E+02, -5.92064E-03, 0.0d+00, &      !Pyroxene
@@ -36,34 +36,34 @@ module dust_condensation
       shape(coefficients))
 
 !  dust species indices
-   integer, parameter :: iol=1, iqu=2, ipy=3, iron=4, isc=5, icarb=6
+ integer, parameter :: iol=1, iqu=2, ipy=3, iron=4, isc=5, icarb=6
 
 !sticking coefficients : Gail & Sedlmayr Book table 12.1, p337
-   real, parameter ::  &
+ real, parameter ::  &
       alpha_ol = 0.1,  &
       alpha_qu = 0.05, &
       alpha_py = 0.2,  &
       alpha_ir = 1.0,  &!0.9
       alpha_sc = 0.8,  &
       alpha_carb = 0.3
-   !atomic masses, in cgs, from Gail & Sedlmayr Book table 12.1, p337
-   real, parameter :: &
+ !atomic masses, in cgs, from Gail & Sedlmayr Book table 12.1, p337
+ real, parameter :: &
       A_ol = 140.694, &
       A_qu = 60.085,  &
       A_py = 100.389, &
       A_ir = 55.845,  &
       A_sc = 40.10,   &
       A_carb = 12.01
-   !density of dust species, in cgs, from Gail & Sedlmayr Book table 12.1, p337
-   real, parameter :: &
+ !density of dust species, in cgs, from Gail & Sedlmayr Book table 12.1, p337
+ real, parameter :: &
       rho_ol = 3.21,  &
       rho_qu = 2.65,  &
       rho_py = 3.19,  &
       rho_ir = 7.87,  &
       rho_sc = 3.21,  &
       rho_carb = 2.20
-   !volume of monomers, in cgs, from Gail & Sedlmayr Book table 12.1, p337
-   real, parameter :: &
+ !volume of monomers, in cgs, from Gail & Sedlmayr Book table 12.1, p337
+ real, parameter :: &
       Vo_ol = A_ol * atomic_mass_unit / rho_ol, &
       Vo_qu = A_qu * atomic_mass_unit / rho_qu, &
       Vo_py = A_py * atomic_mass_unit / rho_py, &
@@ -71,7 +71,7 @@ module dust_condensation
       Vo_sc = A_sc * atomic_mass_unit / rho_sc, &
       Vo_carb = A_carb * atomic_mass_unit / rho_carb
 
-   real, parameter :: &
+ real, parameter :: &
       m_SiO  = 44.09*atomic_mass_unit,  &!Si = 28.09  amu, Ox = 16.00 amu
       m_Mg   = 24.31*atomic_mass_unit,  &!Mg = 24.305 amu
       m_H2O  = 18.02*atomic_mass_unit,  &!Ox = 16.00  amu
@@ -88,450 +88,450 @@ contains
 !  set particle dust properties (particle's call)
 !+
 !-----------------------------------------------------------------------
-   subroutine evolve_condensation(dtsph, xyzh, u, dust_prop, rho)
-      use dust_formation, only:wind_CO_ratio
-      use units,  only:utime,unit_density
-      use eos,    only:ieos,get_temperature
-      use part,   only:icmu,icgamma,ickappa,ifol,ifqu,ifpy,ifir,ifsc,ifcarb,irol,irqu,irpy,irir,irsc,ircarb,iJgr,iJdec
+subroutine evolve_condensation(dtsph, xyzh, u, dust_prop, rho)
+ use dust_formation, only:wind_CO_ratio
+ use units,  only:utime,unit_density
+ use eos,    only:ieos,get_temperature
+ use part,   only:icmu,icgamma,ickappa,ifol,ifqu,ifpy,ifir,ifsc,ifcarb,irol,irqu,irpy,irir,irsc,ircarb,iJgr,iJdec
 
-      real,    intent(in) :: dtsph,rho,u,xyzh(4)
-      real,    intent(inout) :: dust_prop(:)
+ real,    intent(in) :: dtsph,rho,u,xyzh(4)
+ real,    intent(inout) :: dust_prop(:)
 
-      real :: dt_cgs,T,rho_cgs,pH_tot,vxyzui(4)
+ real :: dt_cgs,T,rho_cgs,pH_tot,vxyzui(4)
 
-      dt_cgs    = dtsph* utime
-      rho_cgs   = rho*unit_density
-      vxyzui(4) = u
-      T         = get_temperature(ieos,xyzh,rho,vxyzui,gammai=dust_prop(icgamma),mui=dust_prop(icmu))
-      call dust_growth_condensation(T, rho_cgs, dt_cgs,wind_CO_ratio,&
+ dt_cgs    = dtsph* utime
+ rho_cgs   = rho*unit_density
+ vxyzui(4) = u
+ T         = get_temperature(ieos,xyzh,rho,vxyzui,gammai=dust_prop(icgamma),mui=dust_prop(icmu))
+ call dust_growth_condensation(T, rho_cgs, dt_cgs,wind_CO_ratio,&
          dust_prop(ifol),dust_prop(ifqu),dust_prop(ifpy),dust_prop(ifir),dust_prop(ifsc),dust_prop(ifcarb),&
          dust_prop(irol),dust_prop(irqu),dust_prop(irpy),dust_prop(irir),dust_prop(irsc),dust_prop(ircarb),&
          dust_prop(ickappa),dust_prop(icmu),dust_prop(icgamma),pH_tot,dust_prop(iJgr),dust_prop(iJdec))
 
-   end subroutine evolve_condensation
+end subroutine evolve_condensation
 
 !-----------------------------------------------------------------------
 !+
 !  set particle dust properties (particle's call)
 !+
 !-----------------------------------------------------------------------
-   subroutine dust_growth_condensation(T,rho_cgs,dt,wind_CO_ratio,fol,fqu,fpy,fir,fsc,fcarb,&
+subroutine dust_growth_condensation(T,rho_cgs,dt,wind_CO_ratio,fol,fqu,fpy,fir,fsc,fcarb,&
       r_ol,r_qu,r_py,r_ir,r_sc,r_carb,kappa_dust,mu,gamma,pH_tot,Jgr,Jdec,abund,pressure_cgs)
 ! all pressures are in bar unless specified
-      use physcon, only:patm,kboltz,pi,twopi,fourpi
-      use chemistry_condensation, only:network, iSiO, iH2O, iH2, eps, &
+ use physcon, only:patm,kboltz,pi,twopi,fourpi
+ use chemistry_condensation, only:network, iSiO, iH2O, iH2, eps, &
          iH,iHe,iC,iOx,iN,iSi,iS,iFe,iTi,iMg,iSi2C,iC2H2,mass_per_H,ncols,iaMg,iaC,iaFe,iaSi
-      use dust_formation, only:kappa_gas,a_init_dust
-      real, intent(in)           :: dt,wind_CO_ratio
-      real, intent(inout)        :: T,rho_cgs,fol,fqu,fpy,fir,fsc,fcarb,r_ol,r_qu,r_py,r_ir,r_sc,r_carb,Jgr,Jdec
-      real, intent(out)          :: kappa_dust
-      real, intent(out)          :: mu,gamma,pH_tot
-      real, intent(out), optional :: abund(ncols)
-      real, intent(in), optional  :: pressure_cgs
-      real :: Vth_SiO, Vth_Mg, Vth_H2O, Vth_ir, Vth_Si2C, Vth_carb, Vth_C2H2
-      real :: pv_ir, pv_SiO, pv_Mg, pv_H2O, pv_carb, pv_Si2C
-      real :: Jgr_SiO_ol, Jgr_Mg_ol, Jgr_H2O_ol, Jgr_SiO_qu, Jgr_Mg_qu, Jgr_H2O_qu, Jgr_SiO_py, Jgr_Mg_py, Jgr_H2O_py
-      real :: Jgr_ol,  Jgr_qu,  Jgr_py,  Jgr_ir,  Jgr_sc,  Jgr_carb
-      real :: Jdec_ol, Jdec_qu, Jdec_py, Jdec_ir, Jdec_sc, Jdec_carb
-      real :: kappa_ol,kappa_qu,kappa_py,kappa_ir,kappa_sc,kappa_carb
-      real :: fol_dec, fqu_dec ,fpy_dec, fir_dec ,fsc_dec, fcarb_dec
-      real :: P_H2, P_Si, kT, S_ol, S_qu, S_py, S_ir, S_sc, S_carb, fac !fol, kappa_dust
-      real :: fol_max, fpy_max, fqu_max, G_ol, G_py, G_qu
-      real :: abundance(ncols)
-      logical :: ok
-      !root solver parameters
-      real, parameter :: tol_rel = 1.0d-7 ! reasonable for double precision
-      integer, parameter :: max_iter = 100
+ use dust_formation, only:kappa_gas,a_init_dust
+ real, intent(in)           :: dt,wind_CO_ratio
+ real, intent(inout)        :: T,rho_cgs,fol,fqu,fpy,fir,fsc,fcarb,r_ol,r_qu,r_py,r_ir,r_sc,r_carb,Jgr,Jdec
+ real, intent(out)          :: kappa_dust
+ real, intent(out)          :: mu,gamma,pH_tot
+ real, intent(out), optional :: abund(ncols)
+ real, intent(in), optional  :: pressure_cgs
+ real :: Vth_SiO, Vth_Mg, Vth_H2O, Vth_ir, Vth_Si2C, Vth_carb, Vth_C2H2
+ real :: pv_ir, pv_SiO, pv_Mg, pv_H2O, pv_carb, pv_Si2C
+ real :: Jgr_SiO_ol, Jgr_Mg_ol, Jgr_H2O_ol, Jgr_SiO_qu, Jgr_Mg_qu, Jgr_H2O_qu, Jgr_SiO_py, Jgr_Mg_py, Jgr_H2O_py
+ real :: Jgr_ol,  Jgr_qu,  Jgr_py,  Jgr_ir,  Jgr_sc,  Jgr_carb
+ real :: Jdec_ol, Jdec_qu, Jdec_py, Jdec_ir, Jdec_sc, Jdec_carb
+ real :: kappa_ol,kappa_qu,kappa_py,kappa_ir,kappa_sc,kappa_carb
+ real :: fol_dec, fqu_dec ,fpy_dec, fir_dec ,fsc_dec, fcarb_dec
+ real :: P_H2, P_Si, kT, S_ol, S_qu, S_py, S_ir, S_sc, S_carb, fac !fol, kappa_dust
+ real :: fol_max, fpy_max, fqu_max, G_ol, G_py, G_qu
+ real :: abundance(ncols)
+ logical :: ok
+ !root solver parameters
+ real, parameter :: tol_rel = 1.0d-7 ! reasonable for double precision
+ integer, parameter :: max_iter = 100
 
-      !XXX Aqui debo poner los valores de fol, fpy, fqu para restar las abundancias de Mg, H2O,
-      if (present(pressure_cgs)) then
-         call network(T,rho_cgs,mu,gamma,wind_CO_ratio,pH_tot,fol,fpy,fqu,fir,fsc,fcarb,abundance,pressure_cgs)
-      else
-         call network(T,rho_cgs,mu,gamma,wind_CO_ratio,pH_tot,fol,fpy,fqu,fir,fsc,fcarb,abundance)
-      endif
-      if (present(abund)) abund = abundance
+ !XXX Aqui debo poner los valores de fol, fpy, fqu para restar las abundancias de Mg, H2O,
+ if (present(pressure_cgs)) then
+    call network(T,rho_cgs,mu,gamma,wind_CO_ratio,pH_tot,fol,fpy,fqu,fir,fsc,fcarb,abundance,pressure_cgs)
+ else
+    call network(T,rho_cgs,mu,gamma,wind_CO_ratio,pH_tot,fol,fpy,fqu,fir,fsc,fcarb,abundance)
+ endif
+ if (present(abund)) abund = abundance
 
-      kT  = kboltz*T
-      fac = kT / patm !convert n (cm-3) -> p_bar (=fac*n)
+ kT  = kboltz*T
+ fac = kT / patm !convert n (cm-3) -> p_bar (=fac*n)
 
-      !velocities in cgs units
-      Vth_SiO   = sqrt(kT / twopi / m_SiO)
-      Vth_Mg    = sqrt(kT / twopi / m_Mg)
-      Vth_H2O   = sqrt(kT / twopi / m_H2O)
-      Vth_ir    = sqrt(kT / twopi / m_ir)
-      !Vth_Si   = sqrt(kT / twopi / m_Si)
-      Vth_C2H2  = sqrt(kT / twopi / m_C2H2)
-      Vth_Si2C  = sqrt(kT / twopi / m_Si2C)
-      !Vth_carb = sqrt(kT / twopi / m_carb) ! Orsola commented and uncommented Vth_C2H2
+ !velocities in cgs units
+ Vth_SiO   = sqrt(kT / twopi / m_SiO)
+ Vth_Mg    = sqrt(kT / twopi / m_Mg)
+ Vth_H2O   = sqrt(kT / twopi / m_H2O)
+ Vth_ir    = sqrt(kT / twopi / m_ir)
+ !Vth_Si   = sqrt(kT / twopi / m_Si)
+ Vth_C2H2  = sqrt(kT / twopi / m_C2H2)
+ Vth_Si2C  = sqrt(kT / twopi / m_Si2C)
+ !Vth_carb = sqrt(kT / twopi / m_carb) ! Orsola commented and uncommented Vth_C2H2
 
-      Jgr_SiO_ol = alpha_ol * abundance(iSiO) * Vth_SiO
-      Jgr_Mg_ol  = alpha_ol * abundance(iaMg) * Vth_Mg
-      Jgr_H2O_ol = alpha_ol * abundance(iH2O) * Vth_H2O
+ Jgr_SiO_ol = alpha_ol * abundance(iSiO) * Vth_SiO
+ Jgr_Mg_ol  = alpha_ol * abundance(iaMg) * Vth_Mg
+ Jgr_H2O_ol = alpha_ol * abundance(iH2O) * Vth_H2O
 
-      Jgr_SiO_qu = alpha_qu * abundance(iSiO)  * Vth_SiO
-      !Jgr_Mg_qu  = alpha_qu * abundance(iaMg) * Vth_Mg
-      Jgr_H2O_qu = alpha_qu * abundance(iH2O)  * Vth_H2O
+ Jgr_SiO_qu = alpha_qu * abundance(iSiO)  * Vth_SiO
+ !Jgr_Mg_qu  = alpha_qu * abundance(iaMg) * Vth_Mg
+ Jgr_H2O_qu = alpha_qu * abundance(iH2O)  * Vth_H2O
 
-      Jgr_SiO_py = alpha_py * abundance(iSiO) * Vth_SiO
-      Jgr_Mg_py  = alpha_py * abundance(iaMg) * Vth_Mg
-      Jgr_H2O_py = alpha_py * abundance(iH2O) * Vth_H2O
+ Jgr_SiO_py = alpha_py * abundance(iSiO) * Vth_SiO
+ Jgr_Mg_py  = alpha_py * abundance(iaMg) * Vth_Mg
+ Jgr_H2O_py = alpha_py * abundance(iH2O) * Vth_H2O
 
-      !Jgr_Si_sc = alpha_sc * abundance(iaSi) * Vth_Si
-      !Jgr_C2H2_sc = alpha_sc * abundance(iC2H2) * Vth_C2H2
+ !Jgr_Si_sc = alpha_sc * abundance(iaSi) * Vth_Si
+ !Jgr_C2H2_sc = alpha_sc * abundance(iC2H2) * Vth_C2H2
 
-      Jgr_ol = min(Jgr_SiO_ol, min(0.5*Jgr_Mg_ol, 0.333*Jgr_H2O_ol))
-      !Jgr_ol = Jgr_SiO_ol!, 0.333*Jgr_H2O_ol)
-      Jgr_py = min(Jgr_SiO_py, min(Jgr_Mg_py, 0.5*Jgr_H2O_py))
-      Jgr_qu = min(Jgr_SiO_qu, Jgr_H2O_qu)
-      Jgr_ir = alpha_ir * abundance(iaFe) * Vth_ir
-      !Jgr_sc = min(Jgr_Si_sc, Jgr_C2H2_sc)
-      Jgr_sc = alpha_sc * abundance(iSi2C) * Vth_Si2C
-      !Jgr_carb = alpha_carb * abundance(72) *Vth_carb !C = 72 in subroutine network
-      ! Above is wrong below is right: the abundnace of atomic C is tiny, because free C is locked into C2H2 which having 2 atoms of C needs a 2.
-      Jgr_carb = 2.0 * alpha_carb * abundance(iC2H2) * Vth_C2H2
+ Jgr_ol = min(Jgr_SiO_ol, min(0.5*Jgr_Mg_ol, 0.333*Jgr_H2O_ol))
+ !Jgr_ol = Jgr_SiO_ol!, 0.333*Jgr_H2O_ol)
+ Jgr_py = min(Jgr_SiO_py, min(Jgr_Mg_py, 0.5*Jgr_H2O_py))
+ Jgr_qu = min(Jgr_SiO_qu, Jgr_H2O_qu)
+ Jgr_ir = alpha_ir * abundance(iaFe) * Vth_ir
+ !Jgr_sc = min(Jgr_Si_sc, Jgr_C2H2_sc)
+ Jgr_sc = alpha_sc * abundance(iSi2C) * Vth_Si2C
+ !Jgr_carb = alpha_carb * abundance(72) *Vth_carb !C = 72 in subroutine network
+ ! Above is wrong below is right: the abundnace of atomic C is tiny, because free C is locked into C2H2 which having 2 atoms of C needs a 2.
+ Jgr_carb = 2.0 * alpha_carb * abundance(iC2H2) * Vth_C2H2
 
-      P_H2 = abundance(iH2) * fac
-      P_Si = abundance(iaSi)* fac
+ P_H2 = abundance(iH2) * fac
+ P_Si = abundance(iaSi)* fac
 
-      !Constant term in the law of mass action equation
-      G_ol = P_H2**3 / (calc_Kp(coefficients(:,1),T) * pH_tot**6) !for olivine
-      G_qu = P_H2    / (calc_Kp(coefficients(:,2),T) * pH_tot**2) !for Quartz
-      G_py = P_H2**2 / (calc_Kp(coefficients(:,3),T) * pH_tot**4) !for Pyroxene
+ !Constant term in the law of mass action equation
+ G_ol = P_H2**3 / (calc_Kp(coefficients(:,1),T) * pH_tot**6) !for olivine
+ G_qu = P_H2    / (calc_Kp(coefficients(:,2),T) * pH_tot**2) !for Quartz
+ G_py = P_H2**2 / (calc_Kp(coefficients(:,3),T) * pH_tot**4) !for Pyroxene
 
-      !determine degree of condensation fol, fqu, fpy
-      ! to prevent overflow
-      if (T > 3500.) then
-         fol_dec   = 0.
-         fqu_dec   = 0.
-         fpy_dec   = 0.
-      else
-         call solve_olivine (eps(iMg), eps(iOx), eps(iC), eps(iSi), G_ol, tol_rel, max_iter, fol_dec, ok)
-         !print *, 'G_qu = ', G_qu, eps(iMg), eps(iOx), eps(iC), eps(iSi)
-         call solve_quartz  (eps(iMg), eps(iOx), eps(iC), eps(iSi), G_qu, tol_rel, max_iter, fqu_dec, ok)
-         !print *, 'fqu_dec = ', fqu_dec
-         call solve_pyroxene(eps(iMg), eps(iOx), eps(iC), eps(iSi), G_py, tol_rel, max_iter, fpy_dec, ok)
-      endif
+ !determine degree of condensation fol, fqu, fpy
+ ! to prevent overflow
+ if (T > 3500.) then
+    fol_dec   = 0.
+    fqu_dec   = 0.
+    fpy_dec   = 0.
+ else
+    call solve_olivine (eps(iMg), eps(iOx), eps(iC), eps(iSi), G_ol, tol_rel, max_iter, fol_dec, ok)
+    !print *, 'G_qu = ', G_qu, eps(iMg), eps(iOx), eps(iC), eps(iSi)
+    call solve_quartz  (eps(iMg), eps(iOx), eps(iC), eps(iSi), G_qu, tol_rel, max_iter, fqu_dec, ok)
+    !print *, 'fqu_dec = ', fqu_dec
+    call solve_pyroxene(eps(iMg), eps(iOx), eps(iC), eps(iSi), G_py, tol_rel, max_iter, fpy_dec, ok)
+ endif
 
-      fol_dec   = min(1., max(0., fol_dec))
-      fqu_dec   = min(1. ,max(0., fqu_dec))
-      fpy_dec   = min(1., max(0., fpy_dec))
-      fir_dec   = min(1., max(0., 1.- 1./(calc_Kp(coefficients(:,4),T) * eps(iFe) * pH_tot)))     !For Iron
-      fsc_dec   = min(1., max(0., 1.- P_Si / (calc_Kp(coefficients(:,5),T) * eps(iSi) * pH_tot))) !For SiC
-      fcarb_dec = min(1., max(0., 1.-1./wind_CO_ratio-2.*P_H2/(calc_Kp(coefficients(:,6),T)*eps(iC)*pH_tot)))
+ fol_dec   = min(1., max(0., fol_dec))
+ fqu_dec   = min(1. ,max(0., fqu_dec))
+ fpy_dec   = min(1., max(0., fpy_dec))
+ fir_dec   = min(1., max(0., 1.- 1./(calc_Kp(coefficients(:,4),T) * eps(iFe) * pH_tot)))     !For Iron
+ fsc_dec   = min(1., max(0., 1.- P_Si / (calc_Kp(coefficients(:,5),T) * eps(iSi) * pH_tot))) !For SiC
+ fcarb_dec = min(1., max(0., 1.-1./wind_CO_ratio-2.*P_H2/(calc_Kp(coefficients(:,6),T)*eps(iC)*pH_tot)))
 
-      ! Luis code - wrong
-      !if (Jgr_ol == Jgr_SiO_ol) then ! JgrSiO < JgrMg and JgrSiO < JgrH2O
-      !   pv_SiO = max(0., (1.-fol_dec) * eps(iSi) * pH_tot) !Check units
-      !   Jdec_ol = alpha_ol * Vth_SiO * pv_SiO *patm / kT !patm to have cgs units
-      !elseif (Jgr_ol == 0.5*Jgr_Mg_ol) then
-      !   pv_Mg = max(0., (eps(iMg) - 2.0*fol_dec*eps(iSi))*pH_tot)
-      !   Jdec_ol = alpha_ol * Vth_Mg * pv_Mg *patm / kT !patm to have cgs units
-      !else
-      !   pv_H2O = max(0.,(eps(iOx)-eps(iC)-(1.0+3.0*fol_dec)*eps(iSi))*pH_tot)
-      !   Jdec_ol = alpha_ol * Vth_H2O * pv_H2O * patm / kT  !patm to have cgs units
-      !endif
+ ! Luis code - wrong
+ !if (Jgr_ol == Jgr_SiO_ol) then ! JgrSiO < JgrMg and JgrSiO < JgrH2O
+ !   pv_SiO = max(0., (1.-fol_dec) * eps(iSi) * pH_tot) !Check units
+ !   Jdec_ol = alpha_ol * Vth_SiO * pv_SiO *patm / kT !patm to have cgs units
+ !elseif (Jgr_ol == 0.5*Jgr_Mg_ol) then
+ !   pv_Mg = max(0., (eps(iMg) - 2.0*fol_dec*eps(iSi))*pH_tot)
+ !   Jdec_ol = alpha_ol * Vth_Mg * pv_Mg *patm / kT !patm to have cgs units
+ !else
+ !   pv_H2O = max(0.,(eps(iOx)-eps(iC)-(1.0+3.0*fol_dec)*eps(iSi))*pH_tot)
+ !   Jdec_ol = alpha_ol * Vth_H2O * pv_H2O * patm / kT  !patm to have cgs units
+ !endif
 
-      ! Olivine : 2Mg + SiO + 3H20 -> Mg2SiO4_s
-      S_ol = calc_kp(coefficients(:,iol),T) * &
+ ! Olivine : 2Mg + SiO + 3H20 -> Mg2SiO4_s
+ S_ol = calc_kp(coefficients(:,iol),T) * &
          (abundance(iaMg) * fac)**2 * &
          (abundance(iSiO) * fac) * &
          (abundance(iH2O) * fac)**3 / max(P_H2**3, 1.0d-30)
-      if (S_ol > 1.0d-30) then
-         Jdec_ol = Jgr_ol / S_ol
-      else
-         Jdec_ol = 0.
-      endif
+ if (S_ol > 1.0d-30) then
+    Jdec_ol = Jgr_ol / S_ol
+ else
+    Jdec_ol = 0.
+ endif
 
-      !if (Jgr_qu == Jgr_SiO_qu) then
-      !   pv_SiO = max(0., (1.-fqu_dec)*eps(iSi)* pH_tot)
-      !   Jdec_qu = alpha_qu * Vth_SiO * pv_SiO *patm / kT !!patm to have cgs units
-      !else
-      !   pv_H2O = max(0.,(eps(iOx)-eps(iC)-(1.0+fqu_dec)*eps(iSi))*pH_tot)
-      !   Jdec_qu = alpha_qu * Vth_H2O * pv_H2O *patm / kT  !patm to have cgs units
-      !endif
+ !if (Jgr_qu == Jgr_SiO_qu) then
+ !   pv_SiO = max(0., (1.-fqu_dec)*eps(iSi)* pH_tot)
+ !   Jdec_qu = alpha_qu * Vth_SiO * pv_SiO *patm / kT !!patm to have cgs units
+ !else
+ !   pv_H2O = max(0.,(eps(iOx)-eps(iC)-(1.0+fqu_dec)*eps(iSi))*pH_tot)
+ !   Jdec_qu = alpha_qu * Vth_H2O * pv_H2O *patm / kT  !patm to have cgs units
+ !endif
 
-      ! quartz : SiO + H2O -> SiO2_s
-      S_qu = calc_kp(coefficients(:,iqu),T) * &
+ ! quartz : SiO + H2O -> SiO2_s
+ S_qu = calc_kp(coefficients(:,iqu),T) * &
          (abundance(iSiO) * fac) * &
          (abundance(iH2O) * fac) / max(P_H2, 1.0d-30)
-      if (S_qu > 1.0d-30) then
-         Jdec_qu = Jgr_qu / S_qu
-      else
-         Jdec_qu = 0.
-      endif
+ if (S_qu > 1.0d-30) then
+    Jdec_qu = Jgr_qu / S_qu
+ else
+    Jdec_qu = 0.
+ endif
 
-      !if (Jgr_py == Jgr_SiO_py) then
-      !   pv_SiO = max(0.,(1.-fpy_dec)*eps(iSi)* pH_tot)
-      !   Jdec_py = alpha_py * Vth_SiO * pv_SiO *patm / kT  !!patm to have cgs units
-      !elseif (Jgr_py == 0.5*Jgr_H2O_py) then
-      !   pv_H2O = max(0., (eps(iOx)-eps(iC)-(1.0+2.0*fpy_dec)*eps(iSi))*pH_tot)
-      !   Jdec_py = alpha_py * Vth_H2O * pv_H2O *patm / kT  !patm to have cgs units
-      !else
-      !   pv_Mg = max(0., (eps(iMg) - fpy_dec*eps(iSi))*pH_tot)
-      !   Jdec_py = alpha_py * Vth_Mg * pv_Mg *patm / kT   !patm to have cgs units
-      !endif
+ !if (Jgr_py == Jgr_SiO_py) then
+ !   pv_SiO = max(0.,(1.-fpy_dec)*eps(iSi)* pH_tot)
+ !   Jdec_py = alpha_py * Vth_SiO * pv_SiO *patm / kT  !!patm to have cgs units
+ !elseif (Jgr_py == 0.5*Jgr_H2O_py) then
+ !   pv_H2O = max(0., (eps(iOx)-eps(iC)-(1.0+2.0*fpy_dec)*eps(iSi))*pH_tot)
+ !   Jdec_py = alpha_py * Vth_H2O * pv_H2O *patm / kT  !patm to have cgs units
+ !else
+ !   pv_Mg = max(0., (eps(iMg) - fpy_dec*eps(iSi))*pH_tot)
+ !   Jdec_py = alpha_py * Vth_Mg * pv_Mg *patm / kT   !patm to have cgs units
+ !endif
 
-      ! pyroxene : Mg + SiO + 2H2O -> Mg2SiO3_s + 2H2
-      S_py = calc_kp(coefficients(:,ipy),T) * &
+ ! pyroxene : Mg + SiO + 2H2O -> Mg2SiO3_s + 2H2
+ S_py = calc_kp(coefficients(:,ipy),T) * &
          (abundance(iaMg) * fac) * &
          (abundance(iSiO) * fac) * &
          (abundance(iH2O) * fac)**2 / max(P_H2**2, 1.0d-30)
-      if (S_py > 1.0d-30) then
-         Jdec_py = Jgr_py / S_py
-      else
-         Jdec_py = 0.0d0
-      endif
+ if (S_py > 1.0d-30) then
+    Jdec_py = Jgr_py / S_py
+ else
+    Jdec_py = 0.0d0
+ endif
 
-      !pv_ir   = max(0.,  (1.-fir_dec)  * eps(iFe) * pH_tot)
-      !pv_Si2C = max(0.,  (1.-fsc_dec)  * eps(iSi) * pH_tot)  !0.5 *
-      !pv_carb = max(0., ((1.-fcarb_dec)* eps(iC)-eps(iOx)) * pH_tot)
+ !pv_ir   = max(0.,  (1.-fir_dec)  * eps(iFe) * pH_tot)
+ !pv_Si2C = max(0.,  (1.-fsc_dec)  * eps(iSi) * pH_tot)  !0.5 *
+ !pv_carb = max(0., ((1.-fcarb_dec)* eps(iC)-eps(iOx)) * pH_tot)
 
-      !Jdec_ir = alpha_ir * Vth_ir * pv_ir *patm / kT   !!patm to have cgs units
-      !Jdec_sc = 2.0* alpha_sc * Vth_Si2C * pv_Si2C *patm / kT  !eqn. 21 of Ferrarotti & Gail 2002
-      !Jdec_carb = alpha_carb * Vth_carb * pv_carb *patm / kT
+ !Jdec_ir = alpha_ir * Vth_ir * pv_ir *patm / kT   !!patm to have cgs units
+ !Jdec_sc = 2.0* alpha_sc * Vth_Si2C * pv_Si2C *patm / kT  !eqn. 21 of Ferrarotti & Gail 2002
+ !Jdec_carb = alpha_carb * Vth_carb * pv_carb *patm / kT
 
-      !iron : Fe -> Fe_s
-      S_ir = calc_kp(coefficients(:,iron), T) * (abundance(iaFe) * fac)
-      if (S_ir > 1.0d-30) then
-         Jdec_ir = Jgr_ir / S_ir
-      else
-         Jdec_ir = 0.0d0
-      endif
+ !iron : Fe -> Fe_s
+ S_ir = calc_kp(coefficients(:,iron), T) * (abundance(iaFe) * fac)
+ if (S_ir > 1.0d-30) then
+    Jdec_ir = Jgr_ir / S_ir
+ else
+    Jdec_ir = 0.0d0
+ endif
 
-      !silicon carbide : In paper 3 above Eq 17 they say that both SiC2 and Si2C contribute to the growth of SiC but
-      ! in Ferrarotti & Gail, 2006, A&A, 447, 553, they say that it proceeds via : 2Si + C2H2 -> 2SiC_s + H2 (sect 2.3.2) ???
-      ! in anycase, this type of dust only forms if C/O > 1
+ !silicon carbide : In paper 3 above Eq 17 they say that both SiC2 and Si2C contribute to the growth of SiC but
+ ! in Ferrarotti & Gail, 2006, A&A, 447, 553, they say that it proceeds via : 2Si + C2H2 -> 2SiC_s + H2 (sect 2.3.2) ???
+ ! in anycase, this type of dust only forms if C/O > 1
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-      !This expression corresponds to the reaction : Si2C -> SiC_s + Si
-      S_sc = calc_kp(coefficients(:,isc), T) * &
+ !This expression corresponds to the reaction : Si2C -> SiC_s + Si
+ S_sc = calc_kp(coefficients(:,isc), T) * &
          (abundance(iSi2C) * fac) / max(abundance(iaSi) * fac, 1.0d-30)
-      !This expression corresponds to the reaction :  2Si + C2H2 -> 2SiC_s + H2
-      S_sc = calc_kp(coefficients(:,isc), T) * 0.5 * & !CHECK 0.5 because formation of 2SiC_s
+ !This expression corresponds to the reaction :  2Si + C2H2 -> 2SiC_s + H2
+ S_sc = calc_kp(coefficients(:,isc), T) * 0.5 * & !CHECK 0.5 because formation of 2SiC_s
          (abundance(iC2H2) * fac) *&
          (abundance(iaSi)  * fac)**2 /  max(p_H2, 1.0d-30)
-      if (S_sc > 1.0d-30) then
-         Jdec_sc = Jgr_sc / S_sc
-      else
-         Jdec_sc = 0.0d0
-      endif
+ if (S_sc > 1.0d-30) then
+    Jdec_sc = Jgr_sc / S_sc
+ else
+    Jdec_sc = 0.0d0
+ endif
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-      !amorphous carbon : C2H2 -> 2C_s + H2 (Ferrarotti & Gail, 2006, A&A, 447, 553 - section 2.3.1)
-      S_carb = calc_kp(coefficients(:,icarb), T) * &
+ !amorphous carbon : C2H2 -> 2C_s + H2 (Ferrarotti & Gail, 2006, A&A, 447, 553 - section 2.3.1)
+ S_carb = calc_kp(coefficients(:,icarb), T) * &
          (abundance(iC2H2) * fac) / max(P_H2, 1.0d-30)
-      if (S_carb > 1.0d-30) then
-         Jdec_carb = Jgr_carb / S_carb
-      else
-         Jdec_carb = 0.0d0
-      endif
+ if (S_carb > 1.0d-30) then
+    Jdec_carb = Jgr_carb / S_carb
+ else
+    Jdec_carb = 0.0d0
+ endif
 
-      r_ol = max(r_ol + Vo_ol * (Jgr_ol-Jdec_ol) * dt , a_init_dust)
-      r_qu = max(r_qu + Vo_qu * (Jgr_qu-Jdec_qu) * dt , a_init_dust)
-      r_py = max(r_py + Vo_py * (Jgr_py-Jdec_py) * dt , a_init_dust)
-      r_ir = max(r_ir + Vo_ir * (Jgr_ir-Jdec_ir) * dt , a_init_dust)
-      r_sc = max(r_sc + Vo_sc * (Jgr_sc-Jdec_sc) * dt , a_init_dust)
-      r_carb = max(r_carb + Vo_carb * (Jgr_carb-Jdec_carb) * dt , a_init_dust)
+ r_ol = max(r_ol + Vo_ol * (Jgr_ol-Jdec_ol) * dt , a_init_dust)
+ r_qu = max(r_qu + Vo_qu * (Jgr_qu-Jdec_qu) * dt , a_init_dust)
+ r_py = max(r_py + Vo_py * (Jgr_py-Jdec_py) * dt , a_init_dust)
+ r_ir = max(r_ir + Vo_ir * (Jgr_ir-Jdec_ir) * dt , a_init_dust)
+ r_sc = max(r_sc + Vo_sc * (Jgr_sc-Jdec_sc) * dt , a_init_dust)
+ r_carb = max(r_carb + Vo_carb * (Jgr_carb-Jdec_carb) * dt , a_init_dust)
 
-      Jgr = Jgr_ol
-      Jdec = Jdec_ol
+ Jgr = Jgr_ol
+ Jdec = Jdec_ol
 
-      fol_max = max(0.,min(1.0, min(0.5*eps(iMg)/eps(iSi),(eps(iOx)-eps(iC)-eps(iSi))/3./eps(iSi))))
-      fol = min(fol_max, max(0., fourpi*(r_ol**3-a_init_dust**3)*1.d-13/3./Vo_ol/eps(iSi)))
-      fqu_max = max(0.,min(1.0, (eps(iOx)-eps(iC)-eps(iSi))/eps(iSi)))
-      fqu = min(fqu_max, max(0., fourpi*(r_qu**3-a_init_dust**3)*1.d-13/3./Vo_qu/eps(iSi)))
-      fpy_max = max(0.,min(1.0, min(eps(iMg)/eps(iSi),(eps(iOx)-eps(iC)-eps(iSi))/2./eps(iSi))))
-      fpy = min(fpy_max, max(0., fourpi*(r_py**3-a_init_dust**3)*1.d-13/3./Vo_py/eps(iSi)))
-      fir = min(1.,max(0., fourpi*(r_ir**3-a_init_dust**3)*1.d-13/3./Vo_ir/eps(iFe)))
-      fsc = min(1.,max(0., fourpi*(r_sc**3-a_init_dust**3)*1.d-13/3./Vo_sc/ eps(iSi)))
-      fcarb = 0. !min(1.,max(0., fourpi*(r_carb**3-a_init_dust**3)*1.d-13/3./Vo_carb/eps(iC)))
+ fol_max = max(0.,min(1.0, min(0.5*eps(iMg)/eps(iSi),(eps(iOx)-eps(iC)-eps(iSi))/3./eps(iSi))))
+ fol = min(fol_max, max(0., fourpi*(r_ol**3-a_init_dust**3)*1.d-13/3./Vo_ol/eps(iSi)))
+ fqu_max = max(0.,min(1.0, (eps(iOx)-eps(iC)-eps(iSi))/eps(iSi)))
+ fqu = min(fqu_max, max(0., fourpi*(r_qu**3-a_init_dust**3)*1.d-13/3./Vo_qu/eps(iSi)))
+ fpy_max = max(0.,min(1.0, min(eps(iMg)/eps(iSi),(eps(iOx)-eps(iC)-eps(iSi))/2./eps(iSi))))
+ fpy = min(fpy_max, max(0., fourpi*(r_py**3-a_init_dust**3)*1.d-13/3./Vo_py/eps(iSi)))
+ fir = min(1.,max(0., fourpi*(r_ir**3-a_init_dust**3)*1.d-13/3./Vo_ir/eps(iFe)))
+ fsc = min(1.,max(0., fourpi*(r_sc**3-a_init_dust**3)*1.d-13/3./Vo_sc/ eps(iSi)))
+ fcarb = 0. !min(1.,max(0., fourpi*(r_carb**3-a_init_dust**3)*1.d-13/3./Vo_carb/eps(iC)))
 
-      !Eq 90, paper 1
-      kappa_ol = 1./sqrt(1./(6.147d-07 * T**2.444)**2 &
+ !Eq 90, paper 1
+ kappa_ol = 1./sqrt(1./(6.147d-07 * T**2.444)**2 &
          + 1./((6.957d4 * T**(-2.329))**2  &
          + sqrt((3.505d-4 * T**0.755)**4 + (1.043d-9 * T**2.523)**4 )))
-      !Eq 93, paper 1
-      kappa_qu = sqrt( 1./sqrt( 1./(3.898d-6 * T**2.054)**4 + 1./(3.1d5 * T**(-2.622))**4 ) &
+ !Eq 93, paper 1
+ kappa_qu = sqrt( 1./sqrt( 1./(3.898d-6 * T**2.054)**4 + 1./(3.1d5 * T**(-2.622))**4 ) &
          + sqrt( (2.023d-5 * T**1.074)**4 + (9.394d-11 * T**2.701)**4 ) )
-      !Eq 16, Ferrarotti, 2003, 398, paper 2
-      kappa_py = 1./sqrt( 1./(3.773d-5 * T**2.017)**2 &
+ !Eq 16, Ferrarotti, 2003, 398, paper 2
+ kappa_py = 1./sqrt( 1./(3.773d-5 * T**2.017)**2 &
          + 1./( 1./(1.5d6 * T**(-2.679))**2 &
          + sqrt((8.356d-4 * T**0.7336)**4 + (1.261d-8 * T**2.272 )**4)))
-      !Eq 92, paper 1
-      kappa_ir = ( 1./(3.341d-5 * T**1.632)**4 &
+ !Eq 92, paper 1
+ kappa_ir = ( 1./(3.341d-5 * T**1.632)**4 &
          + 1./ ( (6.405d-4 * T**0.777)**4 + (4.385d-7 * T**1.981)**4 )  )**(-0.25)
-      !Eq 34, paper 3
-      kappa_sc = ( 1./(9.56d-6 * T**1.71)**4 &
+ !Eq 34, paper 3
+ kappa_sc = ( 1./(9.56d-6 * T**1.71)**4 &
          + 1. / ( (7.791d-4 * T**0.8808)**4 + (1.171d-6 * T**1.879)**4) )**(-0.25)
 
-      ! cannot find a reference for that expression ?
-      kappa_carb = 5.9 * T * A_carb * eps(iC) * pi / (2.2 * (mass_per_H/atomic_mass_unit))
-      !5.6d-18 * pi * T / rho_cgs !%%% The correct expression for opacity
+ ! cannot find a reference for that expression ?
+ kappa_carb = 5.9 * T * A_carb * eps(iC) * pi / (2.2 * (mass_per_H/atomic_mass_unit))
+ !5.6d-18 * pi * T / rho_cgs !%%% The correct expression for opacity
 
-      !5.9**(-25.13) * T * pi * A_carb * eps(iC) * (pH_tot*patm/kT) &
-      !* 2.0*(sqrt(2.5d-5)-sqrt(5.0d-7)) / rho_carb / (mass_per_H/atomic_mass_unit)
+ !5.9**(-25.13) * T * pi * A_carb * eps(iC) * (pH_tot*patm/kT) &
+ !* 2.0*(sqrt(2.5d-5)-sqrt(5.0d-7)) / rho_carb / (mass_per_H/atomic_mass_unit)
 
-      !%% mu = mass_per_H / atomic_mass_unit
+ !%% mu = mass_per_H / atomic_mass_unit
 
-      kappa_dust = kappa_gas + fol * kappa_ol + fqu * kappa_qu &
+ kappa_dust = kappa_gas + fol * kappa_ol + fqu * kappa_qu &
          + fpy * kappa_py + fir * kappa_ir + fsc * kappa_sc + fcarb * kappa_carb
 
-   end subroutine dust_growth_condensation
+end subroutine dust_growth_condensation
 
-   subroutine solve_olivine(mg, o, c, si, g, tol_rel, max_iter, x, ok)
-      implicit none
-      real, intent(in)      :: mg, o, c, si, g, tol_rel
-      integer,  intent(in)  :: max_iter
-      real, intent(out)     :: x
-      logical,  intent(out) :: ok
-      real :: A, B, D, fx, dfx, dx, x_max
-      integer  :: i
+subroutine solve_olivine(mg, o, c, si, g, tol_rel, max_iter, x, ok)
+ implicit none
+ real, intent(in)      :: mg, o, c, si, g, tol_rel
+ integer,  intent(in)  :: max_iter
+ real, intent(out)     :: x
+ logical,  intent(out) :: ok
+ real :: A, B, D, fx, dfx, dx, x_max
+ integer  :: i
 
-      ok = .false.
+ ok = .false.
 
-      ! 0.5*mg/si is because Mg can be the limiting element in the formation of olivine (Mg2SiO4).
-      ! 1./3. * (o-c-si)/si is because O can be the limiting element in the formation of olivine (Mg2SiO4).
+ ! 0.5*mg/si is because Mg can be the limiting element in the formation of olivine (Mg2SiO4).
+ ! 1./3. * (o-c-si)/si is because O can be the limiting element in the formation of olivine (Mg2SiO4).
 
-      x_max = min(1., min(0.5*mg/si, 1./3. * (o-c-si)/si) )
-      !condition for formation of olivive not met (insufficient oxygen/magnesium)
-      if (x_max<= 0.) then
-         x = 0.
-         return
-      endif
-      ! Check if gas is under-saturated even with zero dust (T > T_condensation)
-      if (mg**2 * si * (o - c - si)**3 < g) then
-         x = 0.
-         return
-      endif
+ x_max = min(1., min(0.5*mg/si, 1./3. * (o-c-si)/si) )
+ !condition for formation of olivive not met (insufficient oxygen/magnesium)
+ if (x_max<= 0.) then
+    x = 0.
+    return
+ endif
+ ! Check if gas is under-saturated even with zero dust (T > T_condensation)
+ if (mg**2 * si * (o - c - si)**3 < g) then
+    x = 0.
+    return
+ endif
 
-      x = 0.5 * x_max
+ x = 0.5 * x_max
 
-      do i = 1, max_iter
-         A = mg - 2.*x*si
-         B = (1. - x)*si
-         D = o - c - (1. + 3.*x)*si
-         fx = A**2*B*D**3 - g
-         dfx = -si*A*D**2*(4.*B*D + 9.*A*B + A*D)
+ do i = 1, max_iter
+    A = mg - 2.*x*si
+    B = (1. - x)*si
+    D = o - c - (1. + 3.*x)*si
+    fx = A**2*B*D**3 - g
+    dfx = -si*A*D**2*(4.*B*D + 9.*A*B + A*D)
 
-         if (abs(dfx) < tiny(1.)) exit
+    if (abs(dfx) < tiny(1.)) exit
 
-         dx = - fx / dfx
-         x = max(0.0, min(x_max, x + dx))
-         ! check relative convergence on step size or relative residual
-         if (abs(fx) <= tol_rel * max(g, A**2*B*D**3) .or. abs(dx) < 1.d-6*x_max) then
-            ok = .true.; exit
-         endif
-         !print *, i, max_iter, A, B, D, fx, dfx, x
-      enddo
-      x = max(0.0, min(x_max, x))
-   end subroutine solve_olivine
+    dx = - fx / dfx
+    x = max(0.0, min(x_max, x + dx))
+    ! check relative convergence on step size or relative residual
+    if (abs(fx) <= tol_rel * max(g, A**2*B*D**3) .or. abs(dx) < 1.d-6*x_max) then
+       ok = .true.; exit
+    endif
+    !print *, i, max_iter, A, B, D, fx, dfx, x
+ enddo
+ x = max(0.0, min(x_max, x))
+end subroutine solve_olivine
 
-   subroutine solve_quartz(mg, o, c, si, g, tol_rel, max_iter, x, ok)
-      implicit none
-      real, intent(in)      :: mg, o, c, si, g, tol_rel
-      integer,  intent(in)  :: max_iter
-      real, intent(out)     :: x
-      logical,  intent(out) :: ok
-      real :: x_max, c_prime, disc, denom
+subroutine solve_quartz(mg, o, c, si, g, tol_rel, max_iter, x, ok)
+ implicit none
+ real, intent(in)      :: mg, o, c, si, g, tol_rel
+ integer,  intent(in)  :: max_iter
+ real, intent(out)     :: x
+ logical,  intent(out) :: ok
+ real :: x_max, c_prime, disc, denom
 
-      ok = .false.
+ ok = .false.
 
-      ! Maximum fraction of Si that can condense into SiO2
-      x_max = min(1.0, (o - c - si)/si)
+ ! Maximum fraction of Si that can condense into SiO2
+ x_max = min(1.0, (o - c - si)/si)
 
-      ! 1. Insufficient oxygen to form SiO2 (o <= c + si)
-      if (x_max <= 0.0) then
-         x = 0.0
-         return
-      endif
+ ! 1. Insufficient oxygen to form SiO2 (o <= c + si)
+ if (x_max <= 0.0) then
+    x = 0.0
+    return
+ endif
 
-      ! 2. Undersaturated gas check (T > T_condensation): even at x=0, gas product < g
-      if (si * (o - c - si) < g) then
-         x = 0.0
-         return
-      endif
+ ! 2. Undersaturated gas check (T > T_condensation): even at x=0, gas product < g
+ if (si * (o - c - si) < g) then
+    x = 0.0
+    return
+ endif
 
-      ! 3. Exact analytical solution of si*(1-x)*(o-c-(1+x)*si) - g = 0
-      ! Rewritten as si*x^2 - (o-c)*x + (o-c-si - g/si) = 0
-      ! Solved via Citardauq (Muller) formula to avoid catastrophic cancellation:
-      ! x = 2*c' / (-b' + sqrt(b'^2 - 4*a'*c'))
-      c_prime = (o - c - si) - g/si
-      disc    = (o - c - 2.0*si)**2 + 4.0*g
-      denom   = (o - c) + sqrt(max(0.0, disc))
+ ! 3. Exact analytical solution of si*(1-x)*(o-c-(1+x)*si) - g = 0
+ ! Rewritten as si*x^2 - (o-c)*x + (o-c-si - g/si) = 0
+ ! Solved via Citardauq (Muller) formula to avoid catastrophic cancellation:
+ ! x = 2*c' / (-b' + sqrt(b'^2 - 4*a'*c'))
+ c_prime = (o - c - si) - g/si
+ disc    = (o - c - 2.0*si)**2 + 4.0*g
+ denom   = (o - c) + sqrt(max(0.0, disc))
 
-      if (denom > 0.0) then
-         x  = min(x_max, max(0.0, 2.0 * c_prime / denom))
-         ok = .true.
-      else
-         x  = 0.0
-      endif
+ if (denom > 0.0) then
+    x  = min(x_max, max(0.0, 2.0 * c_prime / denom))
+    ok = .true.
+ else
+    x  = 0.0
+ endif
 
-   end subroutine solve_quartz
+end subroutine solve_quartz
 
-   subroutine solve_pyroxene (mg, o, c, si, g, tol_rel, max_iter, x, ok)
-      implicit none
-      real, intent(in)      :: mg, o, c, si, g, tol_rel
-      integer,  intent(in)  :: max_iter
-      real, intent(out)     :: x
-      logical,  intent(out) :: ok
-      real :: A, B, D, fx, dfx, dx, x_max
-      integer  :: i
+subroutine solve_pyroxene (mg, o, c, si, g, tol_rel, max_iter, x, ok)
+ implicit none
+ real, intent(in)      :: mg, o, c, si, g, tol_rel
+ integer,  intent(in)  :: max_iter
+ real, intent(out)     :: x
+ logical,  intent(out) :: ok
+ real :: A, B, D, fx, dfx, dx, x_max
+ integer  :: i
 
-      ok = .false.
+ ok = .false.
 
-      ! Maximum fraction of Si that can condense into MgSiO3
-      ! mg/si is because Mg can be the limiting element in pyroxene (MgSiO3).
-      ! 0.5*(o-c-si)/si is because O can be the limiting element in pyroxene.
-      x_max = min(1.0, min(mg/si, 0.5*(o - c - si)/si))
+ ! Maximum fraction of Si that can condense into MgSiO3
+ ! mg/si is because Mg can be the limiting element in pyroxene (MgSiO3).
+ ! 0.5*(o-c-si)/si is because O can be the limiting element in pyroxene.
+ x_max = min(1.0, min(mg/si, 0.5*(o - c - si)/si))
 
-      ! 1. Condition for formation of pyroxene not met
-      if (x_max <= 0.0) then
-         x = 0.0
-         return
-      endif
+ ! 1. Condition for formation of pyroxene not met
+ if (x_max <= 0.0) then
+    x = 0.0
+    return
+ endif
 
-      ! 2. Undersaturated gas check (T > T_condensation)
-      ! At x = 0 (zero dust), gas product is si * mg * (o - c - si)**2
-      if (si * mg * (o - c - si)**2 < g) then
-         x = 0.0
-         return
-      endif
+ ! 2. Undersaturated gas check (T > T_condensation)
+ ! At x = 0 (zero dust), gas product is si * mg * (o - c - si)**2
+ if (si * mg * (o - c - si)**2 < g) then
+    x = 0.0
+    return
+ endif
 
-      ! 3. Safe initial guess in the interior
-      x = 0.5 * x_max
+ ! 3. Safe initial guess in the interior
+ x = 0.5 * x_max
 
-      do i = 1, max_iter
-         A = mg - x*si
-         B = 1.0 - x
-         D = o - c - (1.0 + 2.0*x)*si
-         fx = A * B * si * D**2 - g
+ do i = 1, max_iter
+    A = mg - x*si
+    B = 1.0 - x
+    D = o - c - (1.0 + 2.0*x)*si
+    fx = A * B * si * D**2 - g
 
-         ! Convergence check (relative to g and function scale)
-         if (abs(fx) < tol_rel * max(g, A * B * si * D**2)) then
-            ok = .true.
-            exit
-         endif
+    ! Convergence check (relative to g and function scale)
+    if (abs(fx) < tol_rel * max(g, A * B * si * D**2)) then
+       ok = .true.
+       exit
+    endif
 
-         ! Exact analytical derivative: -si * D * (si*B*D + A*D + 4*si*A*B)
-         dfx = -si * D * (si * B * D + A * D + 4.0 * si * A * B)
-         if (abs(dfx) < tiny(1.0)) exit
+    ! Exact analytical derivative: -si * D * (si*B*D + A*D + 4*si*A*B)
+    dfx = -si * D * (si * B * D + A * D + 4.0 * si * A * B)
+    if (abs(dfx) < tiny(1.0)) exit
 
-         dx = -fx / dfx
-         x = max(0.0, min(x_max, x + dx))
+    dx = -fx / dfx
+    x = max(0.0, min(x_max, x + dx))
 
-         if (abs(dx) < tol_rel * x) then
-            ok = .true.
-            exit
-         endif
-      enddo
-   end subroutine solve_pyroxene
+    if (abs(dx) < tol_rel * x) then
+       ok = .true.
+       exit
+    endif
+ enddo
+end subroutine solve_pyroxene
 
-   pure real function calc_Kp(coeffs,T)
-      real, intent(in) :: coeffs(5), T
-      real, parameter :: R = 8.31446d0 ! previously wrong at 1.987165 cal/ (mol K) now in J/(mol K) like the coefficient Gail Sedlmayr table A4.1
-      real :: G, d
-      G = coeffs(1)/T + coeffs(2) + (coeffs(3)+(coeffs(4)+coeffs(5)*T)*T)*T
-      d = max(-222.,min(-G/(R*T),222.))
-      calc_Kp = exp(d)
-   end function calc_kp
+pure real function calc_Kp(coeffs,T)
+ real, intent(in) :: coeffs(5), T
+ real, parameter :: R = 8.31446d0 ! previously wrong at 1.987165 cal/ (mol K) now in J/(mol K) like the coefficient Gail Sedlmayr table A4.1
+ real :: G, d
+ G = coeffs(1)/T + coeffs(2) + (coeffs(3)+(coeffs(4)+coeffs(5)*T)*T)*T
+ d = max(-222.,min(-G/(R*T),222.))
+ calc_Kp = exp(d)
+end function calc_Kp
 
 end module dust_condensation
