@@ -3147,7 +3147,7 @@ subroutine finish_cell_and_store_results(icall,cell,fxyzu,xyzh,vxyzu,poten,dt,dv
                    elseif (do_condensation) then
                       call energ_cooling(xi,yi,zi,vxyzu(4,i),rhoi,dt,divcurlv(1,i),dudtcool,&
                            dust_temp(i),eos_vars(imu,i),eos_vars(igamma,i),condensation(ickappa,i))
-                   elseif(update_muGamma) then
+                   elseif (update_muGamma) then
                       call energ_cooling(xi,yi,zi,vxyzu(4,i),rhoi,dt,divcurlv(1,i),dudtcool,&
                            dust_temp(i),eos_vars(imu,i),eos_vars(igamma,i))
                    else

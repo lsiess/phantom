@@ -51,7 +51,7 @@ contains
    subroutine set_abundances
 !----------------------------------------------------------------
 ! initialize abundances
-      use dim, only: do_nucleation,do_condensation
+      use dim, only:do_nucleation,do_condensation
       use chemistry_moments, only:set_abundances_moments
       use chemistry_condensation, only:set_abundances_condensation
 
@@ -66,7 +66,7 @@ contains
    subroutine init_muGamma(rho_cgs, T, mu, gamma, ppH_tot, ppH, ppH2)
 !----------------------------------------------------------------
 ! all quantities are in cgs
-      use dim, only: do_nucleation,do_condensation
+      use dim, only:do_nucleation,do_condensation
       use chemistry_moments, only:init_muGamma_moments
       use chemistry_condensation, only:init_muGamma_condensation
       real, intent(in)              :: rho_cgs
@@ -89,7 +89,7 @@ contains
    subroutine calc_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot, pH2, pressure)
 !----------------------------------------------------------------
 ! all quantities are in cgs
-      use dim, only: do_nucleation,do_condensation
+      use dim, only:do_nucleation,do_condensation
       use chemistry_moments, only:calc_muGamma_moments
       use chemistry_condensation, only:calc_muGamma_condensation
       real, intent(in)              :: rho_cgs
@@ -173,7 +173,7 @@ contains
    pure real function calc_kappa_dust(K3, Tdust, rho_cgs)
 !all quantities in cgs
       use physcon, only:atomic_mass_unit
-      use chemistry_moments, only: mass_per_H
+      use chemistry_moments, only:mass_per_H
       real, intent(in) :: K3, Tdust, rho_cgs
 
       real :: kappa_cgs, fac
@@ -219,7 +219,7 @@ contains
       use chemistry_moments, only:write_headeropts_dust_moments
       use chemistry_condensation, only:write_headeropts_dust_condensation
       use dump_utils, only:dump_h
-      use dim, only: do_nucleation,do_condensation
+      use dim, only:do_nucleation,do_condensation
 
       type(dump_h), intent(inout) :: hdr
       integer,      intent(out)   :: ierr
@@ -241,7 +241,7 @@ contains
       use chemistry_moments, only:read_headeropts_dust_moments
       use chemistry_condensation, only:read_headeropts_dust_condensation
       use dump_utils, only:dump_h
-      use dim, only: do_nucleation,do_condensation
+      use dim, only:do_nucleation,do_condensation
 
       type(dump_h), intent(in)  :: hdr
       integer,      intent(out) :: ierr

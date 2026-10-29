@@ -723,7 +723,7 @@ contains
          u = log(zz)
       else
          u = -100.0 ! Avoid log(0) if zz is exactly 0
-      end if
+      endif
 
       ! Newton's method loop in log space
       do iter = 1, max_iter
@@ -760,9 +760,9 @@ contains
             if (abs(du) < tolerance_rel) exit
          else
             exit
-         end if
+         endif
 !         !print *, iter, exp(u)
-      end do
+      enddo
 
       ! Convert back from log space
       newton_method = exp(u)

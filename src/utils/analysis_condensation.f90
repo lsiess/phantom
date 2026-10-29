@@ -18,7 +18,7 @@ module analysis
 !   dust_formation, prompting
 !
 
-   use chemistry_condensation, only : ncols
+   use chemistry_condensation, only:ncols
    implicit none
    character(len=20), parameter, public :: analysistype = 'condenstation'
    public :: do_analysis
@@ -150,7 +150,7 @@ contains
    subroutine CO_dependence
 
       use dim, only:do_nucleation,do_condensation
-      use dust_condensation, only: dust_growth_condensation
+      use dust_condensation, only:dust_growth_condensation
       use dust_formation,    only: a_init_dust,wind_CO_ratio,set_abundances
 
       real :: T, rho_cgs, mu, gamma, abundance(ncols), pH_tot, dt, Jgr, Jdec
@@ -216,7 +216,7 @@ contains
          call write_time_file('condensation_' // trim(adjustl(itoa(1))), condensation, wind_CO_ratio, dust_properties, 7, i-1)
 !            print *,'dust_prop=',dust_properties
 
-      end do
+      enddo
 
    end subroutine CO_dependence
 
@@ -228,7 +228,7 @@ contains
    subroutine temperature_dependence
 
       use dim, only:do_nucleation,do_condensation
-      use dust_condensation, only: dust_growth_condensation
+      use dust_condensation, only:dust_growth_condensation
       use dust_formation,    only: a_init_dust,wind_CO_ratio,set_abundances
 
       real :: T, rho_cgs, mu, gamma, abundance(ncols), pH_tot, dt, Jgr, Jdec
@@ -319,8 +319,8 @@ contains
 !            print *,'dust_prop=',dust_properties
 
             k = k + 1
-         end do
-      end do
+         enddo
+      enddo
 
       deallocate(fol,fpy,fqu,fir,fsc, fcarb,r_ol,r_py,r_qu,r_ir,r_sc, r_carb,kappa_dust)
 
@@ -358,7 +358,7 @@ contains
       if (num == 0) then
          unitnum = 1000
 
-         open(unit=unitnum, file=file_name, status='replace')
+         open(unit=unitnum,file=file_name,status='replace')
          do i=1,ncols
             write(columns(i), "(I2,a)") i+1, cols(i)
          enddo
@@ -370,7 +370,7 @@ contains
 
       unitnum=1001+num
 
-      open(unit=unitnum, file=file_name, position='append')
+      open(unit=unitnum,file=file_name, position='append')
       write(unitnum,data_formatter) time, data_in(:ncols)
       close(unit=unitnum)
 

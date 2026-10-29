@@ -89,7 +89,7 @@ contains
 !+
 !-----------------------------------------------------------------------
    subroutine evolve_condensation(dtsph, xyzh, u, dust_prop, rho)
-      use dust_formation, only : wind_CO_ratio
+      use dust_formation, only:wind_CO_ratio
       use units,  only:utime,unit_density
       use eos,    only:ieos,get_temperature
       use part,   only:icmu,icgamma,ickappa,ifol,ifqu,ifpy,ifir,ifsc,ifcarb,irol,irqu,irpy,irir,irsc,ircarb,iJgr,iJdec
@@ -119,15 +119,15 @@ contains
       r_ol,r_qu,r_py,r_ir,r_sc,r_carb,kappa_dust,mu,gamma,pH_tot,Jgr,Jdec,abund,pressure_cgs)
 ! all pressures are in bar unless specified
       use physcon, only:patm,kboltz,pi,twopi,fourpi
-      use chemistry_condensation, only: network, iSiO, iH2O, iH2, eps, &
+      use chemistry_condensation, only:network, iSiO, iH2O, iH2, eps, &
          iH,iHe,iC,iOx,iN,iSi,iS,iFe,iTi,iMg,iSi2C,iC2H2,mass_per_H,ncols,iaMg,iaC,iaFe,iaSi
-      use dust_formation, only: kappa_gas,a_init_dust
+      use dust_formation, only:kappa_gas,a_init_dust
       real, intent(in)           :: dt,wind_CO_ratio
       real, intent(inout)        :: T,rho_cgs,fol,fqu,fpy,fir,fsc,fcarb,r_ol,r_qu,r_py,r_ir,r_sc,r_carb,Jgr,Jdec
       real, intent(out)          :: kappa_dust
       real, intent(out)          :: mu,gamma,pH_tot
-      real, intent(out),optional :: abund(ncols)
-      real, intent(in),optional  :: pressure_cgs
+      real, intent(out), optional :: abund(ncols)
+      real, intent(in), optional  :: pressure_cgs
       real :: Vth_SiO, Vth_Mg, Vth_H2O, Vth_ir, Vth_Si2C, Vth_carb, Vth_C2H2
       real :: pv_ir, pv_SiO, pv_Mg, pv_H2O, pv_carb, pv_Si2C
       real :: Jgr_SiO_ol, Jgr_Mg_ol, Jgr_H2O_ol, Jgr_SiO_qu, Jgr_Mg_qu, Jgr_H2O_qu, Jgr_SiO_py, Jgr_Mg_py, Jgr_H2O_py
@@ -419,9 +419,9 @@ contains
          ! check relative convergence on step size or relative residual
          if (abs(fx) <= tol_rel * max(g, A**2*B*D**3) .or. abs(dx) < 1.d-6*x_max) then
             ok = .true.; exit
-         end if
+         endif
          !print *, i, max_iter, A, B, D, fx, dfx, x
-      end do
+      enddo
       x = max(0.0, min(x_max, x))
    end subroutine solve_olivine
 
@@ -522,7 +522,7 @@ contains
             ok = .true.
             exit
          endif
-      end do
+      enddo
    end subroutine solve_pyroxene
 
    pure real function calc_Kp(coeffs,T)
