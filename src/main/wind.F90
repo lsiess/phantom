@@ -10,13 +10,13 @@ module wind
 !
 ! :References: Lamers & Cassinelli "Introduction to stellar winds"
 !
-! :Owner: Lionel Siess
+! :Owner: Orsola De Marco
 !
 ! :Runtime parameters: None
 !
-! :Dependencies: cooling_solver, dim, dust_formation, eos, io, options,
-!   part, physcon, ptmass_radiation, table_utils, timestep, units,
-!   wind_equations
+! :Dependencies: cooling_solver, dim, dust_condensation, dust_formation,
+!   dust_moments, eos, io, options, part, physcon, ptmass_radiation,
+!   table_utils, timestep, units, wind_equations
 !
 
 !#define CALC_HYDRO_THEN_CHEM

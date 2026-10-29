@@ -18,7 +18,7 @@ module part
 !
 ! :References: None
 !
-! :Owner: Daniel Price
+! :Owner: Orsola De Marco
 !
 ! :Runtime parameters: None
 !

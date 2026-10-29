@@ -1,10 +1,22 @@
 !--------------------------------------------------------------------------!
 ! The Phantom Smoothed Particle Hydrodynamics code, by Daniel Price et al. !
-! Copyright (c) 2007-2024 The Authors (see AUTHORS)                        !
+! Copyright (c) 2007-2026 The Authors (see AUTHORS)                        !
 ! See LICENCE file for usage and distribution conditions                   !
 ! http://phantomsph.github.io/                                             !
 !--------------------------------------------------------------------------!
 module analysis
+!
+! analysis
+!
+! :References: None
+!
+! :Owner: Orsola De Marco
+!
+! :Runtime parameters: None
+!
+! :Dependencies: chemistry_condensation, dim, dust_condensation,
+!   dust_formation, prompting
+!
 
    use chemistry_condensation, only : ncols
    implicit none

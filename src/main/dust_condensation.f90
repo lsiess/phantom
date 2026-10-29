@@ -1,6 +1,6 @@
 !--------------------------------------------------------------------------!
 ! The Phantom Smoothed Particle Hydrodynamics code, by Daniel Price et al. !
-! Copyright (c) 2007-2024 The Authors (see AUTHORS)                        !
+! Copyright (c) 2007-2026 The Authors (see AUTHORS)                        !
 ! See LICENCE file for usage and distribution conditions                   !
 ! http://phantomsph.github.io/                                             !
 !--------------------------------------------------------------------------!
@@ -8,8 +8,15 @@ module dust_condensation
 !
 ! Dust formation routine : condensation method
 !
-! :References: Gail & Sedlmayr textbook Physics and chemistry of Circumstellar dust shells
-!              + papers by Ferrarotti & Gail (2000+)
+! :References: None
+!
+! :Owner: Orsola De Marco
+!
+! :Runtime parameters: None
+!
+! :Dependencies: chemistry_condensation, dust_formation, eos, part,
+!   physcon, units
+!
 
 
    use physcon, only:atomic_mass_unit

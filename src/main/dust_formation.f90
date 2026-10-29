@@ -10,7 +10,7 @@ module dust_formation
 !
 ! :References: Gail & Sedlmayr textbook Physics and chemistry of Circumstellar dust shells
 !
-! :Owner: Lionel Siess
+! :Owner: Orsola De Marco
 !
 ! :Runtime parameters:
 !   - bowen_Tcond   : *dust condensation temperature (K)*
@@ -20,8 +20,8 @@ module dust_formation
 !   - kappa_gas     : *constant gas opacity (cm²/g)*
 !   - wind_CO_ratio : *wind initial C/O ratio (> 1)*
 !
-! :Dependencies: dim, dump_utils, eos, infile_utils, io, part, physcon,
-!   units
+! :Dependencies: chemistry_condensation, chemistry_moments, dim,
+!   dump_utils, eos, infile_utils, io, part, physcon
 !
 
    implicit none

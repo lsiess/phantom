@@ -21,14 +21,15 @@ module substepping
 !     Tuckerman, Berne & Martyna (1992), J. Chem. Phys. 97, 1990-2001
 !     Rantala + (2020) (2023),Chin (2007a)
 !
-! :Owner: Alison Young
+! :Owner: Yann Bernard
 !
 ! :Runtime parameters: None
 !
 ! :Dependencies: chem, cons2primsolver, cooling, cooling_ism, damping, dim,
-!   dust_formation, eos_HIIR, extern_gr, externalforces, io, io_summary,
-!   krome_interface, metric, metric_tools, mpiutils, neighkdtree, options,
-!   part, ptmass, ptmass_radiation, ptmass_tree, subgroup, timestep, timing
+!   dust_condensation, dust_formation, dust_moments, eos_HIIR, extern_gr,
+!   externalforces, io, io_summary, krome_interface, metric, metric_tools,
+!   mpiutils, neighkdtree, options, part, ptmass, ptmass_radiation,
+!   ptmass_tree, subgroup, timestep, timing
 !
  implicit none
 

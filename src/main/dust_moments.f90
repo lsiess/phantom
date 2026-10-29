@@ -1,6 +1,6 @@
 !--------------------------------------------------------------------------!
 ! The Phantom Smoothed Particle Hydrodynamics code, by Daniel Price et al. !
-! Copyright (c) 2007-2024 The Authors (see AUTHORS)                        !
+! Copyright (c) 2007-2026 The Authors (see AUTHORS)                        !
 ! See LICENCE file for usage and distribution conditions                   !
 ! http://phantomsph.github.io/                                             !
 !--------------------------------------------------------------------------!
@@ -13,16 +13,11 @@ module dust_moments
 !
 ! :Owner: Lionel Siess
 !
-! :Runtime parameters:
-!   - bowen_Tcond   : *dust condensation temperature (K)*
-!   - bowen_delta   : *condensation temperature range (K)*
-!   - bowen_kmax    : *maximum dust opacity (cm²/g)*
-!   - idust_opacity : *compute dust opacity (0=off, 1=bowen)*
-!   - kappa_gas     : *constant gas opacity (cm²/g)*
-!   - wind_CO_ratio : *wind initial C/O ratio (> 1)*
+! :Runtime parameters: None
 !
-! :Dependencies: dim, dump_utils, eos, infile_utils, io, part, physcon,
+! :Dependencies: chemistry_moments, dust_formation, eos, part, physcon,
 !   units
+!
 
  use physcon, only:kboltz,pi,atomic_mass_unit,mass_proton_cgs,patm
 
