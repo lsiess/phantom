@@ -646,7 +646,7 @@ subroutine calc_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot, ppH2)
  real, intent(out), optional :: ppH2
  real :: KH2, pH2, x
  real :: T_ionisation_He
- real :: T_old, mu_old, gamma_old, tol
+ real :: T_old, mu_old, gamma_old, tol, T_prev, T_new
  logical :: converged
  integer :: i,isolve
  integer, parameter :: itermax = 100
@@ -670,6 +670,9 @@ subroutine calc_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot, ppH2)
     converged = .false.
     isolve    = 0
     pH        = pH_tot ! initial value, overwritten below, to avoid compiler warning
+    T_old     = T      ! temperature obtained from u with mu_in, gamma_in
+    mu_old = mu        ! incoming values: the ones consistent with T_old
+    gamma_old = gamma
     i = 0
     do while (.not. converged .and. i < itermax)
        i = i+1
@@ -677,29 +680,25 @@ subroutine calc_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot, ppH2)
        KH2       = calc_Kd(coefs(:,iH2), T)
        pH        = solve_q(2.*KH2, 1., -pH_tot)
        pH2       = KH2*pH**2
-       mu        = (1.+4.*eps(iHe))/(.5+eps(iHe)+0.5*real(pH)/real(pH_tot))
+       mu        = (1.+4.*eps(iHe))/(.5+eps(iHe)+0.5*pH/pH_tot)
        x         = 2.*(1.+4.*eps(iHe))/mu
        gamma     = (3.*x+4.+4.*eps(iHe))/(x+4.+4.*eps(iHe))
        
-       if (i == 1) then
-          mu_old = mu
-          gamma_old = gamma
-          T_old = T
-          T = 0.9*T
-       else
-          T = T_old*mu/mu_old/(gamma_old-1.)*2.*real(x)/(real(x)+4.+4.*eps(iHe))
-          converged = (abs(T-T_old)/T_old) < tol
-          if (i>=itermax .and. .not.converged) then
-             if (isolve==0) then
-                isolve = isolve+1
-                i      = 0
-                tol    = 1.d-2
-                print *,'[dust_formation] cannot converge on T(mu,gamma). Trying with lower tolerance'
-             else
-                print *,'Told=',T_old,',T=',T,',gamma_old=',gamma_old,',gamma=',gamma,',mu_old=',&
-                  mu_old,',mu=',mu,',dT/T=',abs(T-T_old)/T_old,', rho=',rho_cgs
-                call fatal(label,'cannot converge on T(mu,gamma)')
-             endif
+       T_prev = T
+       T_new  = T_old*mu/mu_old*(gamma-1.)/(gamma_old-1.)
+       T      = 0.5*(T_prev + T_new)          ! under-relaxation for stability
+       converged = abs(T-T_prev)/T_prev < tol
+       
+       if (i>=itermax .and. .not.converged) then
+          if (isolve==0) then
+             isolve = isolve+1
+             i      = 0
+             tol    = 1.d-2
+             print *,'[dust_formation] cannot converge on T(mu,gamma). Trying with lower tolerance'
+          else
+             print *,'Told=',T_old,',T=',T,',gamma_old=',gamma_old,',gamma=',gamma,',mu_old=',&
+             mu_old,',mu=',mu,',dT/T=',abs(T-T_old)/T_old,', rho=',rho_cgs
+             call fatal(label,'cannot converge on T(mu,gamma)')
           endif
        endif
     enddo
