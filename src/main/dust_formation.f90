@@ -185,7 +185,7 @@ subroutine evolve_chem(dt, T, rho_cgs, JKmuS)
 
  if (T > Tmol) then
     call chemical_equilibrium_light(rho_cgs, T, epsC, JKmuS(idmu), JKmuS(idgamma), abundi)
-    cst = mass_per_H/(JKmuS(idmu)*mass_proton_cgs*kboltz*T)
+    cst = 1./(kboltz*T)
     pC = abundi(icoolC)/cst    ! pressures in cgs here
     pC = max(pC,1.d-30)    ! avoid problems with 0 pressure and S=0
     pC2 = abundi(icoolC2)/cst 
@@ -773,7 +773,7 @@ subroutine chemical_equilibrium_light(rho_cgs, T_in, epsC, mu, gamma, abundi)
 
  if (T > 1.d4) then
     call calc_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot, pH2)
-    cst = patm*mass_per_H/(mu*mass_proton_cgs*kboltz*T)
+    cst = patm/(kboltz*T)
     pH_tot = rho_cgs*T*kboltz/(patm*mass_per_H)
     abundi(icoolC)    = eps(iC)*pH_tot* cst
     abundi(icoolC2)   = 0.
@@ -798,7 +798,7 @@ subroutine chemical_equilibrium_light(rho_cgs, T_in, epsC, mu, gamma, abundi)
  endif
 
  call calc_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot, pH2)
- cst = patm*mass_per_H/(mu*mass_proton_cgs*kboltz*T)
+ cst = patm/(kboltz*T)
  pH_tot = rho_cgs*T*kboltz/(patm*mass_per_H)
 
 ! Dissociation constants
