@@ -691,13 +691,17 @@ subroutine get_TempPresCs(eos_type,xyzi,vxyzui,rhoi,tempi,presi,spsoundi,gammai,
  real,    intent(out),   optional :: presi,spsoundi
  real,    intent(inout), optional :: gammai,mui
  real,    intent(in),    optional :: Xi,Zi
- real                             :: csi,ponrhoi,mu,X,Z
+ real                             :: csi,ponrhoi,mu,gam,X,Z
  logical                          :: use_gamma
 
  mu = gmw
+ gam = gamma
  X  = X_in
  Z  = Z_in
  if (present(mui)) mu = mui
+ if (present(gammai)) then
+    if (gammai > 0.) gam = gammai
+ endif
  if (present(Xi))  X = Xi
  if (present(Zi))  Z = Zi
  use_gamma = .false.
@@ -709,7 +713,7 @@ subroutine get_TempPresCs(eos_type,xyzi,vxyzui,rhoi,tempi,presi,spsoundi,gammai,
     if (vxyzui(4) < 0.) call warning('eos','ui negative in eos')
     if (use_gamma) then
        call equationofstate(eos_type,ponrhoi,csi,rhoi,xyzi(1),xyzi(2),xyzi(3),tempi,vxyzui(4),&
-                            gamma_local=gammai,mu_local=mu,Xlocal=X,Zlocal=Z)
+                            gamma_local=gam,mu_local=mu,Xlocal=X,Zlocal=Z)
     else
        call equationofstate(eos_type,ponrhoi,csi,rhoi,xyzi(1),xyzi(2),xyzi(3),tempi,vxyzui(4),&
                             mu_local=mu,Xlocal=X,Zlocal=Z)
@@ -720,8 +724,8 @@ subroutine get_TempPresCs(eos_type,xyzi,vxyzui,rhoi,tempi,presi,spsoundi,gammai,
 
  if (present(presi))    presi    = ponrhoi*rhoi
  if (present(spsoundi)) spsoundi = csi
- if (present(mui))     mui = mu
- if (present(gammai) .and. .not. use_gamma) gammai = gamma
+ if (present(mui))      mui      = mu
+ if (present(gammai))   gammai   = gam
 
 end subroutine get_TempPresCs
 
