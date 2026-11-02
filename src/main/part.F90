@@ -1503,8 +1503,6 @@ subroutine combine_two_particles(keep,discard)
  if (itau_alloc == 1) tau(keep) = 0.5*(tau(keep) + tau(discard))
  if (itauL_alloc == 1) tau_lucy(keep) = 0.5*(tau_lucy(keep) + tau_lucy(discard))
 
- print*, "Combining particles ",iorig(keep)," and ",iorig(discard)
-
  if (use_krome) then
     T_gas_cool(keep)       = 0.5*(T_gas_cool(keep) + T_gas_cool(discard))
  endif
