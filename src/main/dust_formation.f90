@@ -753,11 +753,11 @@ end subroutine init_muGamma
 !  Compute carbon chemical equilibrum abundance in the gas phase
 !
 !---------------------------------------------------------------
-subroutine chemical_equilibrium_light(rho_cgs, T_in, epsC, mu, gamma, abundi)
+subroutine chemical_equilibrium_light(rho_cgs, T, epsC, mu, gamma, abundi)
  use physcon, only:mass_proton_cgs, kboltz
 ! all quantities are in cgs
- real, intent(in)    :: rho_cgs, T_in, epsC
- real, intent(inout) :: mu, gamma
+ real, intent(in)    :: rho_cgs, epsC
+ real, intent(inout) :: mu, gamma, T
  real, intent(inout)   :: abundi(nabn_AGB)
  real    :: pC, pC2, pC2H, pC2H2
  real    :: pH_tot, err, a, b, c, d
@@ -767,9 +767,8 @@ subroutine chemical_equilibrium_light(rho_cgs, T_in, epsC, mu, gamma, abundi)
  real    :: cst
  integer :: i, nit
  real    :: X, AA, BB
- real    :: T
 
- T = max(T_in, 10.d0)
+ T = max(T, 10.d0)
 
  if (T > 1.d4) then
     call calc_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot, pH2)

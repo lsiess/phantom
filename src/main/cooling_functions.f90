@@ -109,22 +109,22 @@ subroutine AGB_cooling(T, Tdust, rho_cgs, mu, gamma, K3, Q_cgs, dlnQ_cgs, divv, 
  use dim,              only:nabn_AGB
  use cooling_AGBwinds, only:energ_cooling_AGB
  use dust_formation,   only:mass_per_H, eps, chemical_equilibrium_light, &
-                           icoolTi
- use physcon,          only:kboltz,mass_proton_cgs
+                           icoolTi, Tmol
  use units,            only:unit_density
- real, intent(in)  :: mu, gamma, K3
- real, intent(in)     :: rho_cgs, T, Tdust
- real(kind=4), intent(in) :: divv
- real, intent(inout), optional        :: abundi_in(:)
- real, intent(out) :: Q_cgs, dlnQ_cgs
- real              :: abundi(nabn_AGB)
- real              :: dudti, ndens_H, rhoi, epsC
+ real, intent(in)               :: mu, gamma, K3
+ real, intent(in)               :: rho_cgs, T, Tdust
+ real(kind=4), intent(in)       :: divv
+ real, intent(inout), optional  :: abundi_in(:)
+ real, intent(out)              :: Q_cgs, dlnQ_cgs
 
- real :: Tp, Tm, delta, dlnQ_dlnT, dQdT, Qp, Qm
- real :: mui, gammai
+ real :: abundi(nabn_AGB)
+ real :: dudti, ndens_H, rhoi, epsC
+ real :: Tp, Tm, delta, dQdT, Qp, Qm
+ real :: mui, gammai, T_chem, T_cool
 
- mui = mu
+ mui    = mu
  gammai = gamma
+ T_chem = T
 
  if (present(abundi_in)) then
     abundi = abundi_in
@@ -132,43 +132,45 @@ subroutine AGB_cooling(T, Tdust, rho_cgs, mu, gamma, K3, Q_cgs, dlnQ_cgs, divv, 
     abundi = 0.0
  end if
 
- epsC = eps(3) - K3
+ ! compute chemical equilibrium abundances, unless flagged to skip
+ ! (flag set in cooling_solver after first iteration of implicit loop)
+ ! this call may modify T_chem, mui and gammai
  if (abundi(icoolTi) < 0.0) then
-    ! skip abundance calculation (flag set in cooling_solver after first iteration of implicit loop)
  else
-    ! compute chemical equilibrium abundances
-    call chemical_equilibrium_light(rho_cgs, T, epsC, mui, gammai, abundi)
+    epsC = eps(3) - K3
+    call chemical_equilibrium_light(rho_cgs, T_chem, epsC, mui, gammai, abundi)
  end if
 
  ndens_H = rho_cgs / mass_per_H
- abundi = abundi / ndens_H
- rhoi = rho_cgs / unit_density
+ abundi  = abundi / ndens_H
+ rhoi    = rho_cgs / unit_density
 
- call energ_cooling_AGB(T,Tdust,rhoi,divv,mui,abundi,dudti)
+ ! temperature used for cooling: the chemistry-adjusted one above Tmol,
+ ! the original input temperature otherwise
+ if (T > Tmol) then
+    T_cool = T_chem
+ else
+    T_cool = T
+ end if
+
+ call energ_cooling_AGB(T_cool,Tdust,rhoi,divv,mui,abundi,dudti)
+
+ ! numerical derivative of the cooling rate, only needed for icool_method == 2
+ dlnQ_cgs = 0.0
+ if (abs(dudti) > tiny(0.)) then
+    delta = 1.e-6 * T_cool  ! perturbation
+    Tp    = T_cool + delta
+    Tm    = max(T_cool - delta, 1.0)  ! prevent T < 0
+    call energ_cooling_AGB(Tp,Tdust,rhoi,divv,mui,abundi,Qp)
+    call energ_cooling_AGB(Tm,Tdust,rhoi,divv,mui,abundi,Qm)
+    dQdT     = (Qp - Qm) / (Tp - Tm)
+    dlnQ_cgs = dQdT * T_cool / dudti
+ end if
 
  Q_cgs = dudti
 
- delta = 1.e-6 * T  ! perturbation
- Tp = T + delta
- Tm = max(T - delta, 1.0)  ! prevent T < 0
-
- call energ_cooling_AGB(Tp,Tdust,rhoi,divv,mui,abundi,Qp)
- call energ_cooling_AGB(Tm,Tdust,rhoi,divv,mui,abundi,Qm)
-
- dQdT = (Qp - Qm) / (Tp - Tm)
-
- if (abs(dudti) > tiny(0.)) then
-    dlnQ_dlnT = (T / dudti) * dQdT
- else
-    dlnQ_dlnT = 0.0  
- end if
-
-dlnQ_cgs = dlnQ_dlnT
-
 ! Return the updated abundances
- if (present(abundi_in)) then
-    abundi_in = abundi * ndens_H
- end if
+ if (present(abundi_in)) abundi_in = abundi * ndens_H
 
 end subroutine AGB_cooling
 !-----------------------------------------------------------------------
