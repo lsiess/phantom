@@ -374,6 +374,7 @@ subroutine dust_growth_condensation(T,rho_cgs,dt,wind_CO_ratio,fol,fqu,fpy,fir,f
 
  !%% mu = mass_per_H / atomic_mass_unit
 
+
  kappa_dust = kappa_gas + fol * kappa_ol + fqu * kappa_qu &
          + fpy * kappa_py + fir * kappa_ir + fsc * kappa_sc + fcarb * kappa_carb
 

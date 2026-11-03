@@ -215,13 +215,13 @@ subroutine wind_step(params,state)
  use ptmass_radiation,  only:iget_tdust,tdust_exp,isink_radiation,calc_alpha
  use physcon,           only:pi,Rg
  use dust_formation,    only:calc_kappa_dust,calc_kappa_bowen,&
-      calc_Eddington_factor,idust_opacity,calc_muGamma,wind_CO_ratio
+         calc_Eddington_factor,idust_opacity, calc_muGamma,wind_CO_ratio
  use dust_moments,      only:evolve_chem
  use dust_condensation, only:dust_growth_condensation
  use part,              only:idK3,idmu,idgamma,idsat,idkappa
  use cooling_solver,    only:calc_cooling_rate
  use options,           only:icooling
- use units,             only:unit_ergg,unit_density,utime
+ use units,             only:unit_ergg,unit_density,utime,umass,unit_velocity,udist
  use dim,               only:itau_alloc,update_muGamma
 
  type(wind_state),  intent(inout) :: state
@@ -236,7 +236,7 @@ subroutine wind_step(params,state)
  dt_old = state%dt
  state%r_old = state%r
  call evolve_hydro(state%dt,rvT,state%Rstar,params%Mdot,state%mu,state%gamma,state%alpha,state%dalpha_dr,&
-      state%Q,state%dQ_dr,state%spcode,state%dt_force,dt_next)
+         state%Q,state%dQ_dr,state%spcode,state%dt_force,dt_next)
  state%r   = rvT(1)
  state%v   = rvT(2)
  state%a   = (state%v-v_old)/(state%dt)
@@ -249,15 +249,12 @@ subroutine wind_step(params,state)
  alpha_old = state%alpha
  mu_old    = state%mu
  if (idust_opacity == 2) then
-    !state%Tg   = state%u*(state%gamma-1.)/Rg*state%mu
     call evolve_chem(state%dt,state%Tg,state%rho,state%dust_array)
-    state%K2    = state%dust_array(idK2)
-    state%mu    = state%dust_array(idmu)
-    state%gamma = state%dust_array(idgamma)
-    state%kappa = calc_kappa_dust(state%dust_array(idK3), state%Tdust, state%rho)
-    state%dust_array(idalpha) = state%alpha_Edd+params%alpha_rad
+    state%K2        = state%dust_array(idK2)
+    state%mu        = state%dust_array(idmu)
+    state%gamma     = state%dust_array(idgamma)
+    state%kappa     = calc_kappa_dust(state%dust_array(idK3), state%Tdust, state%rho)
  elseif (idust_opacity == 3) then
-    !state%Tg   = state%u*(state%gamma-1.)/Rg*state%mu
     call  dust_growth_condensation(state%Tg, state%rho, state%dt,wind_CO_ratio,&
             state%dust_array(ifol),state%dust_array(ifqu),state%dust_array(ifpy),state%dust_array(ifir),&
             state%dust_array(ifsc),state%dust_array(ifcarb),state%dust_array(irol),state%dust_array(irqu),&
@@ -334,8 +331,8 @@ subroutine wind_step(params,state)
  ! update optical depths
  state%tau      = state%tau + state%kappa*state%rho*(1.e-10+state%r-state%r_old)
  state%tau_lucy = state%tau_lucy &
-      - (state%r-state%r_old) * state%Rstar**2 &
-      * (state%kappa*state%rho/state%r**2 + kappa_old*rho_old/state%r_old**2)/2.
+         - (state%r-state%r_old) * state%Rstar**2 &
+         * (state%kappa*state%rho/state%r**2 + kappa_old*rho_old/state%r_old**2)/2.
 
  !update dust temperature using new r and new tau
  if (iget_tdust == 4) then
@@ -349,7 +346,7 @@ subroutine wind_step(params,state)
  if (icooling > 0) then
     Q_old = state%Q
     call calc_cooling_rate(Q_code,dlnQ_dlnT,state%rho/unit_density,state%Tg,state%Tdust,&
-         state%mu,state%gamma,state%K2,state%kappa)
+            state%mu,state%gamma,state%K2,state%kappa)
     state%Q = Q_code*unit_ergg/utime
     state%dQ_dr = (state%Q-Q_old)/(1.e-10+state%r-state%r_old)
  endif
@@ -383,7 +380,7 @@ subroutine wind_step(params,state)
  use ptmass_radiation,  only:iget_tdust,tdust_exp,isink_radiation,calc_alpha
  use physcon,           only:pi,Rg
  use dust_formation,    only:calc_kappa_dust,calc_kappa_bowen,&
-      calc_Eddington_factor,idust_opacity, calc_muGamma,wind_CO_ratio
+         calc_Eddington_factor,idust_opacity, calc_muGamma,wind_CO_ratio
  use dust_moments,      only:evolve_chem
  use dust_condensation, only:dust_growth_condensation
  use part,              only:idK3,idmu,idgamma,idsat,idkappa
@@ -434,8 +431,8 @@ subroutine wind_step(params,state)
     state%alpha = state%alpha_Edd+params%alpha_rad
  case (4)
     call calc_alpha(real(state%r/udist),real(params%Mstar/umass),&
-                    real(state%Rstar/udist),real(state%vinfty/unit_velocity),&
-                    state%alpha,state%dalpha_dr)
+            real(state%Rstar/udist),real(state%vinfty/unit_velocity),&
+            state%alpha,state%dalpha_dr)
  case default
     state%alpha = 0.
  end select
@@ -449,7 +446,7 @@ subroutine wind_step(params,state)
  v_old  = state%v
  state%r_old = state%r
  call evolve_hydro(state%dt,rvT,state%Rstar,params%Mdot,state%mu,state%gamma,state%alpha,state%dalpha_dr,&
-      state%Q,state%dQ_dr,state%spcode,state%dt_force,dt_next)
+         state%Q,state%dQ_dr,state%spcode,state%dt_force,dt_next)
  state%r    = rvT(1)
  state%v    = rvT(2)
  state%a    = (state%v-v_old)/(state%dt)
@@ -489,8 +486,8 @@ subroutine wind_step(params,state)
  !calculate new tau
  state%tau      = state%tau + state%kappa*state%rho*(1.e-10+state%r-state%r_old)
  state%tau_lucy = state%tau_lucy &
-      - (state%r-state%r_old) * state%Rstar**2 &
-      * (state%kappa*state%rho/state%r**2 + kappa_old*rho_old/state%r_old**2)/2.
+         - (state%r-state%r_old) * state%Rstar**2 &
+         * (state%kappa*state%rho/state%r**2 + kappa_old*rho_old/state%r_old**2)/2.
 
  !update dust temperature with new r and new tau
  if (iget_tdust == 4) then
@@ -504,7 +501,7 @@ subroutine wind_step(params,state)
  if (icooling > 0) then
     Q_old = state%Q
     call calc_cooling_rate(Q_code,dlnQ_dlnT,real(state%rho/unit_density),state%Tg,state%Tdust,&
-         state%mu,state%gamma,state%K2,state%kappa)
+            state%mu,state%gamma,state%K2,state%kappa)
     state%Q = Q_code*unit_ergg/utime
     state%dQ_dr = (state%Q-Q_old)/(1.e-10+state%r-state%r_old)
  endif
@@ -549,7 +546,7 @@ subroutine calc_wind_profile(params,time_end,state,tau_lucy_init)
 
  if (state%v > state%c .and. state%find_sonic_solution) then
     print *,'[wind_profile] for trans-sonic solution, the initial velocity cannot exceed the sound speed : v0=',&
-         state%v,', cs=',state%c
+            state%v,', cs=',state%c
     return
  endif
 
@@ -651,7 +648,7 @@ subroutine get_initial_wind_speed(params,time_end,rsonic,tsonic,wind_type)
     enddo
     if (iverbose>1) print *, 'Lower bound found for v0/cs :',v0min/cs,', icount=',icount
     if (icount == ncount_max .or. params%vwind/cs < v_over_cs_min) &
-         call fatal(label,'cannot find v0min, change wind_temperature or wind_injection_radius ?')
+            call fatal(label,'cannot find v0min, change wind_temperature or wind_injection_radius ?')
     if (v0min/cs > 0.99) call fatal(label,'supersonic wind, set wind_type = 0 and provide wind_velocity or change alpha_rad')
 
     ! Find upper bound for initial velocity
@@ -694,9 +691,9 @@ subroutine get_initial_wind_speed(params,time_end,rsonic,tsonic,wind_type)
     enddo
 
     write (*,'("Sonic point properties  cs (km/s) =",f9.3,", Rs/Rinject = ",f7.3,'//&
-         '", vwind/cs = ",f9.6,", ts =",f8.1,", (Rs-r0)/ts (km/s) = ",f8.4)') &
-         state%v/1e5,state%r/params%Rinject,params%vwind/state%v,state%time/utime,&
-         (state%r-state%r0)/state%time/1.e5
+            '", vwind/cs = ",f9.6,", ts =",f8.1,", (Rs-r0)/ts (km/s) = ",f8.4)') &
+            state%v/1e5,state%r/params%Rinject,params%vwind/state%v,state%time/utime,&
+            (state%r-state%r0)/state%time/1.e5
 
     rsonic = state%r
     tsonic = state%time
@@ -1091,7 +1088,7 @@ subroutine save_windprofile (params,rout,rfill,tend,tcross,tfill,filename,isink)
  time_base  = state%time+1e-4
 
  do while((state%r < rfill .or. state%time < time_end) .and. tfill < 0. .and. &
-      iter < itermax .and. state%Tg > Tdust_stop .and. writeline < nlmax)
+         iter < itermax .and. state%Tg > Tdust_stop .and. writeline < nlmax)
     iter = iter+1
     call wind_step(params,state)
     state%Tg = max(state%Tg,1.0001*Tdust_stop)
@@ -1104,11 +1101,11 @@ subroutine save_windprofile (params,rout,rfill,tend,tcross,tfill,filename,isink)
     gamma_incr = state%gamma
 
     if (      ( abs((r_incr     -r_base)      /r_base)      > eps ) &
-         .or. ( abs((v_incr     -v_base)      /v_base)      > eps ) &
-         .or. ( abs((T_incr     -T_base)      /T_base)      > eps ) &
-         .or. ( abs((gamma_incr -gamma_base)  /gamma_base)  > eps ) &
-         .or. ( abs((time_incr  -time_base)   /time_base)   > 100.*eps ) &
-         .or. ( abs((mu_incr    -mu_base)     /mu_base)     > eps ) ) then
+            .or. ( abs((v_incr     -v_base)      /v_base)      > eps ) &
+            .or. ( abs((T_incr     -T_base)      /T_base)      > eps ) &
+            .or. ( abs((gamma_incr -gamma_base)  /gamma_base)  > eps ) &
+            .or. ( abs((time_incr  -time_base)   /time_base)   > 100.*eps ) &
+            .or. ( abs((mu_incr    -mu_base)     /mu_base)     > eps ) ) then
 
        writeline = writeline + 1
        if (write_files) call filewrite_state(iu,nwrite,state)
@@ -1136,7 +1133,7 @@ subroutine save_windprofile (params,rout,rfill,tend,tcross,tfill,filename,isink)
     if (state%r > rfill) cstop = 'integration goes beyond rfill'
     write(*,'("[WARNING] wind integration failed because ",A," : t/tend = ",f7.5,", dt/tend = ",&
     &es10.3," Tgas = ",f6.0,", r/rout = ",f7.5,", iter = ",f5.3, "%")') trim(cstop), &
-    state%time/time_end,state%dt/time_end,state%Tg,state%r/max(state%r,rout),(100.*iter/itermax)
+            state%time/time_end,state%dt/time_end,state%Tg,state%r/max(state%r,rout),(100.*iter/itermax)
  else
     print *,'integration successful, #',iter,' iterations required, rout = ',state%r/au
  endif

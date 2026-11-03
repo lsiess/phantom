@@ -18,23 +18,23 @@ module part
 !
 ! :References: None
 !
-! :Owner: Daniel Price
+! :Owner: Orsola De Marco
 !
 ! :Runtime parameters: None
 !
 ! :Dependencies: allocutils, dim, dtypekdtree, io, krome_user, mpiutils
 !
  use dim, only:ndim,maxp,maxpsph,ndivcurlv,ndivcurlB,maxvxyzu,maxalpha,&
-               maxptmass,maxdvdx,nsinkproperties,mhd,maxmhd,maxBevol,&
-               maxp_h2,maxindan,nabundances,periodic,ind_timesteps,&
-               maxgrav,ngradh,maxtypes,gravity,maxp_dustfrac,&
-               use_dust,use_dustgrowth,track_lum,maxlum,nalpha,maxmhdni, &
-               maxp_growth,maxdusttypes,maxdustsmall,maxdustlarge, &
-               maxphase,maxgradh,maxan,maxdustan,maxmhdan,maxprad,maxp_nucleation,&
-               maxTdust,store_dust_temperature,use_krome,maxp_krome,maxp_condensation, &
-               do_radiation,gr,maxgr,maxgran,n_nden_phantom,do_nucleation,do_condensation,&
-               inucleation,icondensation,itau_alloc,itauL_alloc,inject_parts,use_apr,apr_maxlevel,&
-               maxp_apr,maxptmassgr,use_sinktree,nvel_ptmass
+      maxptmass,maxdvdx,nsinkproperties,mhd,maxmhd,maxBevol,&
+      maxp_h2,maxindan,nabundances,periodic,ind_timesteps,&
+      maxgrav,ngradh,maxtypes,gravity,maxp_dustfrac,&
+      use_dust,use_dustgrowth,track_lum,maxlum,nalpha,maxmhdni, &
+      maxp_growth,maxdusttypes,maxdustsmall,maxdustlarge, &
+      maxphase,maxgradh,maxan,maxdustan,maxmhdan,maxprad,maxp_nucleation,&
+      maxTdust,store_dust_temperature,use_krome,maxp_krome,maxp_condensation, &
+      do_radiation,gr,maxgr,maxgran,n_nden_phantom,do_nucleation,do_condensation,&
+      inucleation,icondensation,itau_alloc,itauL_alloc,inject_parts,use_apr,apr_maxlevel,&
+      maxp_apr,maxptmassgr,use_sinktree,nvel_ptmass
  use dtypekdtree, only:kdnode
 #ifdef KROME
  use krome_user, only:krome_nmols
@@ -98,7 +98,7 @@ module part
  integer, parameter :: icurlvy = 3
  integer, parameter :: icurlvz = 4
  character(len=*), parameter :: divcurlv_label(4) = &
-   (/'divv  ','curlvx','curlvy','curlvz'/)
+      (/'divv  ','curlvx','curlvy','curlvz'/)
 !
 !--storage in divcurlB
 !
@@ -107,15 +107,15 @@ module part
  integer, parameter :: icurlBy = 3
  integer, parameter :: icurlBz = 4
  character(len=*), parameter :: divcurlB_label(4) = &
-   (/'divB  ','curlBx','curlBy','curlBz'/)
+      (/'divB  ','curlBx','curlBy','curlBz'/)
 !
 !--velocity gradients
 !
  real(kind=4), allocatable :: dvdx(:,:)
  character(len=*), parameter :: dvdx_label(9) = &
-   (/'dvxdx','dvxdy','dvxdz', &
-     'dvydx','dvydy','dvydz', &
-     'dvzdx','dvzdy','dvzdz'/)
+      (/'dvxdx','dvxdy','dvxdz', &
+      'dvydx','dvydy','dvydz', &
+      'dvzdx','dvzdy','dvzdz'/)
 !
 !--H2 chemistry
 !
@@ -132,14 +132,14 @@ module part
  character(len=16)  :: abundance_label(krome_nmols)
 #else
  character(len=*), parameter :: abundance_label(nabundances) = &
-   (/'h2ratio','  abHIq','  abhpq','   abeq','   abco'/)
+      (/'h2ratio','  abHIq','  abhpq','   abeq','   abco'/)
 #endif
  character(len=*), parameter :: abundance_meaning(nabundances) = &
       (/'ratio of molecular to atomic Hydrogen       ',&
-        'nHI/nH:  fraction of neutral atomic Hydrogen',&
-        'nHII/nH: fraction of ionised Hydrogen (HII) ',&
-        'ne/nH:   fraction of electrons              ',&
-        'nCO/nH:  fraction of Carbon Monoxide        '/)
+      'nHI/nH:  fraction of neutral atomic Hydrogen',&
+      'nHII/nH: fraction of ionised Hydrogen (HII) ',&
+      'ne/nH:   fraction of electrons              ',&
+      'nCO/nH:  fraction of Carbon Monoxide        '/)
 
 !
 !--make a public krome_nmols variable to avoid ifdefs elsewhere
@@ -153,15 +153,15 @@ module part
 !
  real, allocatable  :: eos_vars(:,:)
  integer, parameter :: igasP = 1, &
-                       ics   = 2, &
-                       itemp = 3, &
-                       imu   = 4, &
-                       iX    = 5, &
-                       iZ    = 6, &
-                       igamma = 7, &
-                       maxeosvars = 7
+      ics   = 2, &
+      itemp = 3, &
+      imu   = 4, &
+      iX    = 5, &
+      iZ    = 6, &
+      igamma = 7, &
+      maxeosvars = 7
  character(len=*), parameter :: eos_vars_label(maxeosvars) = &
-    (/'pressure   ','sound speed','temperature','mu         ','H fraction ','metallicity','gamma      '/)
+      (/'pressure   ','sound speed','temperature','mu         ','H fraction ','metallicity','gamma      '/)
 
 !
 !--energy_variables
@@ -179,7 +179,7 @@ module part
  character(len=*), parameter :: dustfrac_label(maxdusttypes) = 'dustfrac'
  character(len=*), parameter :: tstop_label(maxdusttypes) = 'tstop'
  character(len=*), parameter :: deltav_label(3) = &
-   (/'deltavx','deltavy','deltavz'/)
+      (/'deltavx','deltavy','deltavz'/)
 !
 !--General relativity
 !
@@ -241,12 +241,12 @@ module part
  integer :: nptmass = 0   ! zero by default
  real    :: epot_sinksink
  character(len=*), parameter :: xyzmh_ptmass_label(nsinkproperties) = &
-  (/'x        ','y        ','z        ','m        ','h        ',&
-    'hsoft    ','maccreted','spinx    ','spiny    ','spinz    ',&
-    'tlast    ','lum      ','Teff     ','Reff     ','mdotloss ',&
-    'mdotav   ','mprev    ','massenc  ','J2       ','Rstrom   ',&
-    'rate_ion ','tbirth   ','vwind    ','Twind    ','ieject   ',&
-    'sftype   ','nseed    ','Rbondi   ','Pr_Bondi ','alpha    '/)
+      (/'x        ','y        ','z        ','m        ','h        ',&
+      'hsoft    ','maccreted','spinx    ','spiny    ','spinz    ',&
+      'tlast    ','lum      ','Teff     ','Reff     ','mdotloss ',&
+      'mdotav   ','mprev    ','massenc  ','J2       ','Rstrom   ',&
+      'rate_ion ','tbirth   ','vwind    ','Twind    ','ieject   ',&
+      'sftype   ','nseed    ','Rbondi   ','Pr_Bondi ','alpha    '/)
  character(len=*), parameter :: vxyz_ptmass_label(3) = (/'vx','vy','vz'/)
 !
 !--self-gravity
@@ -275,18 +275,18 @@ module part
  real, allocatable :: nucleation(:,:)
  ! please note that in nucleation, we save the *normalized* moments, i.e. \hat{K}_i = K_i/n<H>
  character(len=*), parameter :: nucleation_label(n_nucleation) = &
-       (/'Jstar','K0   ','K1   ','K2   ','K3   ',&
-         'mu   ','gamma','S    ','kappa','alphw'/)
+      (/'Jstar','K0   ','K1   ','K2   ','K3   ',&
+      'mu   ','gamma','S    ','kappa','alphw'/)
  integer, parameter :: idJstar = 1, &
-                       idK0    = 2, &
-                       idK1    = 3, &
-                       idK2    = 4, &
-                       idK3    = 5, &
-                       idmu    = 6, &
-                       idgamma = 7, &
-                       idsat   = 8, & !for logging
-                       idkappa = 9, & !for logging
-                       idalpha = 10   !for logging
+      idK0    = 2, &
+      idK1    = 3, &
+      idK2    = 4, &
+      idK3    = 5, &
+      idmu    = 6, &
+      idgamma = 7, &
+      idsat   = 8, & !for logging
+      idkappa = 9, & !for logging
+      idalpha = 10   !for logging
 !
 !--Dust formation - condensation model
 !
@@ -323,7 +323,7 @@ module part
 !
  real, allocatable  :: rad(:,:)
  integer, parameter :: iradxi = 1, &
-                       maxirad= 1
+      maxirad= 1
  character(len=*), parameter :: rad_label(maxirad) = (/'xi'/)
 !
 !--additional quantities required for radiation hydro (not evolved)
@@ -473,9 +473,9 @@ module part
  logical            :: set_boundaries_to_active = .true.
  integer :: i
  character(len=7), dimension(maxtypes), parameter :: &
-   labeltype = (/'gas    ','empty  ','bound  ','star   ','darkm  ','bulge  ', &
-                 ('dust   ', i=idust,idustlast),&
-                 ('dustbnd',i=idustbound,idustboundl)/)
+      labeltype = (/'gas    ','empty  ','bound  ','star   ','darkm  ','bulge  ', &
+      ('dust   ', i=idust,idustlast),&
+      ('dustbnd',i=idustbound,idustboundl)/)
 !
 !--generic interfaces for routines
 !
@@ -1003,7 +1003,7 @@ logical function sinks_have_luminosity(nptmass,xyzmh_ptmass)
  real,    intent(in) :: xyzmh_ptmass(:,:)
 
  sinks_have_luminosity = any(xyzmh_ptmass(iTeff,1:nptmass) > 0. .and. &
-                              xyzmh_ptmass(ilum,1:nptmass) > 0.)
+         xyzmh_ptmass(ilum,1:nptmass) > 0.)
 
 end function sinks_have_luminosity
 
@@ -1017,7 +1017,7 @@ logical function sinks_have_heating(nptmass,xyzmh_ptmass)
  real,    intent(in) :: xyzmh_ptmass(:,:)
 
  sinks_have_heating = any(xyzmh_ptmass(iTeff,1:nptmass) <= 0. .and. &
-                              xyzmh_ptmass(ilum,1:nptmass) > 0.)
+         xyzmh_ptmass(ilum,1:nptmass) > 0.)
 
 end function sinks_have_heating
 
@@ -1030,7 +1030,7 @@ logical function sink_has_heating(xyzmh_ptmassi)
  real, intent(in) :: xyzmh_ptmassi(:)
 
  sink_has_heating = xyzmh_ptmassi(iTeff) <= 0. .and. &
-                              xyzmh_ptmassi(ilum) > 0.
+         xyzmh_ptmassi(ilum) > 0.
 
 end function sink_has_heating
 
@@ -1169,7 +1169,7 @@ pure integer(kind=1) function isetphase(itype,iactive)
  logical, intent(in) :: iactive
 
  if ((set_boundaries_to_active .and.      iamboundary(itype))   .or. &
-     (iactive                  .and. .not.iamboundary(itype)) ) then
+         (iactive                  .and. .not.iamboundary(itype)) ) then
     isetphase = int(itype,kind=1)
  else
     isetphase = -int(abs(itype),kind=1)
@@ -1197,7 +1197,7 @@ pure subroutine get_partinfo(iphasei,isactive,isgas,isdust,itype)
  isgas = (itype==igas .or. itype==iboundary)
 #ifdef DUST
  isdust = ((itype>=idust) .and. (itype<=idustlast))  .or. &
-          ((itype>=idustbound) .and. (itype<=idustboundl))
+         ((itype>=idustbound) .and. (itype<=idustboundl))
 #else
  isdust = .false.
 #endif

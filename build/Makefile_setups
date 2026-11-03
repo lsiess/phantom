@@ -789,7 +789,7 @@ ifeq ($(SETUP), cluster)
 endif
 
 ifeq ($(SETUP), h2region)
-#   HII region(s) in a uniform cloud 
+#   HII region(s) in a uniform cloud
     SETUPFILE= setup_HII.f90
     GRAVITY=no
     IND_TIMESTEPS=yes
