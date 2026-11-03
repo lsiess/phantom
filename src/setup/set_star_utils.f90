@@ -15,9 +15,9 @@ module setstar_utils
 ! :Runtime parameters: None
 !
 ! :Dependencies: dim, eos, eos_piecewise, extern_densprofile, io, kernel,
-!   part, physcon, radiation_utils, readwrite_aton, readwrite_kepler,
-!   readwrite_mesa, rho_profile, setsoftenedcore, sortutils, spherical,
-!   table_utils, unifdis, units
+!   mpiutils, part, physcon, radiation_utils, readwrite_aton,
+!   readwrite_kepler, readwrite_mesa, rho_profile, setsoftenedcore,
+!   sortutils, spherical, table_utils, unifdis, units
 !
  use extern_densprofile, only:nrhotab
  use readwrite_kepler,   only:write_kepler_comp
@@ -113,14 +113,14 @@ subroutine read_star_profile(iprofile,ieos,input_profile,gamma,polyk,ui_coef,&
     polyk = 1.  ! overwrite initial value of polyk
     call rho_polytrope(gamma,polyk,Mstar,r,den,npts,rhocentre,calc_polyk,Rstar)
     rmin = r(1)
-    pres = polyk*den**gamma
+    pres(1:npts) = polyk*den(1:npts)**gamma
  case(ifromfile)
     call read_rhotab_wrapper(trim(input_profile),ng_max,r,den,npts,&
                              polyk,gamma,rhocentre,Mstar,iexist,ierr)
     if (.not.iexist) call fatal('setup','density file does not exist')
     if (ierr > 0)    call fatal('setup','error in reading density file')
     rmin = r(1)
-    pres = polyk*den**gamma
+    pres(1:npts) = polyk*den(1:npts)**gamma
  case(ibpwpoly)
     get_dPdrho => get_dPdrho_piecewise
     call rho_piecewise_polytrope(r,den,rhocentre,Mstar,get_dPdrho,npts,ierr)
@@ -128,7 +128,7 @@ subroutine read_star_profile(iprofile,ieos,input_profile,gamma,polyk,ui_coef,&
     if (ierr == 2) call fatal('setup','failed to converge to a self-consistent density profile')
     rmin  = r(1)
     Rstar = r(npts)
-    pres = polyk*den**gamma
+    pres(1:npts) = polyk*den(1:npts)**gamma
  case(imesa,ikepler,iaton)
     deallocate(r,den,pres,temp,en,mtab)
     if (isoftcore > 0) then
@@ -277,6 +277,7 @@ subroutine set_star_density(lattice,id,master,rmin,Rstar,Mstar,hfact,&
  use spherical,    only:set_sphere
  use unifdis,      only:mask_prototype
  use physcon,      only:pi
+ use mpiutils,     only:reduceall_mpi
  character(len=*), intent(in)    :: lattice
  integer,          intent(in)    :: id,master,npts,np
  integer(kind=8),  intent(out)   :: npart_total
@@ -288,6 +289,7 @@ subroutine set_star_density(lattice,id,master,rmin,Rstar,Mstar,hfact,&
  logical,          intent(in)    :: use_exactN
  procedure(mask_prototype) :: mask
  integer :: nx,i,ntot,npart_old,n
+ integer(kind=8) :: npart_old_total
  real :: vol_sphere,psep
  logical :: mass_is_set
 
@@ -311,6 +313,9 @@ subroutine set_star_density(lattice,id,master,rmin,Rstar,Mstar,hfact,&
  vol_sphere  = 4./3.*pi*Rstar**3
  nx          = int(n**(1./3.))
  psep        = vol_sphere**(1./3.)/real(nx)
+ ! set_sphere adds the new particles to the total number across all MPI threads
+ npart_old_total = reduceall_mpi('+',int(npart_old,kind=8))
+ npart_total     = npart_old_total
  call set_sphere(lattice,id,master,rmin,Rstar,psep,hfact,npart,xyzh, &
                  rhotab=den(1:npts),rtab=r(1:npts),nptot=npart_total, &
                  exactN=use_exactN,np_requested=n,mask=mask)
@@ -318,7 +323,7 @@ subroutine set_star_density(lattice,id,master,rmin,Rstar,Mstar,hfact,&
  ! get total particle number across all MPI threads
  ! and use this to set the particle mass
  !
- ntot = int(npart_total,kind=(kind(ntot)))
+ ntot = int(npart_total - npart_old_total,kind=(kind(ntot)))  ! number of particles in this star
  if (.not.mass_is_set) then
     massoftype(igas) = Mstar/ntot
  endif
@@ -383,7 +388,7 @@ end subroutine set_stellar_core
 !----------------------------------------------------------------
 subroutine get_mass_coord(i1,npart,xyzh,mass_enclosed_r,x0)
  use dim,       only:use_apr
- use part,      only:igas,apr_level,massoftype,aprmassoftype
+ use part,      only:igas,apr_level,massoftype,aprmassoftype,sync_aprmassoftype
  use sortutils, only:sort_by_radius
  integer,           intent(in)  :: i1,npart
  real,              intent(in)  :: xyzh(:,:),x0(3)
@@ -394,6 +399,9 @@ subroutine get_mass_coord(i1,npart,xyzh,mass_enclosed_r,x0)
 
  ! allocate memory
  allocate(mass_enclosed_r(npart-i1),iorder(npart-i1))
+
+ ! massoftype may have just been set by the calling routine
+ call sync_aprmassoftype()
 
  ! sort particles by radius
  call sort_by_radius(npart-i1,xyzh(:,i1+1:npart),iorder,x0)

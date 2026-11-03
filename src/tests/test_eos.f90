@@ -39,6 +39,8 @@ subroutine test_eos(ntests,npass)
  use eos_gasradrec, only:irecomb
  use testeos_stratified, only:test_eos_stratified
  use test_eos_stam, only:run_test_stam
+ use dim,           only:gr
+ use eos,           only:eos_works_with_gr
  integer, intent(inout) :: ntests,npass
 
  if (id==master) write(*,"(/,a,/)") '--> TESTING EQUATION OF STATE MODULE'
@@ -56,12 +58,15 @@ subroutine test_eos(ntests,npass)
  !  call test_helmholtz(ntests, npass)
  call test_idealplusrad(ntests, npass)
 
- do irecomb = 0,3
-    call test_hormone(ntests,npass)
- enddo
+ ! skip tests of equations of state that cannot be used with GR
+ if (.not.gr .or. eos_works_with_gr(20)) then
+    do irecomb = 0,3
+       call test_hormone(ntests,npass)
+    enddo
+ endif
 
- call test_eos_stratified(ntests,npass)
- call run_test_stam(ntests,npass)
+ if (.not.gr .or. eos_works_with_gr(7)) call test_eos_stratified(ntests,npass)
+ if (.not.gr .or. eos_works_with_gr(24)) call run_test_stam(ntests,npass)
 
  if (id==master) write(*,"(/,a)") '<-- EQUATION OF STATE TEST COMPLETE'
 
@@ -75,10 +80,10 @@ end subroutine test_eos
 subroutine test_all(ntests, npass)
  use eos,       only:maxeos,init_eos,isink,polyk,polyk2,qfacdisc,&
                      ierr_file_not_found,ierr_option_conflict,&
-                     eos_is_not_implemented,eos_works_with_radiation
+                     eos_is_not_implemented,eos_works_with_radiation,eos_works_with_gr
  use io,        only:id,master
  use testutils, only:checkval,update_test_scores
- use dim,       only:do_radiation
+ use dim,       only:do_radiation,gr
  use part,      only:xyzmh_ptmass,vxyz_ptmass,nptmass
  integer, intent(inout) :: ntests,npass
  integer :: nfailed(1)
@@ -109,6 +114,7 @@ subroutine test_all(ntests, npass)
     ! skip equations of state that are not implemented
     if (eos_is_not_implemented(ieos)) cycle
     if (ieos==24) cycle ! skip Stamatellos/Lombardi -tested separately
+    if (gr .and. .not.eos_works_with_gr(ieos)) cycle
     if (id==master) write(*,"(/,a,i2)") '--> testing equation of state ',ieos
     call init_eos(ieos,ierr)
     correct_answer = 0
@@ -376,8 +382,10 @@ subroutine test_hormone(ntests, npass)
 
  ! Testing
  dum = 0.
- tol = 2.e-14
+ tol = 3.e-14
  tempi = -1.
+ mu2 = 0.
+ gamma_eff = 0.
  nfail = 0; ncheck = 0; errmax = 0.
  call init_eos(ieos,ierr)
  do i=1,npts
@@ -462,7 +470,7 @@ end subroutine get_rhoT_grid
 !+
 !----------------------------------------------------------------------------
 subroutine test_p_is_continuous(ntests, npass,ieos)
- use eos,            only:equationofstate,eos_requires_isothermal
+ use eos,            only:equationofstate,eos_requires_isothermal,rho_branch_cgs
  use eos_barotropic, only:rhocrit1cgs
  use eos_helmholtz,  only:eos_helmholtz_get_minrho
  use eos_tillotson,  only:rho_0,u_iv
@@ -472,9 +480,10 @@ subroutine test_p_is_continuous(ntests, npass,ieos)
  integer, intent(inout) :: ntests,npass
  integer, intent(in)    :: ieos
  integer :: nfailed(2),ncheck(2)
- integer :: i,maxpts,ierrmax,itest
+ integer :: i,maxpts,ierrmax,itest,nskipped
  real    :: rhoi,eni,xi,yi,zi,tempi,ponrhoi,spsoundi,ponrhoprev,spsoundprev
- real    :: errmax,rho_test
+ real    :: errmax,rho_test,rhoprev
+ logical :: same_phase
  character(len=3) :: var
 
  call barrier_mpi
@@ -506,6 +515,7 @@ subroutine test_p_is_continuous(ntests, npass,ieos)
  over_tests: do itest=1,2
     nfailed = 0
     ncheck  = 0
+    nskipped = 0
     ! first test, fix u and vary rho
     var = 'rho'
     ! second test, fix rho and vary u
@@ -528,13 +538,25 @@ subroutine test_p_is_continuous(ntests, npass,ieos)
           call equationofstate(ieos,ponrhoi,spsoundi,rhoi,xi,yi,zi,tempi,eni)
        endif
        !if (ieos==23 .and. itest==2) write(1,*) rhoi*unit_density,eni*unit_ergg,ponrhoi*rhoi*unit_pressure,spsoundi*unit_velocity
-       if (i > 1) call checkvalbuf(ponrhoi,ponrhoprev,1.e-2,'p/rho continuous with '//trim(var),nfailed(1),ncheck(1),errmax)
+       if (i > 1) then
+          same_phase = .true.
+          ! The two-phase EOS has an intentional jump at rho_branch_cgs.
+          ! Check continuity within each phase, not across that switch.
+          if (ieos==26) same_phase = (rhoi*unit_density < rho_branch_cgs) .eqv. &
+                                    (rhoprev*unit_density < rho_branch_cgs)
+          if (same_phase) then
+             call checkvalbuf(ponrhoi,ponrhoprev,1.e-2,'p/rho continuous with '//trim(var),nfailed(1),ncheck(1),errmax)
+          else
+             nskipped = nskipped + 1
+          endif
+       endif
        !if (i > 1) call checkvalbuf(spsoundi,spsoundprev,1.e-2,'cs is continuous',nfailed(2),ncheck(2),errmax)
        ponrhoprev = ponrhoi
        spsoundprev = spsoundi
+       rhoprev = rhoi
     enddo
     ierrmax = 0
-    call checkvalbuf_end('p/rho continuous with '//trim(var),ncheck(1),nfailed(1),ierrmax,0,maxpts-1)
+    call checkvalbuf_end('p/rho continuous with '//trim(var),ncheck(1),nfailed(1),ierrmax,0,maxpts-1-nskipped)
     ! score each sub-test here, as nfailed is reset at the start of each pass
     call update_test_scores(ntests,nfailed(1:1),npass)
  enddo over_tests

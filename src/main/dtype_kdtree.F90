@@ -28,12 +28,10 @@ module dtypekdtree
                     + 4 &    ! leftchild
                     + 4 &    ! rightchild
                     + 4 &    ! parent
-                    + 4 &    ! idum
+                    + 4 &    ! level
 #ifdef GRAVITY
-                    + 8*6 &  ! quads(6)
+                    + 8*6 &  ! quads(6) (quads)
                     + 8*10 & ! octs(10)
-                    + 4 &    ! tobecached
-                    + 4 &    ! cached
 #endif
                     + 0
 
@@ -60,10 +58,8 @@ module dtypekdtree
     integer :: leftchild
     integer :: rightchild
     integer :: parent
-    integer :: idum ! avoid ifort warning: align on 4-byte boundary
+    integer :: level ! avoid ifort warning: align on 4-byte boundary
 #ifdef GRAVITY
-    integer :: tobecached
-    logical :: cached
     real    :: quads(6)
     real    :: octs(10)  ! xxx,xxy,xxz,xyy,xyz,xzz,yyy,yyz,yzz,zzz
 #endif
@@ -80,7 +76,7 @@ module dtypekdtree
  end type ptmassnode
 
  type ptmasstree
-    type(ptmassnode), allocatable :: nodes(:)
+    type(ptmassnode),  allocatable :: nodes(:)
     integer,           allocatable :: iptmassnode(:)     ! permutation of point indices (1..N)
     integer                        :: nnodes
  end type ptmasstree
@@ -89,9 +85,7 @@ contains
 
 !----------------------------------------------------------------
 !+
-!  get the MPI datatype for kdnode
-!  Todo:
-!  - MPI commit the datatype just once, rather than rebuilding it every time
+!  get the MPI datatype for kdnode, committed on the first call
 !+
 !----------------------------------------------------------------
 subroutine get_mpitype_of_kdnode(dtype)
@@ -106,7 +100,12 @@ subroutine get_mpitype_of_kdnode(dtype)
  integer(kind=MPI_ADDRESS_KIND)  :: disp(ndata)
  type(kdnode)                    :: node
  integer(kind=MPI_ADDRESS_KIND)  :: addr,start,lb,extent
+ integer, save                   :: dtype_saved = MPI_DATATYPE_NULL
 
+ if (dtype_saved /= MPI_DATATYPE_NULL) then
+    dtype = dtype_saved
+    return
+ endif
  nblock = 0
 
  call MPI_GET_ADDRESS(node,start,mpierr)
@@ -153,6 +152,12 @@ subroutine get_mpitype_of_kdnode(dtype)
  call MPI_GET_ADDRESS(node%parent,addr,mpierr)
  disp(nblock) = addr - start
 
+ nblock = nblock + 1
+ blens(nblock) = 1
+ mpitypes(nblock) = MPI_INTEGER4
+ call MPI_GET_ADDRESS(node%level,addr,mpierr)
+ disp(nblock) = addr - start
+
 #ifdef GRAVITY
  nblock = nblock + 1
  blens(nblock) = size(node%quads)
@@ -165,22 +170,11 @@ subroutine get_mpitype_of_kdnode(dtype)
  mpitypes(nblock) = MPI_REAL8
  call MPI_GET_ADDRESS(node%octs,addr,mpierr)
  disp(nblock) = addr - start
-
- nblock = nblock + 1
- blens(nblock) = 1
- mpitypes(nblock) = MPI_INTEGER4
- call MPI_GET_ADDRESS(node%tobecached,addr,mpierr)
- disp(nblock) = addr - start
-
- nblock = nblock + 1
- blens(nblock) = 1
- mpitypes(nblock) = MPI_LOGICAL
- call MPI_GET_ADDRESS(node%cached,addr,mpierr)
- disp(nblock) = addr - start
 #endif
 
  call MPI_TYPE_CREATE_STRUCT(nblock,blens(1:nblock),disp(1:nblock),mpitypes(1:nblock),dtype,mpierr)
  call MPI_TYPE_COMMIT(dtype,mpierr)
+ dtype_saved = dtype
 
  ! check extent okay
  call MPI_TYPE_GET_EXTENT(dtype,lb,extent,mpierr)

@@ -25,6 +25,39 @@ module mpiutils
 !
 !   As above but gets result on all processors.
 !
+! * reduce_in_place_mpi:
+!
+!   call reduce_in_place_mpi('+',var,n)
+!
+!   where var is a 1D array and n is the number of elements to reduce
+!   (n may be smaller than the declared size). Also accepts a whole
+!   2D array, with no length argument.
+!
+! * allgather_mpi:
+!
+!   call allgather_mpi(x,xall)
+!
+!   gathers one int or real*8 x from each task into xall(1:nprocs)
+!   on all tasks.
+!
+! * allgatherv_mpi:
+!
+!   call allgatherv_mpi(xsend,xrecv[,counts,displs])
+!
+!   concatenates the int or real*8 arrays xsend of all tasks, in task
+!   order, into xrecv on all tasks. The number of entries from each task
+!   and the offset of each block in xrecv may be passed in counts and
+!   displs (e.g. from get_displs_mpi), otherwise they are gathered.
+!
+! * alltoall_mpi, alltoallv_mpi:
+!
+!   call alltoall_mpi(nsend,nrecv)
+!   call alltoallv_mpi(xsend,nsend,xrecv,nrecv)
+!
+!   exchange integer counts, then blocks of real*8, between every pair
+!   of tasks: block p of xsend (nsend(p) entries) goes to task p-1, and
+!   block p of xrecv (nrecv(p) entries) comes from task p-1.
+!
 ! * bcast_mpi:
 !
 !   call bcast_mpi(var)
@@ -81,7 +114,8 @@ module mpiutils
 !  generic interface reduce_in_place
 !
  interface reduce_in_place_mpi
-  module procedure reduce_in_place_mpi_real8arr2,reduce_in_place_mpi_real4arr2
+  module procedure reduce_in_place_mpi_real8arr,reduce_in_place_mpi_real4arr, &
+                   reduce_in_place_mpi_real8arr2,reduce_in_place_mpi_real4arr2
  end interface reduce_in_place_mpi
 !
 !--generic interface bcast_mpi
@@ -103,10 +137,30 @@ module mpiutils
  interface unfill_buf
   module procedure unfill_bufarr,unfill_buf1
  end interface unfill_buf
+!
+!--generic interface allgather_mpi
+!
+ interface allgather_mpi
+  module procedure allgather_mpi_int,allgather_mpi_real8
+ end interface allgather_mpi
+!
+!--generic interface allgatherv_mpi
+!
+ interface allgatherv_mpi
+  module procedure allgatherv_mpi_int,allgatherv_mpi_real4,allgatherv_mpi_real8
+ end interface allgatherv_mpi
+!
+!--generic interface alltoallv_mpi
+!
+ interface alltoallv_mpi
+  module procedure alltoallv_mpi_real4,alltoallv_mpi_real8
+ end interface alltoallv_mpi
 
  public :: init_mpi, finalise_mpi
  public :: reduce_mpi, reduceall_mpi, reduce_in_place_mpi
  public :: bcast_mpi
+ public :: allgather_mpi, allgatherv_mpi, get_displs_mpi
+ public :: alltoall_mpi, alltoallv_mpi
  public :: barrier_mpi
  public :: fill_buffer, unfill_buf
  public :: reduceloc_mpi
@@ -1006,6 +1060,74 @@ end function reduceall_mpi_int1
 
 !--------------------------------------------------------------------------
 !+
+!  In-place MPI reduction (+, max or min) of the first n elements of a
+!  real*8 array. n may be smaller than the actual argument. The result
+!  is returned in those elements on every MPI rank. No-op without MPI.
+!+
+!--------------------------------------------------------------------------
+subroutine reduce_in_place_mpi_real8arr(string,xproc,n)
+#ifdef MPI
+ use io, only:fatal
+#endif
+ character(len=*), intent(in)    :: string
+ integer,          intent(in)    :: n
+ real(kind=8),     intent(inout) :: xproc(n)
+#ifdef MPI
+ real(kind=8) :: xsend(n)
+
+ xsend = xproc
+ select case(trim(string))
+ case('+')
+    call MPI_ALLREDUCE(xsend,xproc,n,MPI_REAL8,MPI_SUM,MPI_COMM_WORLD,mpierr)
+ case('max')
+    call MPI_ALLREDUCE(xsend,xproc,n,MPI_REAL8,MPI_MAX,MPI_COMM_WORLD,mpierr)
+ case('min')
+    call MPI_ALLREDUCE(xsend,xproc,n,MPI_REAL8,MPI_MIN,MPI_COMM_WORLD,mpierr)
+ case default
+    call fatal('reduce_in_place (mpi)','unknown reduction operation')
+ end select
+ if (mpierr /= 0) call fatal('reduce_in_place','error in mpi_reduce call')
+
+#endif
+
+end subroutine reduce_in_place_mpi_real8arr
+
+!--------------------------------------------------------------------------
+!+
+!  In-place MPI reduction (+, max or min) of the first n elements of a
+!  real*4 array. n may be smaller than the actual argument. The result
+!  is returned in those elements on every MPI rank. No-op without MPI.
+!+
+!--------------------------------------------------------------------------
+subroutine reduce_in_place_mpi_real4arr(string,xproc,n)
+#ifdef MPI
+ use io, only:fatal
+#endif
+ character(len=*), intent(in)    :: string
+ integer,          intent(in)    :: n
+ real(kind=4),     intent(inout) :: xproc(n)
+#ifdef MPI
+ real(kind=4) :: xsend(n)
+
+ xsend = xproc
+ select case(trim(string))
+ case('+')
+    call MPI_ALLREDUCE(xsend,xproc,n,MPI_REAL4,MPI_SUM,MPI_COMM_WORLD,mpierr)
+ case('max')
+    call MPI_ALLREDUCE(xsend,xproc,n,MPI_REAL4,MPI_MAX,MPI_COMM_WORLD,mpierr)
+ case('min')
+    call MPI_ALLREDUCE(xsend,xproc,n,MPI_REAL4,MPI_MIN,MPI_COMM_WORLD,mpierr)
+ case default
+    call fatal('reduce_in_place (mpi)','unknown reduction operation')
+ end select
+ if (mpierr /= 0) call fatal('reduce_in_place','error in mpi_reduce call')
+
+#endif
+
+end subroutine reduce_in_place_mpi_real4arr
+
+!--------------------------------------------------------------------------
+!+
 !  function performing in-place MPI reduction operations (+,max,min) on array
 !  of real*8 numbers. Can be called from non-MPI routines.
 !  Sends result to all threads.
@@ -1550,5 +1672,231 @@ function unfill_buf1(xbuf,ioffset) result(xnew)
  ioffset = i1
 
 end function unfill_buf1
+
+!--------------------------------------------------------------------------
+!+
+!  gather one integer from each task into an array on all tasks
+!+
+!--------------------------------------------------------------------------
+subroutine allgather_mpi_int(x,xall)
+#ifdef MPI
+ use io, only:fatal
+#endif
+ integer, intent(in)  :: x
+ integer, intent(out) :: xall(:)
+
+#ifdef MPI
+ call MPI_ALLGATHER(x,1,MPI_INTEGER,xall,1,MPI_INTEGER,MPI_COMM_WORLD,mpierr)
+ if (mpierr /= 0) call fatal('allgather_mpi','error in MPI_ALLGATHER call')
+#else
+ xall(:) = x
+#endif
+
+end subroutine allgather_mpi_int
+
+!--------------------------------------------------------------------------
+!+
+!  gather one real*8 from each task into an array on all tasks
+!+
+!--------------------------------------------------------------------------
+subroutine allgather_mpi_real8(x,xall)
+#ifdef MPI
+ use io, only:fatal
+#endif
+ real(kind=8), intent(in)  :: x
+ real(kind=8), intent(out) :: xall(:)
+
+#ifdef MPI
+ call MPI_ALLGATHER(x,1,MPI_REAL8,xall,1,MPI_REAL8,MPI_COMM_WORLD,mpierr)
+ if (mpierr /= 0) call fatal('allgather_mpi','error in MPI_ALLGATHER call')
+#else
+ xall(:) = x
+#endif
+
+end subroutine allgather_mpi_real8
+
+!--------------------------------------------------------------------------
+!+
+!  offsets of the blocks of each task in a concatenated array,
+!  given the number of entries from each task
+!+
+!--------------------------------------------------------------------------
+pure function get_displs_mpi(counts) result(displs)
+ integer, intent(in) :: counts(:)
+ integer :: displs(size(counts))
+ integer :: i
+
+ if (size(counts) < 1) return
+ displs(1) = 0
+ do i = 2,size(counts)
+    displs(i) = displs(i-1) + counts(i-1)
+ enddo
+
+end function get_displs_mpi
+
+!--------------------------------------------------------------------------
+!+
+!  get the number of entries each task sends, if not given,
+!  and the offset of each task's block
+!+
+!--------------------------------------------------------------------------
+subroutine get_counts_displs(nsend,counts_out,displs_out,counts,displs)
+ integer, intent(in)  :: nsend
+ integer, intent(out) :: counts_out(:),displs_out(:)
+ integer, intent(in), optional :: counts(:),displs(:)
+
+ if (present(counts)) then
+    counts_out = counts
+ else
+    call allgather_mpi_int(nsend,counts_out)
+ endif
+ if (present(displs)) then
+    displs_out = displs
+ else
+    displs_out = get_displs_mpi(counts_out)
+ endif
+
+end subroutine get_counts_displs
+
+!--------------------------------------------------------------------------
+!+
+!  concatenate integer arrays from all tasks, in task order, on all tasks
+!+
+!--------------------------------------------------------------------------
+subroutine allgatherv_mpi_int(xsend,xrecv,counts,displs)
+ use io, only:nprocs,fatal
+ integer, intent(in)  :: xsend(:)
+ integer, intent(out) :: xrecv(:)
+ integer, intent(in), optional :: counts(:),displs(:)
+ integer :: icounts(nprocs),idispls(nprocs)
+
+ call get_counts_displs(size(xsend),icounts,idispls,counts,displs)
+ if (sum(icounts) > size(xrecv)) call fatal('allgatherv_mpi','receive array too small')
+#ifdef MPI
+ call MPI_ALLGATHERV(xsend,size(xsend),MPI_INTEGER,xrecv,icounts,idispls,MPI_INTEGER,&
+                     MPI_COMM_WORLD,mpierr)
+ if (mpierr /= 0) call fatal('allgatherv_mpi','error in MPI_ALLGATHERV call')
+#else
+ xrecv(1:size(xsend)) = xsend
+#endif
+
+end subroutine allgatherv_mpi_int
+
+!--------------------------------------------------------------------------
+!+
+!  concatenate real*4 arrays from all tasks, in task order, on all tasks
+!+
+!--------------------------------------------------------------------------
+subroutine allgatherv_mpi_real4(xsend,xrecv,counts,displs)
+ use io, only:nprocs,fatal
+ real(kind=4), intent(in)  :: xsend(:)
+ real(kind=4), intent(out) :: xrecv(:)
+ integer,      intent(in), optional :: counts(:),displs(:)
+ integer :: icounts(nprocs),idispls(nprocs)
+
+ call get_counts_displs(size(xsend),icounts,idispls,counts,displs)
+ if (sum(icounts) > size(xrecv)) call fatal('allgatherv_mpi','receive array too small')
+#ifdef MPI
+ call MPI_ALLGATHERV(xsend,size(xsend),MPI_REAL4,xrecv,icounts,idispls,MPI_REAL4,&
+                     MPI_COMM_WORLD,mpierr)
+ if (mpierr /= 0) call fatal('allgatherv_mpi','error in MPI_ALLGATHERV call')
+#else
+ xrecv(1:size(xsend)) = xsend
+#endif
+
+end subroutine allgatherv_mpi_real4
+
+!--------------------------------------------------------------------------
+!+
+!  concatenate real*8 arrays from all tasks, in task order, on all tasks
+!+
+!--------------------------------------------------------------------------
+subroutine allgatherv_mpi_real8(xsend,xrecv,counts,displs)
+ use io, only:nprocs,fatal
+ real(kind=8), intent(in)  :: xsend(:)
+ real(kind=8), intent(out) :: xrecv(:)
+ integer,      intent(in), optional :: counts(:),displs(:)
+ integer :: icounts(nprocs),idispls(nprocs)
+
+ call get_counts_displs(size(xsend),icounts,idispls,counts,displs)
+ if (sum(icounts) > size(xrecv)) call fatal('allgatherv_mpi','receive array too small')
+#ifdef MPI
+ call MPI_ALLGATHERV(xsend,size(xsend),MPI_REAL8,xrecv,icounts,idispls,MPI_REAL8,&
+                     MPI_COMM_WORLD,mpierr)
+ if (mpierr /= 0) call fatal('allgatherv_mpi','error in MPI_ALLGATHERV call')
+#else
+ xrecv(1:size(xsend)) = xsend
+#endif
+
+end subroutine allgatherv_mpi_real8
+
+!--------------------------------------------------------------------------
+!+
+!  send nsend(p) to task p-1 and receive nrecv(p) from it, for all p
+!+
+!--------------------------------------------------------------------------
+subroutine alltoall_mpi(nsend,nrecv)
+#ifdef MPI
+ use io, only:fatal
+#endif
+ integer, intent(in)  :: nsend(:)
+ integer, intent(out) :: nrecv(:)
+
+#ifdef MPI
+ call MPI_ALLTOALL(nsend,1,MPI_INTEGER,nrecv,1,MPI_INTEGER,MPI_COMM_WORLD,mpierr)
+ if (mpierr /= 0) call fatal('alltoall_mpi','error in MPI_ALLTOALL call')
+#else
+ nrecv = nsend
+#endif
+
+end subroutine alltoall_mpi
+
+!--------------------------------------------------------------------------
+!+
+!  exchange blocks of real*4 between all pairs of tasks: block p of
+!  xsend (nsend(p) entries) goes to task p-1, block p of xrecv
+!  (nrecv(p) entries, as given by alltoall_mpi) comes from task p-1
+!+
+!--------------------------------------------------------------------------
+subroutine alltoallv_mpi_real4(xsend,nsend,xrecv,nrecv)
+ use io, only:fatal
+ real(kind=4), intent(in)  :: xsend(:)
+ integer,      intent(in)  :: nsend(:),nrecv(:)
+ real(kind=4), intent(out) :: xrecv(:)
+
+ if (sum(nrecv) > size(xrecv)) call fatal('alltoallv_mpi','receive array too small')
+#ifdef MPI
+ call MPI_ALLTOALLV(xsend,nsend,get_displs_mpi(nsend),MPI_REAL4,&
+                    xrecv,nrecv,get_displs_mpi(nrecv),MPI_REAL4,MPI_COMM_WORLD,mpierr)
+ if (mpierr /= 0) call fatal('alltoallv_mpi','error in MPI_ALLTOALLV call')
+#else
+ xrecv(1:nsend(1)) = xsend(1:nsend(1))
+#endif
+
+end subroutine alltoallv_mpi_real4
+
+!--------------------------------------------------------------------------
+!+
+!  exchange blocks of real*8 between all pairs of tasks: block p of
+!  xsend (nsend(p) entries) goes to task p-1, block p of xrecv
+!  (nrecv(p) entries, as given by alltoall_mpi) comes from task p-1
+!+
+!--------------------------------------------------------------------------
+subroutine alltoallv_mpi_real8(xsend,nsend,xrecv,nrecv)
+ use io, only:fatal
+ real(kind=8), intent(in)  :: xsend(:)
+ integer,      intent(in)  :: nsend(:),nrecv(:)
+ real(kind=8), intent(out) :: xrecv(:)
+
+ if (sum(nrecv) > size(xrecv)) call fatal('alltoallv_mpi','receive array too small')
+#ifdef MPI
+ call MPI_ALLTOALLV(xsend,nsend,get_displs_mpi(nsend),MPI_REAL8,&
+                    xrecv,nrecv,get_displs_mpi(nrecv),MPI_REAL8,MPI_COMM_WORLD,mpierr)
+ if (mpierr /= 0) call fatal('alltoallv_mpi','error in MPI_ALLTOALLV call')
+#else
+ xrecv(1:nsend(1)) = xsend(1:nsend(1))
+#endif
+
+end subroutine alltoallv_mpi_real8
 
 end module mpiutils

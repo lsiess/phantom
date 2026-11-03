@@ -31,7 +31,7 @@ module setup
 !
 ! :Dependencies: eos, externalforces, infile_utils, io, kernel, metric,
 !   mpidomain, options, part, physcon, prompting, setdisc, setorbit,
-!   setstar, setunits, setup_params, systemutils, timestep, units
+!   setstar, setunits, setup_params, timestep, units
 !
  use options,  only:alpha,ieos
  use setstar,  only:star_t
@@ -75,7 +75,6 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
  use mpidomain,      only:i_belong
  use setup_params,   only:rhozero
  use infile_utils,   only:get_options,infile_exists
- use systemutils,    only:get_command_option
  use metric,         only:update_metric
  integer,          intent(in)    :: id
  integer,          intent(out)   :: npart
@@ -120,12 +119,12 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
  p_index= 1.5
  q_index= 0.75
  gamma_ad= 5./3.
- np = int(get_command_option('np',default=nint(1e6))) ! can set default e.g. --np=1000 (for testsuite)
+ np = 1000000
  accrad = 4.      ! (GM/c^2)
  accradius1 = accrad
  gamma = gamma_ad
  ! default units
- call set_units(G=1.,c=1.,mass=mhole*solarm) ! Set central mass to M=1 in code units
+ call set_units(G=1.d0,c=1.d0,mass=mhole*solarm) ! Set central mass to M=1 in code units
 
  call update_metric(0.)
 
@@ -154,7 +153,7 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
 ! Convert to code units
 !
  mhole = mhole*solarm
- call set_units(G=1.,c=1.,mass=mhole) ! Set central mass to M=1 in code units
+ call set_units(G=1.d0,c=1.d0,mass=real(mhole,kind=8)) ! Set central mass to M=1 in code units
  mdisc           = mdisc*solarm/umass
  accradius1_hard = accradius1
  if (np > 0) then
