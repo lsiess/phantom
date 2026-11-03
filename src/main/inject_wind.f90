@@ -461,7 +461,8 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,rho,xyzmh_ptmass,vxyz_ptmass,
  use wind,              only:interp_wind_profile
  use dim,               only:ndust_prop
  use part,              only:massoftype,igas,iReff,iboundary,nptmass,delete_particles_outside_sphere,&
-                             delete_dead_particles_inside_radius,n_nucleation,ieject,imloss,ivwind,Bevol,Bxyz
+                             delete_dead_particles_inside_radius,n_nucleation,n_condensation,&
+                             ieject,imloss,ivwind,Bevol,Bxyz
  use partinject,        only:add_or_update_particle
  use units,             only:udist,umass,utime
  use dust_formation,    only:idust_opacity

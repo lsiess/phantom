@@ -41,8 +41,8 @@ module cooling_functions
            cooling_radiative_relaxation, &
            testing_cooling_functions
 
- private
- real, parameter  :: xH = 0.7, xHe = 0.28 !assumed H and He mass fractions
+  private
+  real, parameter  :: xH = 0.7, xHe = 0.28 !assumed H and He mass fractions
 
 contains
 !-----------------------------------------------------------------------

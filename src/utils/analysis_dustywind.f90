@@ -166,7 +166,7 @@ subroutine calculate_Teq(N, dmax, R_star, T_star, rho, rho_over_r2, OR, Teq, K3)
           endif
        elseif (idust_opacity == 3) then
           if (rho(i) > 0.) then
-            call fatal('calculate_Teq','idust_opacity=3 not implemented yet. Use idust_opacity=2 instead.')
+             call fatal('calculate_Teq','idust_opacity=3 not implemented yet. Use idust_opacity=2 instead.')
              kappa(i) = calc_kappa_dust(K3(i),Teq(i),rho(i))
           else
              kappa(i) = 0.d0

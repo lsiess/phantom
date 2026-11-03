@@ -1,6 +1,6 @@
 !--------------------------------------------------------------------------!
 ! The Phantom Smoothed Particle Hydrodynamics code, by Daniel Price et al. !
-! Copyright (c) 2007-2024 The Authors (see AUTHORS)                        !
+! Copyright (c) 2007-2026 The Authors (see AUTHORS)                        !
 ! See LICENCE file for usage and distribution conditions                   !
 ! http://phantomsph.github.io/                                             !
 !--------------------------------------------------------------------------!
@@ -13,16 +13,10 @@ module chemistry_moments
 !
 ! :Owner: Lionel Siess
 !
-! :Runtime parameters:
-!   - bowen_Tcond   : *dust condensation temperature (K)*
-!   - bowen_delta   : *condensation temperature range (K)*
-!   - bowen_kmax    : *maximum dust opacity (cm²/g)*
-!   - idust_opacity : *compute dust opacity (0=off, 1=bowen)*
-!   - kappa_gas     : *constant gas opacity (cm²/g)*
-!   - wind_CO_ratio : *wind initial C/O ratio (> 1)*
+! :Runtime parameters: None
 !
-! :Dependencies: dim, dump_utils, eos, infile_utils, io, part, physcon,
-!   units
+! :Dependencies: dump_utils, eos, io, physcon
+!
 
  implicit none
 
@@ -38,6 +32,7 @@ module chemistry_moments
 
  private
  integer, parameter :: nMolecules = 25
+ !Coefficients can be found in  Sharp, C. M. ; Huebner, W. F. 1990, ApJS, 72, 417
  real, parameter :: coefs(5,nMolecules) = reshape([&
        4.25321d+05, -1.07123d+05, 2.69980d+01, 5.48280d-04, -3.81498d-08, & !H2-
        4.15670d+05, -1.05260d+05, 2.54985d+01, 4.78020d-04, -2.82416d-08, & !OH-
@@ -73,7 +68,6 @@ module chemistry_moments
 
 contains
 
-
 subroutine set_abundances_moments(wind_CO_ratio)
 ! all quantities in cgs
  use physcon, only:atomic_mass_unit
@@ -92,7 +86,6 @@ subroutine set_abundances_moments(wind_CO_ratio)
  !XH  = atomic_mass_unit*eps(iH)/mass_per_H  ! H mass fraction
  !XHe = atomic_mass_unit*eps(iHe)/mass_per_H ! He mass fraction
 end subroutine set_abundances_moments
-
 
 !-----------------------------------------------------------------------
 !+
@@ -262,7 +255,6 @@ subroutine chemical_equilibrium_light(rho_cgs, T, epsC, pC, pC2, pC2H, pC2H2, mu
  endif
 end subroutine chemical_equilibrium_light
 
-
 !----------------------------------------
 !
 !  Calculate mean molecular weight, gamma
@@ -372,7 +364,6 @@ subroutine init_muGamma_moments(rho_cgs, T, mu, gamma, ppH, ppH2)
  if (present(ppH2)) ppH2 = pH2
 
 end subroutine init_muGamma_moments
-
 
 !-------------------------------------------------------------------------
 !

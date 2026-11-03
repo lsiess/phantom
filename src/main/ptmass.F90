@@ -172,7 +172,7 @@ subroutine get_accel_sink_gas(nptmass,xi,yi,zi,hi,xyzmh_ptmass,fxi,fyi,fzi,phi, 
  real,    intent(in),    optional :: fsink_old(4,nptmass)
  real,    intent(out),   optional :: fonrmax,dtphi2
  real,    intent(inout), optional :: bin_info(7,nptmass)
- real,    intent(out),   optional :: ponsubg(nptmass)
+ real,    intent(inout), optional :: ponsubg(nptmass)
  real                             :: ftmpxi,ftmpyi,ftmpzi
  real                             :: dx,dy,dz,rr2,ddr,dr3,f1,f2,pmassj,J2,shat(3),Rsink
  real                             :: hsoft,hsoft1,hsoft21,q2i,qi,psoft,fsoft

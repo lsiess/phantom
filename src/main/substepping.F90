@@ -21,14 +21,15 @@ module substepping
 !     Tuckerman, Berne & Martyna (1992), J. Chem. Phys. 97, 1990-2001
 !     Rantala + (2020) (2023),Chin (2007a)
 !
-! :Owner: Alison Young
+! :Owner: Yann Bernard
 !
 ! :Runtime parameters: None
 !
 ! :Dependencies: chem, cons2primsolver, cooling, cooling_ism, damping, dim,
-!   dust_formation, eos_HIIR, extern_gr, externalforces, io, io_summary,
-!   krome_interface, metric, metric_tools, mpiutils, neighkdtree, options,
-!   part, ptmass, ptmass_radiation, ptmass_tree, subgroup, timestep, timing
+!   dust_condensation, dust_formation, dust_moments, eos_HIIR, extern_gr,
+!   externalforces, io, io_summary, krome_interface, metric, metric_tools,
+!   mpiutils, neighkdtree, options, part, ptmass, ptmass_radiation,
+!   ptmass_tree, subgroup, timestep, timing
 !
  implicit none
 
@@ -813,7 +814,7 @@ subroutine get_force(nptmass,npart,nsubsteps,ntypes,timei,dtextforce,xyzh,vxyzu,
  dtextforcenew = bignumber
  dtsinkgas     = bignumber
  dtphi2        = bignumber
- fonrmax       = 0
+ fonrmax       = 0.
  ponsubg       = 0.
  last          = (force_count == n_force_order)
  do_recompute_gr = .false.
@@ -1026,8 +1027,8 @@ subroutine get_force(nptmass,npart,nsubsteps,ntypes,timei,dtextforce,xyzh,vxyzu,
        ! temperature and abundances update (only done during the last force calculation of the substep)
        !
        if (maxvxyzu >= 4 .and. itype==igas .and. last) then
-          call cooling_abundances_update(i,pmassi,xyzh,vxyzu,eos_vars,abundance,nucleation,condensation,dust_temp, &
-                                         divcurlv,abundc,abunde,abundo,abundsi,dt,dphot0)
+          call cooling_abundances_update(i,pmassi,xyzh,vxyzu,eos_vars,abundance,nucleation,condensation,&
+               dust_temp,divcurlv,abundc,abunde,abundo,abundsi,dt,dphot0)
        endif
     endif
  enddo
@@ -1086,6 +1087,7 @@ subroutine cooling_abundances_update(i,pmassi,xyzh,vxyzu,eos_vars,abundance,nucl
  use dust_formation,  only:calc_muGamma
  use cooling,         only:energ_cooling,cooling_in_step
  use eos_HIIR,        only:muion,Tion
+ use units,           only:unit_density
 #ifdef KROME
  use part,            only: T_gas_cool
  use krome_interface, only:update_krome
@@ -1136,7 +1138,7 @@ subroutine cooling_abundances_update(i,pmassi,xyzh,vxyzu,eos_vars,abundance,nucl
     eos_vars(imu,i)    = condensation(icmu,i)
     eos_vars(igamma,i) = condensation(icgamma,i)
  elseif (update_muGamma) then
-    call calc_muGamma(rhoi,eos_vars(itemp,i),eos_vars(imu,i),eos_vars(igamma,i),pH,pH_tot,pH2)
+    call calc_muGamma(rhoi*unit_density,eos_vars(itemp,i),eos_vars(imu,i),eos_vars(igamma,i),pH,pH_tot,pH2)
  endif
  !
  ! COOLING
