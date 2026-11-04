@@ -269,7 +269,7 @@ subroutine chemical_equilibrium(rho_cgs,T,pmol,pelm,mu,gamma,&
  real, intent(inout) :: T, mu, gamma, pmol(nMolecules), pelm(nElements), rho_cgs
  real, intent(in)    :: wind_CO_ratio, pH_tot, fol, fpy, fqu, fir, fsc, fcarb
  real, dimension(nMolecules)    :: pmol_old
- real    :: Kd(nMolecules+1), err(nElements) !, pH_tot !, a, b, c, d !LUIS err
+ real    :: Kd(nMolecules+1), err(nElements)
  real    :: pelm_old(nElements)
  integer :: i, nit, ipass
 
@@ -587,9 +587,6 @@ subroutine init_muGamma_condensation(rho_cgs,T,mu,gamma,pH_tot,pH,pH2,pressure_c
  real, intent(out)             :: pH_tot, pH, pH2
  real, intent(in),  optional   :: pressure_cgs
 
- mu     = (1.+4.*eps(iHe))/(1.+eps(iHe))
- gamma  = 5./3.
-
  if (present(pressure_cgs)) then
     call calc_muGamma_condensation(rho_cgs,T, mu, gamma, pH, pH_tot, pH2, pressure_cgs)
  else
@@ -605,9 +602,8 @@ end subroutine init_muGamma_condensation
 !----------------------------------------
 subroutine calc_muGamma_condensation(rho_cgs,T, mu, gamma, pH, pH_tot, pH2, pressure_cgs)
 ! unless specified, pressures are in bar
- !use io, only:fatal
-
  use physcon, only:patm,kboltz
+ use options, only:ieos
  real, intent(in)    :: rho_cgs
  real, intent(inout) :: mu, gamma, T
  real, intent(out)   :: pH, pH_tot, pH2
@@ -619,25 +615,25 @@ subroutine calc_muGamma_condensation(rho_cgs,T, mu, gamma, pH, pH_tot, pH2, pres
  integer, parameter :: itermax = 100
  character(len=30), parameter :: label = 'calc_muGamma'
 
-!      if (present(pressure_cgs)) print *,'WARNING you cannot redefine the density'
+ if (present(pressure_cgs)) then
+    pH_tot = pressure_cgs/(1.+eps(iHe))/patm
+ else
+    pH_tot = rho_cgs*T*kboltz/(patm*mass_per_H)
+ endif
  if (T > 1.d4) then
-    mu     = (1.+4.*eps(iHe))/(1.+eps(iHe))
-    gamma  = 5./3.
-    if (present(pressure_cgs)) then
-       pH_tot = pressure_cgs/(1.+eps(iHe))/patm
-       !rho_cgs = pH_tot*patm*mass_per_H/(T*kboltz)
-    else
-       pH_tot = rho_cgs*T*kboltz/(patm*mass_per_H)
-    endif
-    pH2 = 0.
     pH  = pH_tot
+    pH2 = 0.
+    if (ieos == 5) then
+       mu     = (1.+4.*eps(iHe))/(1.+eps(iHe))
+       gamma  = 5./3.
+    endif
  elseif (T > 450.) then
 ! iterate to get consistently pH, T, mu and gamma
-    tol       = 1.d-5
+    tol       = 1.d-3
     converged = .false.
     isolve    = 0
-    !pH_tot    = rho_cgs*T*kboltz/(patm*mass_per_H) ! to avoid compiler warning
-    !pH        = pH_tot ! arbitrary value, overwritten below, to avoid compiler warning
+    pH        = pH_tot ! arbitrary value, overwritten below, to avoid compiler warning
+    T_old     = T
     i = 0
     do while (.not. converged .and. i < itermax)
        i = i+1
@@ -653,6 +649,7 @@ subroutine calc_muGamma_condensation(rho_cgs,T, mu, gamma, pH, pH_tot, pH2, pres
           pH        = solve_q(2.*KH2, 1., -pH_tot)
           pH2       = KH2*pH**2
        endif
+       if (ieos /= 5) return
        mu        = (1.+4.*eps(iHe))*pH_tot/(pH+pH2+eps(iHe)*pH_tot)
        gamma     = (5.*pH+5.*eps(iHe)*pH_tot+7.*pH2)/(3.*pH+3.*eps(iHe)*pH_tot+5.*pH2)
        if (i==1) then
@@ -661,7 +658,6 @@ subroutine calc_muGamma_condensation(rho_cgs,T, mu, gamma, pH, pH_tot, pH2, pres
        else
           T_old     = T
           T         = T_old*mu*(gamma-1.)/(mu_old*(gamma_old-1.))
-          !T        = T_old    !uncomment this line to cancel iterations
           converged = (abs(T-T_old)/T_old) < tol
           !print *,i,T_old,T,gamma_old,gamma,mu_old,mu,abs(T-T_old)/T_old
           if (i>=itermax .and. .not.converged) then
@@ -669,7 +665,7 @@ subroutine calc_muGamma_condensation(rho_cgs,T, mu, gamma, pH, pH_tot, pH2, pres
                 isolve = isolve+1
                 i      = 0
                 tol    = 1.d-2
-                print *,'[dust_formation] cannot converge on T(mu,gamma). Trying with lower tolerance'
+                print *,'[calc_muGamma_cond] cannot converge on T(mu,gamma). Trying with lower tolerance'
              else
                 print *,'Told=',T_old,',T=',T,',gamma_old=',gamma_old,',gamma=',gamma,',mu_old=',&
                         mu_old,',mu=',mu,',dT/T=',abs(T-T_old)/T_old
@@ -680,18 +676,12 @@ subroutine calc_muGamma_condensation(rho_cgs,T, mu, gamma, pH, pH_tot, pH2, pres
     enddo
  else
 ! Simplified low-temperature chemistry: all hydrogen in H2 molecules
-    if (present(pressure_cgs)) then
-       !print *, "pressure_cgs = ", pressure_cgs
-       pH_tot = 2.*pressure_cgs/(1.+2.*eps(iHe))/patm
-       !rho_cgs = pH_tot*patm*mass_per_H/(T*kboltz) !*patm
-       !print *, "pgas = ", pH_tot*(0.5+eps(iHe))*patm
-    else
-       pH_tot = rho_cgs*T*kboltz/(patm*mass_per_H)
+    pH2 = pH_tot/2.
+    pH  = 0.
+    if (ieos == 5) then
+       mu    = (1.+4.*eps(iHe))/(0.5+eps(iHe))
+       gamma = (5.*eps(iHe)+3.5)/(3.*eps(iHe)+2.5)
     endif
-    pH2    = pH_tot/2.
-    pH     = 0.
-    mu     = (1.+4.*eps(iHe))/(0.5+eps(iHe))
-    gamma  = (5.*eps(iHe)+3.5)/(3.*eps(iHe)+2.5)
  endif
 end subroutine calc_muGamma_condensation
 
