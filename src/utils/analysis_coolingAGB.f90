@@ -60,11 +60,12 @@ subroutine do_analysis(dumpfile,num,xyzh,vxyzu,particlemass,npart,time,iunit)
  ' 5) check dust formation and destruction', &
  ' 6) total dust mass', &
  ' 7) reconstruct logNormal from moments', &
- ' 8) radial abundance profiles'
+ ' 8) radial abundance profiles', &
+ ' 9) test calc_muGamma subroutine'
 
 analysis_to_perform = 1
 
-call prompt('Choose analysis type ',analysis_to_perform,1,8)
+call prompt('Choose analysis type ',analysis_to_perform,1,9)
 print *,''
 
 !analysis
@@ -85,6 +86,8 @@ case(7)
   call reconstruct_logNorm_from_moments()
 case(8)
   call radial_abundance_profile(npart, particlemass, xyzh, vxyzu)
+case(9)
+  call test_muGamma()
 end select
 
 end subroutine do_analysis
@@ -102,7 +105,7 @@ subroutine test_cooling_temperature()
   use physcon,        only:Rg,mass_proton_cgs,kboltz,patm,solarm,kpc
   use units,          only:unit_density,utime,set_units
   use dim,            only:nElements
-  use cooling_functions, only:cooling_neutral_hydrogen
+  use cooling_functions
 
 implicit none
 
@@ -115,16 +118,22 @@ implicit none
   real    :: ratesq(nrates)
   real    :: abundi(nabn_AGB)
   integer, parameter :: iH = 1, iHe=2, iC=3, iOx=4, iN=5, iNe=6, iSi=7, iS=8, iFe=9, iTi=10
-  real    :: ndens_H, epsC
+  real    :: ndens_H, epsC, ndens_cst
   real    :: gamma
   real    :: start, finish
-  real    :: HI_Spitzer, dlnQ_dlnT_Spitzer
+  real    :: HI_Spitzer, dlnQ_dlnT_Spitzer,HI_Spitzer_deNormalized
+  real    :: Q_CO_C, dlnQ_dlnT_CO_C
+  real    :: Q_CO_WJ, dlnQ_dlnT_CO_WJ
+  real    :: Q_CO_Ward(2)
+  real    :: Q_CO_McKee, dlnQ_dlnT_CO_McKee
+  real    :: Q_highTemp, dlnQ_dlnT_highTemp
+  real    :: T_chem, T_cool
   
   if (id==master) write(*,"(/,a)") '--> testing cooling_AGB rate for a range of temperatures'
 
   call set_units(mass=1e7*solarm,dist=kpc,G=1.d0)
   
-  logTmax = log10(1.5d4)
+  logTmax = log10(5d4)
   logTmin = log10(20.d0)
  
 
@@ -153,7 +162,6 @@ implicit none
   rho_cgs = 2.2d-14
   rhoi = rho_cgs/unit_density 
   ndens_H = rhoi*unit_density / mass_per_H
-
 
   call init_cooling_AGB()
   
@@ -185,27 +193,45 @@ implicit none
     T = 10**logT
 
     ! compute chemical equilibrium abundances
-    call chemical_equilibrium_light(rho_cgs, T, epsC, mu, gamma, abundi)
+    T_chem = T
+    call chemical_equilibrium_light(rho_cgs, T_chem, epsC, mu, gamma, abundi)
     ! abundi = abundi / rho_cgs * mass_proton_cgs
-    abundi = abundi / ndens_H
+    ndens_cst = rhoi*unit_density / (mu*mass_proton_cgs)  ! Same cst as in chemical equilibrium
+    abundi = abundi / ndens_H   ! Normalize the abundances
 
-    print*, "[test_cooling_temperature] T=", T, "abundances: ", abundi
-    
     Tdust = T
+    if (T > Tmol) then
+      T_cool = T_chem
+    else
+      T_cool = T
+    end if
     
-    call energ_cooling_AGB(T,Tdust,rhoi,divv,mu,abundi,dudti,ratesq)
+    call energ_cooling_AGB(T_cool,Tdust,rhoi,divv,mu,abundi,dudti,ratesq)
 
-    ! call cooling_neutral_hydrogen(T, rho_cgs, HI_Spitzer, dlnQ_dlnT_Spitzer)
+    call cooling_neutral_hydrogen(T_cool, rho_cgs, HI_Spitzer, dlnQ_dlnT_Spitzer)
+    call cooling_high_temp(T_cool, rho_cgs, Q_highTemp, dlnQ_dlnT_highTemp)
+
+    call rotational_CO_cooling_C(T_cool, rho_cgs, abundi(icoolCO), real(divv, kind=8), Q_CO_C, dlnQ_dlnT_CO_C)
+    call rotational_CO_cooling_WJ(T_cool, rho_cgs, abundi(icoolCO), real(divv_cgs, kind=8), Q_CO_WJ, dlnQ_dlnT_CO_WJ)
+
+    call rotational_CO_cooling_McKee(T_cool, rho_cgs, abundi(icoolCO), Q_CO_McKee, dlnQ_dlnT_CO_McKee)
+
+
+    ! print*, 'T: ', T, 'nH2 Ward: ', ndens_H*abundi(icoolH2), ' Q_CO Ward: ', Q_CO_Ward
 
     ndens = rhoi*unit_density/(mu*mass_proton_cgs)
     crate = dudti*(rhoi*unit_density) ! ylamq is divided by rho_cgs in energ_cooling_AGB
-    write(iunit,*)  T,crate/ndens_H**2,                     &
+    HI_Spitzer_deNormalized = HI_Spitzer*(rhoi*unit_density) ! the HI cooling term is normalized by density
+    ! print*, "[test_cooling_temperature] T=", T, "HI_Spitzer=", HI_Spitzer*rho_cgs, "AGB=", crate
+    write(iunit,*)  T_cool,-crate/ndens_H**2,                     &
                     abundi(icoolH), abundi(icoolH2), abundi(icoolHe), &
                     abundi(icoolCO), abundi(icoolH2O), abundi(icoolOH), &
                     abundi(icoolO), abundi(icoolSi), abundi(icoolC2), &
                     abundi(icoolC), abundi(icoolC2H2), abundi(icoolC2H), &
                     abundi(icoolSiO), abundi(icoolCH4), &
-                    ratesq(:)/ndens_H**2
+                    ratesq(:)/ndens_H**2, -HI_Spitzer_deNormalized/ndens_H**2, &
+                    -Q_CO_C/ndens_H**2, -Q_CO_WJ/ndens_H**2, Q_CO_McKee/ndens_H**2, &
+                    -Q_highTemp/ndens_H**2
   enddo
   call cpu_time(finish)
   print '("Time = ",f6.3," seconds.")',finish-start
@@ -280,7 +306,7 @@ implicit none
     rhoi = rho_cgs/unit_density
     ! The next two lines are to reproduce Figure 6 in NK93, varying divv and keeping N_tilde fixed
     ! N_tilde needs to be defined as a parameter, either N_tilde = 1.d22, or N_tilde ~ 0
-    ! divv_cgs = real(n_H2/N_tilde*1.d5, kind=4)   ! arbitrary non-zero value to test effect
+    ! divv_cgs = real(n_H2/N_tilde*1.d5, kind=4)
     ! divv = divv_cgs*real(utime, kind=4)
 
     ! dphot = get_dphot(dphotflag,dphot0,xi,yi,zi)
@@ -586,7 +612,7 @@ subroutine total_dust_mass(time,npart,particlemass,xyzh)
   use utils_apr,        only:apr_max
  real, intent(in)               :: time,particlemass,xyzh(:,:)
  integer, intent(in)            :: npart
- integer                        :: i,ncols,j,ierr
+ integer                        :: i,ncols,j
  integer                        :: dump_number = 0
  real, dimension(2)             :: dust_mass
  character(len=17), allocatable :: columns(:)
@@ -628,7 +654,7 @@ print*,apr_max
       !  print*, "K3: ", nucleation(idK3,1), "mass_factor: ", mass_factor
        dust_mass(1) = dust_mass(1) + nucleation(idK3,i) *mass_factor
        if (nucleation(idK3, i) > eps(3)) then
-          print *, "Warning: K3 exceeds available carbon for particle ", i
+          print *, "Warning: K3 exceeds available carbon for particle ", i, ", K3: ", nucleation(idK3,i)
        endif
        grain_size = a0*nucleation(idK1,i)/(nucleation(idK0,i)+1.0E-99) !in micron
        if (grain_size > a0) then
@@ -855,6 +881,37 @@ subroutine delete_particles(npart_in)
   print *, 'Number of particles after deletion: ', npart
 
 end subroutine delete_particles
+
+
+subroutine test_muGamma()
+  use dust_formation, only:init_muGamma, calc_muGamma, set_abundances
+  use physcon,        only:mass_proton_cgs
+  use units,          only:unit_density
+  implicit none
+
+  real :: rho_cgs, T_min, T_max, T, T_old, T_i
+  real :: mu, gamma
+  real :: pH, pH_tot
+  integer :: iunit
+
+  rho_cgs = 1.0d-14
+  T_min = 1100.0
+  T_max = 3000.0
+
+  call set_abundances
+  call init_muGamma(rho_cgs, T_min, mu, gamma)
+  open(newunit=iunit,file='test_muGamma.txt',status='replace')
+
+  do T_i = T_min, T_max, 10.
+    T = T_i
+    T_old = T
+    call calc_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot)
+
+    write(iunit,*)  T_old, T, mu, gamma
+  enddo
+  close(iunit)
+
+end subroutine test_muGamma
 
 
 end module analysis
