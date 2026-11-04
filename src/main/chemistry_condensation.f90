@@ -701,78 +701,127 @@ subroutine calc_muGamma_condensation(rho_cgs,T, mu, gamma, pH, pH_tot, pH2, pres
  endif
 end subroutine calc_muGamma_condensation
 
+pure real function newton_method(a, b, c, d, e, zz)
+      real, intent(in) :: a, b, c, d, e, zz
+      real :: x, x_ub, fx, dfx, dx, x_new
+      integer :: iter
+      integer, parameter :: max_iter = 50
+      real, parameter :: tol_rel = 1.d-10
+
+! If e >= 0, elemental oxygen is completely depleted (no positive real root)
+      if (e >= 0.0) then
+         newton_method = 0.0
+         return
+      endif
+
+! Analytical upper bound on the unique positive real root
+      x_ub = -e / d
+      if (c > 0.0) x_ub = min(x_ub, sqrt(-e / c))
+      if (b > 0.0) x_ub = min(x_ub, (-e / b)**(1.0/3.0))
+      if (a > 0.0) x_ub = min(x_ub, (-e / a)**0.25)
+
+      ! Initial guess: use warm-start zz if valid and bounded, otherwise x_ub
+      if (zz > 0.0 .and. zz <= x_ub) then
+         x = zz
+      else
+         x = x_ub
+      endif
+
+! Newton-Raphson iteration using Horner's scheme (no log or exp calls)
+      do iter = 1, max_iter
+         fx  = (((a*x + b)*x + c)*x + d)*x + e
+         dfx = ((4.0*a*x + 3.0*b)*x + 2.0*c)*x + d
+
+         dx = -fx / dfx
+         x_new = x + dx
+
+         ! Safeguard: if step overshoots into negative or beyond upper bound, bisect
+         if (x_new <= 0.0 .or. x_new > x_ub) then
+            x_new = 0.5 * x
+         endif
+
+         if (abs(x_new - x) <= tol_rel * x_new) then
+            newton_method = x_new
+            return
+         endif
+         x = x_new
+      enddo
+
+      newton_method = x
+end function newton_method     
+
 !Fortran subroutine that implements Newton's method for
 !root-finding with the given polynomial function
 !f(x) = a*x^4 + b*x^3 + c*x^2 + d*x + e
 
-real function newton_method(aa, bb, cc, dd, ee, zz)
- real, intent(in) :: aa, bb, cc, dd, ee, zz
- real :: a,b,c,d,e,u,du
- real :: L4, L3, L2, L1, L0, Lmax
- real :: S4, S3, S2, S1, S0
- real :: fx_scaled, dfx_scaled
- ! Parameters
- integer, parameter :: max_iter = 1000
- real, parameter :: tolerance = 1.d-12 ! Scaled absolute tolerance
- real, parameter :: tolerance_rel = 1.d-10
+! real function newton_method(aa, bb, cc, dd, ee, zz)
+!  real, intent(in) :: aa, bb, cc, dd, ee, zz
+!  real :: a,b,c,d,e,u,du
+!  real :: L4, L3, L2, L1, L0, Lmax
+!  real :: S4, S3, S2, S1, S0
+!  real :: fx_scaled, dfx_scaled
+!  ! Parameters
+!  integer, parameter :: max_iter = 1000
+!  real, parameter :: tolerance = 1.d-12 ! Scaled absolute tolerance
+!  real, parameter :: tolerance_rel = 1.d-10
 
- integer :: iter
+!  integer :: iter
 
- a = aa
- b = bb
- c = cc
- d = dd
- e = ee
+!  a = aa
+!  b = bb
+!  c = cc
+!  d = dd
+!  e = ee
 
- ! Initialize log space variable u = ln(z)
- if (zz > 0.0) then
-    u = log(zz)
- else
-    u = -100.0 ! Avoid log(0) if zz is exactly 0
- endif
+!  ! Initialize log space variable u = ln(z)
+!  if (zz > 0.0) then
+!     u = log(zz)
+!  else
+!     u = -100.0 ! Avoid log(0) if zz is exactly 0
+!  endif
 
- ! Newton's method loop in log space
- do iter = 1, max_iter
+!  ! Newton's method loop in log space
+!  do iter = 1, max_iter
 
-    ! Compute log magnitudes of terms
-    L4 = -1.e30; if (abs(a) > 0.0) L4 = log(abs(a)) + 4.0 * u
-    L3 = -1.e30; if (abs(b) > 0.0) L3 = log(abs(b)) + 3.0 * u
-    L2 = -1.e30; if (abs(c) > 0.0) L2 = log(abs(c)) + 2.0 * u
-    L1 = -1.e30; if (abs(d) > 0.0) L1 = log(abs(d)) + u
-    L0 = -1.e30; if (abs(e) > 0.0) L0 = log(abs(e))
+!     ! Compute log magnitudes of terms
+!     L4 = -1.e30; if (abs(a) > 0.0) L4 = log(abs(a)) + 4.0 * u
+!     L3 = -1.e30; if (abs(b) > 0.0) L3 = log(abs(b)) + 3.0 * u
+!     L2 = -1.e30; if (abs(c) > 0.0) L2 = log(abs(c)) + 2.0 * u
+!     L1 = -1.e30; if (abs(d) > 0.0) L1 = log(abs(d)) + u
+!     L0 = -1.e30; if (abs(e) > 0.0) L0 = log(abs(e))
 
-    ! Find the maximum log magnitude to scale terms (log-sum-exp trick)
-    Lmax = max(L4, L3, L2, L1, L0)
+!     ! Find the maximum log magnitude to scale terms (log-sum-exp trick)
+!     Lmax = max(L4, L3, L2, L1, L0)
 
-    ! Compute scaled terms (maximum term magnitude will be 1.0)
-    S4 = 0.0; if (abs(a) > 0.0) S4 = sign(1.0, a) * exp(L4 - Lmax)
-    S3 = 0.0; if (abs(b) > 0.0) S3 = sign(1.0, b) * exp(L3 - Lmax)
-    S2 = 0.0; if (abs(c) > 0.0) S2 = sign(1.0, c) * exp(L2 - Lmax)
-    S1 = 0.0; if (abs(d) > 0.0) S1 = sign(1.0, d) * exp(L1 - Lmax)
-    S0 = 0.0; if (abs(e) > 0.0) S0 = sign(1.0, e) * exp(L0 - Lmax)
+!     ! Compute scaled terms (maximum term magnitude will be 1.0)
+!     S4 = 0.0; if (abs(a) > 0.0) S4 = sign(1.0, a) * exp(L4 - Lmax)
+!     S3 = 0.0; if (abs(b) > 0.0) S3 = sign(1.0, b) * exp(L3 - Lmax)
+!     S2 = 0.0; if (abs(c) > 0.0) S2 = sign(1.0, c) * exp(L2 - Lmax)
+!     S1 = 0.0; if (abs(d) > 0.0) S1 = sign(1.0, d) * exp(L1 - Lmax)
+!     S0 = 0.0; if (abs(e) > 0.0) S0 = sign(1.0, e) * exp(L0 - Lmax)
 
-    ! Compute scaled function and derivative
-    fx_scaled = S4 + S3 + S2 + S1 + S0
-    dfx_scaled = 4.0 * S4 + 3.0 * S3 + 2.0 * S2 + S1
+!     ! Compute scaled function and derivative
+!     fx_scaled = S4 + S3 + S2 + S1 + S0
+!     dfx_scaled = 4.0 * S4 + 3.0 * S3 + 2.0 * S2 + S1
 
-    ! Check for convergence based on function value
-    if (abs(fx_scaled) < tolerance) exit
+!     ! Check for convergence based on function value
+!     if (abs(fx_scaled) < tolerance) exit
 
-    ! Update u using Newton's method
-    if (abs(dfx_scaled) > 0.0) then
-       du = - fx_scaled / dfx_scaled
-       u = u + du
-       ! Check for convergence based on step size
-       if (abs(du) < tolerance_rel) exit
-    else
-       exit
-    endif
-!         !print *, iter, exp(u)
- enddo
+!     ! Update u using Newton's method
+!     if (abs(dfx_scaled) > 0.0) then
+!        du = - fx_scaled / dfx_scaled
+!        u = u + du
+!        ! Check for convergence based on step size
+!        if (abs(du) < tolerance_rel) exit
+!     else
+!        exit
+!     endif
+! !         !print *, iter, exp(u)
+!  enddo
 
- ! Convert back from log space
- newton_method = exp(u)
+!  ! Convert back from log space
+!  newton_method = exp(u)
 
-end function newton_method
+! end function newton_method
 
 end module chemistry_condensation
