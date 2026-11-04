@@ -329,7 +329,7 @@ subroutine chemical_equilibrium(rho_cgs,T,pmol,pelm,mu,gamma,&
                   +pelm(iN)**2*Kd(iN2O)+pelm(iH)*pelm(iMg)*Kd(iMgOH)+pelm(iMg)*Kd(iMgO)+pelm(iFe)*Kd(iFeO) &
                   +pelm(iC)*pelm(iS)*Kd(iCOS)+pelm(iS)*Kd(iSO), &
                   (eps(iSi)*(4.*fol+3.*fpy+2.*fqu)-eps(iOx))*pH_tot, &
-                  eps(iOx)*pH_tot)
+                  pelm(iOx))
 
        endif !ipass
 
@@ -354,6 +354,20 @@ subroutine chemical_equilibrium(rho_cgs,T,pmol,pelm,mu,gamma,&
                   +pelm(iOx)*pelm(iS)*Kd(iCOS)+pelm(iS)*Kd(iCS)+pelm(iS)**2*Kd(iCS2), &
                   (eps(iOx)+(fcarb-1.0)*eps(iC))*pH_tot)
 
+          pelm(iOx) = newton_method(4.*(pelm(iN)**2*Kd(iN2O4)+pelm(iH)**2*pelm(iS)*Kd(iH2SO4)), &
+               3.*(pelm(iH)*pelm(iN)*Kd(iHNO3)+pelm(iN)*Kd(iNO3)+pelm(iS)*Kd(iSO3)), &
+               2.*(Kd(iO2)+pelm(iC)*Kd(iCO2)+pelm(iH)*pelm(iN)*Kd(iHNO2) &
+               +pelm(iN)*Kd(iNO2)+pelm(iH)**2*pelm(iMg)*Kd(iMgO2H2)+pelm(iSi)*Kd(iSiO2) &
+               +pelm(iFe)*pelm(iH)**2*Kd(iFeO2H2)+pelm(iS)*Kd(iSO2)), &
+               1.+pelm(iC)*Kd(iCO)+pelm(iSi)*Kd(iSiO)+pelm(iH)*Kd(iOH)+pelm(iH)**2*Kd(iH2O)&
+               +pelm(iC)*pelm(iH)*Kd(iCOH) &
+               +pelm(iC)**2*Kd(iC2O)+pelm(iC)*pelm(iH)**2*Kd(iH2CO)+pelm(iN)*Kd(iNO) &
+               +pelm(iC)*pelm(iN)*Kd(iNCO)+pelm(iC)*pelm(iH)*pelm(iN)*Kd(iHCNO)+pelm(iH)*pelm(iN)*Kd(iHNO) &
+               +pelm(iN)**2*Kd(iN2O)+pelm(iH)*pelm(iMg)*Kd(iMgOH)+pelm(iMg)*Kd(iMgO)+pelm(iFe)*Kd(iFeO) &
+               +pelm(iC)*pelm(iS)*Kd(iCOS)+pelm(iS)*Kd(iSO), &
+               (eps(iSi)*(4.*fol+3.*fpy+2.*fqu)-eps(iOx))*pH_tot, &
+               eps(iOx)*pH_tot)        
+
           ipass = ipass + 1
 
        else
@@ -366,9 +380,9 @@ subroutine chemical_equilibrium(rho_cgs,T,pmol,pelm,mu,gamma,&
                   +pelm(iOx)*pelm(iH)*pelm(iN)*Kd(iHCNO)+pelm(iSi)*Kd(iSiC)+pelm(iSi)**2*Kd(iSi2C) &
                   +pelm(iOx)*pelm(iS)*Kd(iCOS)+pelm(iS)*Kd(iCS)+pelm(iS)**2*Kd(iCS2), &
                   (fcarb-1.0)*eps(iC)*pH_tot)
-       endif  !ipass
+       
 
-       pelm(iOx) = newton_method(4.*(pelm(iN)**2*Kd(iN2O4)+pelm(iH)**2*pelm(iS)*Kd(iH2SO4)), &
+          pelm(iOx) = newton_method(4.*(pelm(iN)**2*Kd(iN2O4)+pelm(iH)**2*pelm(iS)*Kd(iH2SO4)), &
                3.*(pelm(iH)*pelm(iN)*Kd(iHNO3)+pelm(iN)*Kd(iNO3)+pelm(iS)*Kd(iSO3)), &
                2.*(Kd(iO2)+pelm(iC)*Kd(iCO2)+pelm(iH)*pelm(iN)*Kd(iHNO2) &
                +pelm(iN)*Kd(iNO2)+pelm(iH)**2*pelm(iMg)*Kd(iMgO2H2)+pelm(iSi)*Kd(iSiO2) &
@@ -380,7 +394,9 @@ subroutine chemical_equilibrium(rho_cgs,T,pmol,pelm,mu,gamma,&
                +pelm(iN)**2*Kd(iN2O)+pelm(iH)*pelm(iMg)*Kd(iMgOH)+pelm(iMg)*Kd(iMgO)+pelm(iFe)*Kd(iFeO) &
                +pelm(iC)*pelm(iS)*Kd(iCOS)+pelm(iS)*Kd(iSO), &
                (eps(iSi)*(4.*fol+3.*fpy+2.*fqu)-eps(iOx))*pH_tot, &
-               eps(iOx)*pH_tot)
+               pelm(iOx))
+
+       endif  !ipass        
     endif !wind_CO
 
     pelm(iN) = solve_q(2.*(Kd(iN2)+pelm(iC)**2*Kd(iC2N2) &
