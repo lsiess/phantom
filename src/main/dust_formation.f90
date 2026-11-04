@@ -387,9 +387,11 @@ subroutine calc_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot)
  pH_tot = rho_cgs*T*kboltz/(patm*mass_per_H)
  T_old = T
  if (T > 1.d4) then
-    mu     = (1.+4.*eps(iHe))/(1.+eps(iHe))
     pH     = pH_tot
-    if (ieos /= 17) gamma  = 5./3.
+    if (ieos == 5) then
+       gamma  = 5./3.
+       mu     = (1.+4.*eps(iHe))/(1.+eps(iHe))
+    endif
  elseif (T > 450.) then
 ! iterate to get consistently pH, T, mu and gamma
     tol       = 1.d-3
@@ -403,8 +405,8 @@ subroutine calc_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot)
        KH2       = calc_Kd(coefs(:,iH2), T)
        pH        = solve_q(2.*KH2, 1., -pH_tot)
        pH2       = KH2*pH**2
+       if (ieos /= 5) exit !only update mu, keep gamma constant
        mu        = (1.+4.*eps(iHe))/(.5+eps(iHe)+0.5*pH/pH_tot)
-       if (ieos == 17) exit !only update mu, keep gamma constant
        x         = 2.*(1.+4.*eps(iHe))/mu
        gamma     = (3.*x+4.+4.*eps(iHe))/(x+4.+4.*eps(iHe))
        converged = (abs(T-T_old)/T_old) < tol
@@ -431,8 +433,10 @@ subroutine calc_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot)
 ! Simplified low-temperature chemistry: all hydrogen in H2 molecules
     pH2    = pH_tot/2.
     pH     = 0.
-    mu     = (1.+4.*eps(iHe))/(0.5+eps(iHe))
-    if (ieos /= 17)  gamma  = (5.*eps(iHe)+3.5)/(3.*eps(iHe)+2.5)
+    if (ieos == 5) then
+       mu     = (1.+4.*eps(iHe))/(0.5+eps(iHe))
+       gamma  = (5.*eps(iHe)+3.5)/(3.*eps(iHe)+2.5)
+    endif
  endif
 
 end subroutine calc_muGamma
@@ -450,21 +454,6 @@ subroutine init_muGamma(rho_cgs, T, mu, gamma, ppH, ppH2)
  real, intent(out), optional   :: ppH, ppH2
  real :: KH2, pH_tot, pH, pH2
 
- pH_tot = rho_cgs*kboltz*T/(patm*mass_per_H)
- if (T > 1.d5) then
-    pH2 = 0.
-    pH  = pH_tot
- elseif (T > 450.) then
-    KH2 = calc_Kd(coefs(:,iH2), T)
-    pH  = solve_q(2.*KH2, 1., -pH_tot)
-    pH2 = KH2*pH**2
- else
-! Simplified low-temperature chemistry: all hydrogen in H2 molecules
-    pH2 = pH_tot/2.
-    pH  = 0.
- endif
- mu    = (1.+4.*eps(iHe))*pH_tot/(pH+pH2+eps(iHe)*pH_tot)
- gamma = (5.*pH+5.*eps(iHe)*pH_tot+7.*pH2)/(3.*pH+3.*eps(iHe)*pH_tot+5.*pH2)
  call calc_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot)
  if (present(ppH))  ppH = pH
  if (present(ppH2)) ppH2 = pH2
