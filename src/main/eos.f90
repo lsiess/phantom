@@ -752,8 +752,8 @@ subroutine get_TempPresCs(eos_type,xyzi,vxyzui,rhoi,tempi,presi,spsoundi,gammai,
  if (present(gammai)) gam = gammai
  if (present(Xi))  X = Xi
  if (present(Zi))  Z = Zi
- if (present(gammai)) then
-    if (gammai > 0.) use_gamma = .true.
+ if (present(gammai) .and. gammai > 0.) then
+    use_gamma = .true.
  else
     use_gamma = .false.
  endif
