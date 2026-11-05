@@ -638,8 +638,8 @@ end subroutine evap_shift_remove
 !----------------------------------------
 subroutine calc_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot, ppH2)
 ! all quantities are in cgs
- use io,  only:fatal
-
+ use io,      only:fatal
+ use options, only:ieos
  real, intent(in)    :: rho_cgs
  real, intent(inout) :: T, mu, gamma
  real, intent(out)   :: pH, pH_tot
@@ -660,10 +660,12 @@ subroutine calc_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot, ppH2)
  if (T > T_ionisation_He) then
     pH = pH_tot
     pH2 = 0.
-    mu = (1.+4.*eps(iHe))/(.5+eps(iHe)+0.5*pH/pH_tot) ! 0.62
-    !  mu     = (1.+4.*eps(iHe))/(1.+eps(iHe))
-    x         = 2.*(1.+4.*eps(iHe))/mu
-    gamma     = (3.*x+4.+4.*eps(iHe))/(x+4.+4.*eps(iHe))
+    if (ieos == 5) then
+       mu = (1.+4.*eps(iHe))/(.5+eps(iHe)+0.5*pH/pH_tot) ! 0.62
+       !  mu     = (1.+4.*eps(iHe))/(1.+eps(iHe))
+       x         = 2.*(1.+4.*eps(iHe))/mu
+       gamma     = (3.*x+4.+4.*eps(iHe))/(x+4.+4.*eps(iHe))
+    endif
  elseif (T > Tmol) then
 ! iterate to get consistently pH, T, mu and gamma
     tol       = 1.d-3
@@ -680,6 +682,7 @@ subroutine calc_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot, ppH2)
        KH2       = calc_Kd(coefs(:,iH2), T)
        pH        = solve_q(2.*KH2, 1., -pH_tot)
        pH2       = KH2*pH**2
+       if (ieos /= 5) return
        mu        = (1.+4.*eps(iHe))/(.5+eps(iHe)+0.5*pH/pH_tot)
        x         = 2.*(1.+4.*eps(iHe))/mu
        gamma     = (3.*x+4.+4.*eps(iHe))/(x+4.+4.*eps(iHe))
