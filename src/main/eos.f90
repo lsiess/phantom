@@ -1456,7 +1456,7 @@ logical function eos_allows_shock_and_work(ieos)
  integer, intent(in) :: ieos
 
  select case(ieos)
- case(2,5,10,12,15,16,21,22,24)
+ case(2,5,10,12,15,16,20,21,22,24)
     eos_allows_shock_and_work = .true.
  case default
     eos_allows_shock_and_work = .false.
