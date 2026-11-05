@@ -38,7 +38,7 @@ module chemistry_condensation
       iSiC=53, iSiH2=54, iSiH3=55, iSiN=56, iSiO2=57, iFeO=58, iFeO2H2=59, iCOS=60, iCS=61, &
       iCS2=62, iFeS=63, iH2SO4=64, iMgS=65, iSN=66, iSO=67, iSO2=68, iSO3=69, iTiS=70
 ! Indices for atomic abundances
- integer, parameter, public :: iaH=70, iaHe=71, iaC=72, iaO=73, iaN=74, iaSi=75, iaS=76, iaFe=77, iaMg=78
+ integer, parameter, public :: iaH=70, iaHe=71, iaC=72, iaO=73, iaN=74, iaSi=75, iaS=76, iaFe=77, iaMg=78, iaTi=79
 
  private
  integer, parameter :: nMolecules = 69
@@ -118,7 +118,7 @@ module chemistry_condensation
       4.16261d+05, -2.59787d+05, 6.30161d+01, 2.30250d-04, -1.21022d-08, & !SO2
       4.54902d+05, -3.43672d+05, 1.00999d+02, 5.09991d-05,  0.00000d+00], shape(coefs)) !SO3
 
- integer, public, parameter :: ncols = nElements + nMolecules -2 !Not including Ne and Ti
+ integer, public, parameter :: ncols = nElements + nMolecules - 1 !Not including Ne
  !The vector columns include molecules and atoms
 
 contains
@@ -246,6 +246,7 @@ subroutine network(T,rho_cgs,mu,gamma,wind_CO_ratio,pH_tot,fol,fpy,fqu,fir,fsc,f
  abundance(iaS)  = max(1.d-50,pelm(iS) *fac)
  abundance(iaFe) = max(1.d-50,pelm(iFe)*fac)
  abundance(iaMg) = max(1.d-50,pelm(iMg)*fac)
+ abundance(iaTi) = max(1.d-50,pelm(iTi)*fac)
 
  !abundance(iH2O) = abundance(iH2O) - (3.*fol + 2.*fpy + fqu) * eps(iSi)*fac *pH_tot
  !abundance(iSiO) = abundance(iSiO) - (fol + fpy + fqu) * eps(iSi)*fac * pH_tot
@@ -304,12 +305,12 @@ subroutine chemical_equilibrium(rho_cgs,T,pmol,pelm,mu,gamma,&
                   3.*(pelm(iH)*pelm(iN)*Kd(iHNO3)+pelm(iN)*Kd(iNO3)+pelm(iS)*Kd(iSO3)), &
                   2.*(Kd(iO2)+pelm(iC)*Kd(iCO2)+pelm(iH)*pelm(iN)*Kd(iHNO2) &
                   +pelm(iN)*Kd(iNO2)+pelm(iH)**2*pelm(iMg)*Kd(iMgO2H2)+pelm(iSi)*Kd(iSiO2) &
-                  +pelm(iFe)*pelm(iH)**2*Kd(iFeO2H2)+pelm(iS)*Kd(iSO2)), &
+                  +pelm(iFe)*pelm(iH)**2*Kd(iFeO2H2)+pelm(iS)*Kd(iSO2)+pelm(iTi)*Kd(iTiO2)), &
                   1.+pelm(iH)*Kd(iOH)+pelm(iH)**2*Kd(iH2O)+pelm(iC)*pelm(iH)*Kd(iCOH) &
                   +pelm(iC)**2*Kd(iC2O)+pelm(iC)*pelm(iH)**2*Kd(iH2CO)+pelm(iN)*Kd(iNO) &
                   +pelm(iC)*pelm(iN)*Kd(iNCO)+pelm(iC)*pelm(iH)*pelm(iN)*Kd(iHCNO)+pelm(iH)*pelm(iN)*Kd(iHNO) &
                   +pelm(iN)**2*Kd(iN2O)+pelm(iH)*pelm(iMg)*Kd(iMgOH)+pelm(iMg)*Kd(iMgO)+pelm(iFe)*Kd(iFeO) &
-                  +pelm(iC)*pelm(iS)*Kd(iCOS)+pelm(iS)*Kd(iSO), &
+                  +pelm(iC)*pelm(iS)*Kd(iCOS)+pelm(iS)*Kd(iSO)+pelm(iTi)*Kd(iTiO), &
                   (eps(iC)+eps(iSi)*(1.+4.*fol+3.*fpy+2.*fqu)-eps(iOx))*pH_tot, & !Quitar fol a la molecula, no el elemento
                   eps(iOx)*pH_tot) !pmol(iCO)  = eps(iC)*pH_tot, pmol(iSiO) = eps(iSi)*pH_tot
 
@@ -321,13 +322,13 @@ subroutine chemical_equilibrium(rho_cgs,T,pmol,pelm,mu,gamma,&
                   3.*(pelm(iH)*pelm(iN)*Kd(iHNO3)+pelm(iN)*Kd(iNO3)+pelm(iS)*Kd(iSO3)), &
                   2.*(Kd(iO2)+pelm(iC)*Kd(iCO2)+pelm(iH)*pelm(iN)*Kd(iHNO2) &
                   +pelm(iN)*Kd(iNO2)+pelm(iH)**2*pelm(iMg)*Kd(iMgO2H2)+pelm(iSi)*Kd(iSiO2) &
-                  +pelm(iFe)*pelm(iH)**2*Kd(iFeO2H2)+pelm(iS)*Kd(iSO2)), &
+                  +pelm(iFe)*pelm(iH)**2*Kd(iFeO2H2)+pelm(iS)*Kd(iSO2)+pelm(iTi)*Kd(iTiO2)), &
                   1.+pelm(iC)*Kd(iCO)+pelm(iSi)*Kd(iSiO)+pelm(iH)*Kd(iOH)+pelm(iH)**2*Kd(iH2O)&
                   +pelm(iC)*pelm(iH)*Kd(iCOH) &
                   +pelm(iC)**2*Kd(iC2O)+pelm(iC)*pelm(iH)**2*Kd(iH2CO)+pelm(iN)*Kd(iNO) &
                   +pelm(iC)*pelm(iN)*Kd(iNCO)+pelm(iC)*pelm(iH)*pelm(iN)*Kd(iHCNO)+pelm(iH)*pelm(iN)*Kd(iHNO) &
                   +pelm(iN)**2*Kd(iN2O)+pelm(iH)*pelm(iMg)*Kd(iMgOH)+pelm(iMg)*Kd(iMgO)+pelm(iFe)*Kd(iFeO) &
-                  +pelm(iC)*pelm(iS)*Kd(iCOS)+pelm(iS)*Kd(iSO), &
+                  +pelm(iC)*pelm(iS)*Kd(iCOS)+pelm(iS)*Kd(iSO)+pelm(iTi)*Kd(iTiO), &
                   (eps(iSi)*(4.*fol+3.*fpy+2.*fqu)-eps(iOx))*pH_tot, &
                   pelm(iOx))
 
@@ -358,13 +359,13 @@ subroutine chemical_equilibrium(rho_cgs,T,pmol,pelm,mu,gamma,&
                3.*(pelm(iH)*pelm(iN)*Kd(iHNO3)+pelm(iN)*Kd(iNO3)+pelm(iS)*Kd(iSO3)), &
                2.*(Kd(iO2)+pelm(iC)*Kd(iCO2)+pelm(iH)*pelm(iN)*Kd(iHNO2) &
                +pelm(iN)*Kd(iNO2)+pelm(iH)**2*pelm(iMg)*Kd(iMgO2H2)+pelm(iSi)*Kd(iSiO2) &
-               +pelm(iFe)*pelm(iH)**2*Kd(iFeO2H2)+pelm(iS)*Kd(iSO2)), &
+               +pelm(iFe)*pelm(iH)**2*Kd(iFeO2H2)+pelm(iS)*Kd(iSO2)+pelm(iTi)*Kd(iTiO2)), &
                1.+pelm(iC)*Kd(iCO)+pelm(iSi)*Kd(iSiO)+pelm(iH)*Kd(iOH)+pelm(iH)**2*Kd(iH2O)&
                +pelm(iC)*pelm(iH)*Kd(iCOH) &
                +pelm(iC)**2*Kd(iC2O)+pelm(iC)*pelm(iH)**2*Kd(iH2CO)+pelm(iN)*Kd(iNO) &
                +pelm(iC)*pelm(iN)*Kd(iNCO)+pelm(iC)*pelm(iH)*pelm(iN)*Kd(iHCNO)+pelm(iH)*pelm(iN)*Kd(iHNO) &
                +pelm(iN)**2*Kd(iN2O)+pelm(iH)*pelm(iMg)*Kd(iMgOH)+pelm(iMg)*Kd(iMgO)+pelm(iFe)*Kd(iFeO) &
-               +pelm(iC)*pelm(iS)*Kd(iCOS)+pelm(iS)*Kd(iSO), &
+               +pelm(iC)*pelm(iS)*Kd(iCOS)+pelm(iS)*Kd(iSO)+pelm(iTi)*Kd(iTiO), &
                (eps(iSi)*(4.*fol+3.*fpy+2.*fqu)-eps(iOx))*pH_tot, &
                eps(iOx)*pH_tot)        
 
@@ -386,13 +387,13 @@ subroutine chemical_equilibrium(rho_cgs,T,pmol,pelm,mu,gamma,&
                3.*(pelm(iH)*pelm(iN)*Kd(iHNO3)+pelm(iN)*Kd(iNO3)+pelm(iS)*Kd(iSO3)), &
                2.*(Kd(iO2)+pelm(iC)*Kd(iCO2)+pelm(iH)*pelm(iN)*Kd(iHNO2) &
                +pelm(iN)*Kd(iNO2)+pelm(iH)**2*pelm(iMg)*Kd(iMgO2H2)+pelm(iSi)*Kd(iSiO2) &
-               +pelm(iFe)*pelm(iH)**2*Kd(iFeO2H2)+pelm(iS)*Kd(iSO2)), &
+               +pelm(iFe)*pelm(iH)**2*Kd(iFeO2H2)+pelm(iS)*Kd(iSO2)+pelm(iTi)*Kd(iTiO2)), &
                1.+pelm(iC)*Kd(iCO)+pelm(iSi)*Kd(iSiO)+pelm(iH)*Kd(iOH)+pelm(iH)**2*Kd(iH2O)&
                +pelm(iC)*pelm(iH)*Kd(iCOH) &
                +pelm(iC)**2*Kd(iC2O)+pelm(iC)*pelm(iH)**2*Kd(iH2CO)+pelm(iN)*Kd(iNO) &
                +pelm(iC)*pelm(iN)*Kd(iNCO)+pelm(iC)*pelm(iH)*pelm(iN)*Kd(iHCNO)+pelm(iH)*pelm(iN)*Kd(iHNO) &
                +pelm(iN)**2*Kd(iN2O)+pelm(iH)*pelm(iMg)*Kd(iMgOH)+pelm(iMg)*Kd(iMgO)+pelm(iFe)*Kd(iFeO) &
-               +pelm(iC)*pelm(iS)*Kd(iCOS)+pelm(iS)*Kd(iSO), &
+               +pelm(iC)*pelm(iS)*Kd(iCOS)+pelm(iS)*Kd(iSO)+pelm(iTi)*Kd(iTiO), &
                (eps(iSi)*(4.*fol+3.*fpy+2.*fqu)-eps(iOx))*pH_tot, &
                pelm(iOx))
 
@@ -428,8 +429,11 @@ subroutine chemical_equilibrium(rho_cgs,T,pmol,pelm,mu,gamma,&
     pelm(iS) = solve_q(2.*(Kd(iS2)+pelm(iC)*Kd(iCS2)), &
             1.+pelm(iOx)*pelm(iC)*Kd(iCOS)+pelm(iC)*Kd(iCS)+pelm(iFe)*Kd(iFeS)+pelm(iH)*Kd(iHS) &
             +pelm(iH)**2*Kd(iH2S)+pelm(iOx)**4*pelm(iH)**2*Kd(iH2SO4)+pelm(iMg)*Kd(iMgS)+pelm(iN)*Kd(iSN) &
-            +pelm(iOx)*Kd(iSO)+pelm(iOx)**2*Kd(iSO2)+pelm(iOx)**3*Kd(iSO3)+pelm(iSi)*Kd(iSiS), &
+            +pelm(iOx)*Kd(iSO)+pelm(iOx)**2*Kd(iSO2)+pelm(iOx)**3*Kd(iSO3)+pelm(iSi)*Kd(iSiS) &
+            +pelm(iTi)*Kd(iTiS), &
             -eps(iS)*pH_tot)
+
+    pelm(iTi) = eps(iTi)*pH_tot/(1.+pelm(iOx)*Kd(iTiO)+pelm(iOx)**2*Kd(iTiO2)+pelm(iS)*Kd(iTiS))
 
     err = abs((pelm-pelm_old)/(pelm_old+1.0e-60))
 
@@ -505,6 +509,9 @@ subroutine chemical_equilibrium(rho_cgs,T,pmol,pelm,mu,gamma,&
  pmol(iSO)    = Kd(iSO)*pelm(iOx)*pelm(iS)
  pmol(iSO2)   = Kd(iSO2)*pelm(iOx)**2*pelm(iS)
  pmol(iSO3)   = Kd(iSO3)*pelm(iOx)**3*pelm(iS)
+ pmol(iTiO)   = Kd(iTiO)*pelm(iOx)*pelm(iTi)
+ pmol(iTiO2)  = Kd(iTiO2)*pelm(iOx)**2*pelm(iTi)
+ pmol(iTiS)   = Kd(iTiS)*pelm(iS)*pelm(iTi)
 
 end subroutine chemical_equilibrium
 

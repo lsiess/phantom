@@ -113,7 +113,8 @@ module analysis
       'nSi       ', &
       'nS        ', &
       'nFe       ', &
-      'nMg       '/)
+      'nMg       ', &
+      'nTi       '/)
 
 contains
 
