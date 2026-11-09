@@ -230,7 +230,7 @@ implicit none
                     abundi(icoolC), abundi(icoolC2H2), abundi(icoolC2H), &
                     abundi(icoolSiO), abundi(icoolCH4), &
                     ratesq(:)/ndens_H**2, -HI_Spitzer_deNormalized/ndens_H**2, &
-                    -Q_CO_C/ndens_H**2, -Q_CO_WJ/ndens_H**2, Q_CO_McKee/ndens_H**2, &
+                    -Q_CO_C/ndens_H**2, -Q_CO_WJ*(rhoi*unit_density)/ndens_H**2, Q_CO_McKee/ndens_H**2, &
                     -Q_highTemp/ndens_H**2
   enddo
   call cpu_time(finish)
@@ -889,21 +889,24 @@ subroutine test_muGamma()
   use units,          only:unit_density
   implicit none
 
-  real :: rho_cgs, T_min, T_max, T, T_old, T_i
+  real :: rho_cgs, T_min, T_max, T, T_old, T_step
   real :: mu, gamma
   real :: pH, pH_tot
-  integer :: iunit
+  integer :: i, n_steps, iunit
 
   rho_cgs = 1.0d-14
   T_min = 1100.0
   T_max = 3000.0
+  T_step = 10.0
 
   call set_abundances
   call init_muGamma(rho_cgs, T_min, mu, gamma)
   open(newunit=iunit,file='test_muGamma.txt',status='replace')
 
-  do T_i = T_min, T_max, 10.
-    T = T_i
+  n_steps = nint((T_max - T_min)/T_step)
+
+  do i = 0, n_steps
+    T = T_min + i*T_step
     T_old = T
     call calc_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot)
 
