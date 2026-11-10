@@ -147,7 +147,7 @@ contains
 !----------------------------------------------------------------
 subroutine energ_cooling_AGB(T_in,Tdust,rhoi,divv,gmwvar,abund,dudti,ratesq)
  use units,     only:utime,unit_density
- use physcon,   only:mass_proton_cgs,Rg
+ use physcon,   only:mass_proton_cgs,Rg,gg
  use dust_formation, only:mass_per_H
  real,         intent(in)    :: T_in,Tdust,rhoi,gmwvar
  real(kind=4), intent(in)    :: divv
@@ -156,6 +156,7 @@ subroutine energ_cooling_AGB(T_in,Tdust,rhoi,divv,gmwvar,abund,dudti,ratesq)
  real, intent(out), optional :: ratesq(nrates)
  real :: dummy_ratesq(nrates)
  real :: ylamq,divv_cgs,np1,T
+ real :: dl_freq
 !
 ! Compute temperature and number density
 !
@@ -168,10 +169,11 @@ subroutine energ_cooling_AGB(T_in,Tdust,rhoi,divv,gmwvar,abund,dudti,ratesq)
 ! Call cooling function with all abundances
 !
     divv_cgs = sign(max(abs(divv) / real(utime, kind=4), real(1.e-40, kind=4)) , divv) ! Ensuring that divv is different from 0
+    dl_freq = sqrt(gg * rhoi*unit_density)
     if (present(ratesq)) then
-       call cool_func(T,Tdust,np1,dlq,divv_cgs,abund,ylamq,ratesq)
+       call cool_func(T,Tdust,np1,dl_freq,divv_cgs,abund,ylamq,ratesq)
     else
-       call cool_func(T,Tdust,np1,dlq,divv_cgs,abund,ylamq,dummy_ratesq)
+       call cool_func(T,Tdust,np1,dl_freq,divv_cgs,abund,ylamq,dummy_ratesq)
     endif
 !
 ! Compute change in u from 'ylamq' above.
