@@ -37,7 +37,8 @@ module metric_tools
     imet_kerrschild     = 4,   &    ! Kerr metric, Kerr-Schild coordinates
     imet_binarybh       = 5,   &    ! Binary black hole metric
     imet_flrw           = 6,   &    ! Friedmann-Lemaître-Robertson-Walker metric
-    imet_et             = 7         ! Tabulated metric from Einstein toolkit
+    imet_et             = 7,   &    ! Tabulated metric from Einstein toolkit
+    imet_rn             = 8         ! Reissner-Nordstrom metric
 
  !--- Choice of coordinate system
  !    (When using this with PHANTOM, it should always be set to cartesian)
@@ -49,7 +50,7 @@ module metric_tools
  logical, private, parameter :: useinv4x4 = .true.
 
  public :: get_metric, get_metric_derivs, print_metricinfo, init_metric, pack_metric, unpack_metric
- public :: pack_metricderivs
+ public :: pack_metricderivs, metric_is_time_dependent
  public :: imetric
  public :: numerical_metric_derivs
 
@@ -169,15 +170,33 @@ end subroutine print_metricinfo
 
 !-------------------------------------------------------------------------------
 !+
-!  initialise arrays for the metric and metric derivatives
+!  query whether the metric changes with time (moving black holes,
+!  expanding universe or a metric evolved by numerical relativity)
 !+
 !-------------------------------------------------------------------------------
-subroutine init_metric(npart,xyzh,metrics,metricderivs)
+pure logical function metric_is_time_dependent()
+
+ metric_is_time_dependent = (imetric==imet_binarybh .or. imetric==imet_flrw .or. imetric==imet_et)
+
+end function metric_is_time_dependent
+
+!-------------------------------------------------------------------------------
+!+
+!  initialise arrays for the metric and metric derivatives;
+!  optionally update time-dependent metric inputs (e.g. binary BH trajectory)
+!  before repacking at particle positions
+!+
+!-------------------------------------------------------------------------------
+subroutine init_metric(npart,xyzh,metrics,metricderivs,time)
+ use metric, only:update_metric
  integer, intent(in)  :: npart
  real,    intent(in)  :: xyzh(:,:)
  real,    intent(out) :: metrics(:,:,:,:)
  real,    intent(out), optional :: metricderivs(:,:,:,:)
+ real,    intent(in),  optional :: time
  integer :: i
+
+ if (present(time)) call update_metric(time)
 
  !$omp parallel do default(none) &
  !$omp shared(npart,xyzh,metrics) &

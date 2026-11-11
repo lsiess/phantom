@@ -576,7 +576,7 @@ subroutine check_arrays(i1,i2,noffset,npartoftype,npartread,nptmass,nsinkpropert
                 do_radiation,store_dust_temperature,do_nucleation,use_krome,use_apr,inject_parts
  use eos,  only:ieos,polyk,gamma,eos_is_non_ideal
  use part, only:maxphase,isetphase,set_particle_type,igas,ihacc,ihsoft,imacc,ilum,ikappa,&
-                xyzmh_ptmass_label,vxyz_ptmass_label,get_pmass,rhoh,dustfrac,ndusttypes,norig,&
+                xyzmh_ptmass_label,vxyz_ptmass_label,vxyz_ptmass,get_pmass,rhoh,dustfrac,ndusttypes,norig,&
                 itemp,iX,iZ,imu,apr_level
  use io,   only:warning,id,master
  use options,        only:alpha,use_dustfrac,use_var_comp
@@ -585,7 +585,7 @@ subroutine check_arrays(i1,i2,noffset,npartoftype,npartread,nptmass,nsinkpropert
  integer,         intent(in)    :: i1,i2,noffset,npartoftype(:),npartread,nptmass,nsinkproperties
  real,            intent(in)    :: massoftype(:),alphafile,tfile
  logical,         intent(in)    :: phantomdump,got_iphase,got_xyzh(:),got_vxyzu(:),got_alpha(:),got_dustprop(:)
- logical,         intent(in)    :: got_VrelVf,got_dustgasprop(:)
+ logical,         intent(in)    :: got_VrelVf(:),got_dustgasprop(:)
  logical,         intent(in)    :: got_abund(:),got_dustfrac(:),got_sink_data(:),got_sink_vels(:),got_sink_sfprop(:),got_Bxyz(:)
  logical,         intent(in)    :: got_krome_mols(:),got_krome_gamma,got_krome_mu,got_krome_T
  logical,         intent(in)    :: got_psi,got_Tdust,got_eosvars(:),got_nucleation(:),got_pxyzu(:),got_rad(:)
@@ -740,7 +740,7 @@ subroutine check_arrays(i1,i2,noffset,npartoftype,npartread,nptmass,nsinkpropert
     if (id==master) write(*,"(/,a,/)") 'ERROR! using dustgrowth, but no grain density found in dump file'
     ierr = ierr + 1
  endif
- if (use_dustgrowth .and. .not.got_VrelVf) then
+ if (use_dustgrowth .and. .not.got_VrelVf(1)) then
     if (id==master) write(*,"(/,a,/)") 'ERROR! using dustgrowth, but no Vrel/Vfrag found in dump file'
     ierr = ierr + 1
  endif
@@ -761,11 +761,15 @@ subroutine check_arrays(i1,i2,noffset,npartoftype,npartread,nptmass,nsinkpropert
              return
           else
              if (id==master) write(*,"(/,a,/)") 'WARNING! sink particle '//trim(xyzmh_ptmass_label(i))//' not found'
+             xyzmh_ptmass(i,1:nptmass) = 0.
           endif
        endif
     enddo
     if (.not.all(got_sink_vels(1:3))) then
        if (id==master .and. i1==1) write(*,"(/,a,/)") 'WARNING! sink particle velocities not found'
+       do i=1,3
+          if (.not.got_sink_vels(i)) vxyz_ptmass(i,1:nptmass) = 0.
+       enddo
     endif
     if (id==master .and. i1==1) then
        print "(2(a,i4),a)",' got ',nsinkproperties,' sink properties from ',nptmass,' sink particles'
@@ -831,7 +835,7 @@ subroutine check_arrays(i1,i2,noffset,npartoftype,npartread,nptmass,nsinkpropert
     do i=i1,i2
        iorig(i) = i + noffset
     enddo
-    norig = i2
+    norig = i2 + noffset
     if (id==master .and. i1==1) write(*,"(/,1x,a,/)") 'WARNING: Particle IDs not in dump; resetting IDs'
  else
     norig = 0

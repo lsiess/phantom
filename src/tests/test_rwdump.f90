@@ -37,7 +37,7 @@ subroutine test_rwdump(ntests,npass)
                            dustfrac_label,vxyz_ptmass,vxyz_ptmass_label,&
                            vxyzu_label,set_particle_type,iphase,ndustsmall,ndustlarge,ndusttypes,&
                            iorig,copy_particle_all,norig
- use dim,             only:maxp,maxdustsmall,mpi
+ use dim,             only:maxp,maxp_requested,maxdustsmall,mpi
  use memory,          only:allocate_memory,deallocate_memory
  use testutils,       only:checkval,update_test_scores
  use io,              only:idisk1,id,master,iprint,nprocs
@@ -64,7 +64,7 @@ subroutine test_rwdump(ntests,npass)
  test_speed = .false.
 
  ! This test will reallocate memory, so reset at the end
- maxp_old = maxp
+ maxp_old = maxp_requested
 
  over_tests: do itest = 1,2
 
@@ -246,7 +246,8 @@ subroutine test_rwdump(ntests,npass)
     endif
     if (itest==1) then  ! iorig is not dumped to small dumps
        call checkval(iorig(2),    int(ngas   ,kind=8), 0,nfailed(65),'iorig(2)')
-       call checkval(iorig(ngas), int(npart+1,kind=8), 0,nfailed(66),'iorig(ngas)')
+       ! new IDs are offset by the task number, so they are unique across tasks
+       call checkval(iorig(ngas), int(npart+1+id,kind=8), 0,nfailed(66),'iorig(ngas)')
        call checkval(iorig(npart),int(npart  ,kind=8), 0,nfailed(67),'iorig(N)')
     endif
 

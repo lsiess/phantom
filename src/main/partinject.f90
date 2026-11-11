@@ -45,7 +45,7 @@ subroutine add_or_update_particle(itype,position,velocity,h,u,particle_number,np
  use part, only:maxalpha,alphaind,maxgradh,gradh,fxyzu,fext,set_particle_type
  use part, only:mhd,Bevol,dBevol,Bxyz,divBsymm,gr,pxyzu,apr_level
  use part, only:divcurlv,divcurlB,ndivcurlB,ntot,ibin,imu,igamma
- use part, only:iorig,norig,iseed_sink
+ use part, only:iorig,new_iorig,iseed_sink,rho,rhoh,massoftype,aprmassoftype
  use io,   only:fatal
  use eos,  only:gamma,gmw
  use dim,  only:ind_timesteps,update_muGamma,h2chemistry,use_apr,inject_parts
@@ -72,8 +72,7 @@ subroutine add_or_update_particle(itype,position,velocity,h,u,particle_number,np
     endif
     npartoftype(itype) = npartoftype(itype) + 1
     ! add particle ID
-    norig                  = norig + 1
-    iorig(particle_number) = norig
+    iorig(particle_number) = new_iorig()
     if (present(isink) .and. inject_parts) iseed_sink(particle_number) = isink
  elseif (particle_number  >  npart + 1) then
     call fatal('Add particle', 'Incorrect particle number (> npart + 1).')
@@ -113,6 +112,13 @@ subroutine add_or_update_particle(itype,position,velocity,h,u,particle_number,np
  if (ndivcurlB > 0) divcurlB(:,particle_number) = 0.
  if (maxalpha==maxp) alphaind(:,particle_number) = 0.
  if (maxgradh==maxp) gradh(:,particle_number) = 0.
+ if (itype /= iboundary .or. new_particle) then
+    if (use_apr) then
+       rho(particle_number) = rhoh(h,aprmassoftype(itype,apr_level(particle_number)))
+    else
+       rho(particle_number) = rhoh(h,massoftype(itype))
+    endif
+ endif
  !if (store_dust_temperature) dust_temp(:,particle_number) = 0.
 
  if (ind_timesteps) ibin(particle_number) = nbinmax
@@ -193,8 +199,8 @@ subroutine update_injected_particles(npartold,npart,istepfrac,nbinmax,time,dtmax
     !
     ! after injecting particles, reinitialise metrics on all particles
     !
-    call init_metric(npart,xyzh,metrics,metricderivs)
-    call prim2consall(npart,xyzh,metrics,vxyzu,pxyzu,use_dens=.false.,dens=dens)
+    call init_metric(npart,xyzh,metrics,metricderivs,time=time)
+    call prim2consall(npart,xyzh,metrics,vxyzu,pxyzu,dens=dens)
     if (iexternalforce > 0 .and. imetric /= imet_minkowski) then
        call get_grforce_all(npart,xyzh,metrics,metricderivs,vxyzu,fext,dtext_dum,dens=dens) ! Not 100% sure if this is needed here
     endif

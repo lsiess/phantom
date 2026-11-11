@@ -45,20 +45,20 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact_
  use timestep,     only:tmax,dtmax
  use options,      only:alphau
  use kernel,       only:wkern,cnormk,radkern2,hfact_default
- use part,         only:hfact,igas,periodic,set_particle_type
+ use part,         only:hfact,igas,periodic,set_particle_type,rho
  use mpiutils,     only:reduceall_mpi
  use mpidomain,    only:i_belong
  use utils_shuffleparticles, only:shuffleparticles
  use infile_utils, only:get_options,infile_exists
- integer,           intent(in)    :: id
- integer,           intent(out)   :: npart
- integer,           intent(out)   :: npartoftype(:)
- real,              intent(out)   :: xyzh(:,:)
- real,              intent(out)   :: massoftype(:)
- real,              intent(out)   :: polyk,gamma,hfact_out
- real,              intent(inout) :: time
- character(len=20), intent(in)    :: fileprefix
- real,              intent(out)   :: vxyzu(:,:)
+ integer,          intent(in)    :: id
+ integer,          intent(out)   :: npart
+ integer,          intent(out)   :: npartoftype(:)
+ real,             intent(out)   :: xyzh(:,:)
+ real,             intent(out)   :: massoftype(:)
+ real,             intent(out)   :: polyk,gamma,hfact_out
+ real,             intent(inout) :: time
+ character(len=*), intent(in)    :: fileprefix
+ real,             intent(out)   :: vxyzu(:,:)
  real                             :: deltax,totmass,toten
  real                             :: enblast,gam1,uui,hsmooth,q2,r2
  integer                          :: i,maxp,maxvxyzu,ierr
@@ -112,7 +112,7 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact_
     call set_particle_type(i,igas)
  enddo
  if (shuffle_parts) then
-    call shuffleparticles(iprint,npart,xyzh,massoftype(igas),duniform=rhozero,&
+    call shuffleparticles(iprint,npart,xyzh,massoftype(igas),rho,duniform=rhozero,&
          is_setup=.true.,prefix=trim(fileprefix))
  endif
 

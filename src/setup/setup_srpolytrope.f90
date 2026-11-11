@@ -35,7 +35,7 @@ contains
 !+
 !----------------------------------------------------------------
 subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,time,fileprefix)
- use part,         only:igas,set_particle_type,rhoh,maxp
+ use part,         only:igas,set_particle_type,rho,maxp,init_rho_from_h
  use spherical,    only:set_sphere
  use units,        only:set_units,umass,udist
  use physcon,      only:solarm,solarr
@@ -52,15 +52,15 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
  use deriv,        only:get_derivs_global
  use checksetup,   only:check_setup
  use memory,       only:allocate_memory
- integer,           intent(in)    :: id
- integer,           intent(inout) :: npart
- integer,           intent(out)   :: npartoftype(:)
- real,              intent(out)   :: xyzh(:,:)
- real,              intent(out)   :: massoftype(:)
- real,              intent(out)   :: polyk,gamma,hfact
- real,              intent(inout) :: time
- character(len=20), intent(in)    :: fileprefix
- real,              intent(out)   :: vxyzu(:,:)
+ integer,          intent(in)    :: id
+ integer,          intent(inout) :: npart
+ integer,          intent(out)   :: npartoftype(:)
+ real,             intent(out)   :: xyzh(:,:)
+ real,             intent(out)   :: massoftype(:)
+ real,             intent(out)   :: polyk,gamma,hfact
+ real,             intent(inout) :: time
+ character(len=*), intent(in)    :: fileprefix
+ real,             intent(out)   :: vxyzu(:,:)
  integer, parameter :: ntab=5000
  integer :: i,npts,ierr,nerror,nwarn
  real    :: psep
@@ -85,7 +85,7 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
  vxyzu(:,:)     = 0.
  hfact          = hfact_default
  ! set units
- call set_units(mass=1.e6*solarm,c=1.,G=1.)
+ call set_units(mass=1.e6*solarm,c=1.d0,G=1.d0)
  mstar = 1.*solarm/umass
  rstar = 1.*solarr/udist
 
@@ -113,12 +113,13 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
  ! actually compute density so we can correctly set the entropy
  call check_setup(nerror,nwarn)
  call allocate_memory(int(maxp,kind=8)) ! allocate memory for tree
+ call init_rho_from_h()
  call get_derivs_global()
 
  !-- set thermal energy from density
  do i=1,npart
     call set_particle_type(i,igas)
-    densi        = rhoh(xyzh(4,i),massoftype(igas))
+    densi        = rho(i)
     vxyzu(4,i)   = polyk*densi**(gamma-1.) / (gamma-1.)
  enddo
 

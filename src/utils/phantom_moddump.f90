@@ -15,18 +15,19 @@ program phantommoddump
 ! :Usage: phantom_moddump dumpfilein dumpfileout [time] [outformat] --maxp=50000000
 !
 ! :Dependencies: checkconserved, checksetup, dim, eos, eos_stamatellos, io,
-!   memory, moddump, options, part, prompting, readwrite_dumps,
-!   readwrite_infile, setBfield, setup_params, systemutils
+!   memory, moddump, moddump_utils, options, part, prompting,
+!   readwrite_dumps, readwrite_infile, setBfield, setup_params, systemutils
 !
  use dim,             only:tagline,maxp_alloc
  use eos,             only:polyk,ieos
  use eos_stamatellos, only:init_coolra,finish_coolra
  use part,            only:xyzh,hfact,massoftype,vxyzu,npart,npartoftype, &
                            Bxyz,Bextx,Bexty,Bextz,mhd
- use io,              only:set_io_unit_numbers,iprint,idisk1,warning,fatal,iwritein,id,master
+ use io,              only:set_io_unit_numbers,iprint,idisk1,warning,fatal,iwritein,id,master,fileprefix
  use readwrite_dumps, only:read_dump,write_fulldump,is_not_mhd
  use setBfield,       only:set_Bfield
  use moddump,         only:modify_dump,flags=>moddump_flags
+ use moddump_utils,   only:moddump_dumpfile_in,moddump_time
  use readwrite_infile,only:write_infile,read_infile
  use options,         only:set_default_options
  use setup_params,    only:ihavesetupB
@@ -42,7 +43,6 @@ program phantommoddump
  integer :: ierr,nerr,nwarn,iloc
  logical :: idumpsphNG,iexist,ians
  integer, parameter          :: lenprefix = 120
- character(len=lenprefix)    :: fileprefix
  character(len=lenprefix+10) :: dumpfile,infile,evfile,logfile,progname
 
  call set_io_unit_numbers
@@ -55,6 +55,7 @@ program phantommoddump
     print "(a,/)",trim(tagline)
     call get_command_argument(0,progname)
     print "(a)",' Usage: '//trim(progname)//' dumpfilein dumpfileout [time] [outformat] --maxp=50000000 '//trim(flags)
+    print "(a)",'        options in the .moddump file can be set as --option=value'
     stop
  endif
 
@@ -93,6 +94,7 @@ program phantommoddump
     print "(a,/)",trim(tagline)
     call get_command_argument(0,progname)
     print "(a)",' Usage: '//trim(progname)//' dumpfilein dumpfileout [time] [outformat] --maxp=50000000 '//trim(flags)
+    print "(a)",'        options in the .moddump file can be set as --option=value'
     stop
  endif
 
@@ -102,7 +104,7 @@ program phantommoddump
 !  read this if it exists
 !
  call set_default_options
- iloc = index(dumpfilein,'_0')
+ iloc = index(dumpfilein,'_0',back=.true.)
  if (iloc > 1) then
     fileprefix = trim(dumpfilein(1:iloc-1))
  else
@@ -121,7 +123,7 @@ program phantommoddump
 !--look for an existing input file with name corresponding to the OUTPUT dump file
 !  read this if it exists; this will overwrite the values from the input .in file
 !
- iloc = index(dumpfileout,'_0')
+ iloc = index(dumpfileout,'_0',back=.true.)
  if (iloc > 1) then
     fileprefix = trim(dumpfileout(1:iloc-1))
  else
@@ -168,8 +170,10 @@ program phantommoddump
  if (nwarn > 0) call warning('moddump','warnings from original setup',var='warnings',ival=nwarn)
  if (nerr > 0) call warning('moddump','ERRORS in original setup',var='errors',ival=nerr)
 !
-!--modify the dump file
+!--modify the dump file, recording its origin in the .moddump file
 !
+ moddump_dumpfile_in = dumpfilein
+ moddump_time = timeout
  call modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  get_conserv = 1.
 !

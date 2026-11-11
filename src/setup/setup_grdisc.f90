@@ -31,7 +31,7 @@ module setup
 !
 ! :Dependencies: eos, externalforces, infile_utils, io, kernel, metric,
 !   mpidomain, options, part, physcon, prompting, setdisc, setorbit,
-!   setstar, setunits, setup_params, systemutils, timestep, units
+!   setstar, setunits, setup_params, timestep, units
 !
  use options,  only:alpha,ieos
  use setstar,  only:star_t
@@ -62,7 +62,7 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
  use externalforces, only:accradius1,accradius1_hard
  use options,        only:iexternalforce,alphau
  use eos,            only:ipdv_heating,ishock_heating
- use units,          only:set_units,umass,in_code_units
+ use units,          only:set_units,umass
  use physcon,        only:solarm,pi
  use externalforces, only:iext_einsteinprec,a
  use prompting,      only:prompt
@@ -75,21 +75,20 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
  use mpidomain,      only:i_belong
  use setup_params,   only:rhozero
  use infile_utils,   only:get_options,infile_exists
- use systemutils,    only:get_command_option
  use metric,         only:update_metric
- integer,           intent(in)    :: id
- integer,           intent(out)   :: npart
- integer,           intent(out)   :: npartoftype(:)
- real,              intent(out)   :: xyzh(:,:)
- real,              intent(out)   :: polyk,gamma,hfact
- real,              intent(out)   :: vxyzu(:,:)
- real,              intent(out)   :: massoftype(:)
- real,              intent(inout) :: time
- character(len=20), intent(in)    :: fileprefix
+ integer,          intent(in)    :: id
+ integer,          intent(out)   :: npart
+ integer,          intent(out)   :: npartoftype(:)
+ real,             intent(out)   :: xyzh(:,:)
+ real,             intent(out)   :: polyk,gamma,hfact
+ real,             intent(out)   :: vxyzu(:,:)
+ real,             intent(out)   :: massoftype(:)
+ real,             intent(inout) :: time
+ character(len=*), intent(in)    :: fileprefix
  integer :: ierr,nptmass_in,i
  integer(kind=8) :: npart_total
  logical :: write_profile
- real    :: cs2,mstar,rstar
+ real    :: cs2
  real :: xyzmh_ptmass_in(nsinkproperties,2),vxyz_ptmass_in(3,2)
 
  time            = 0.
@@ -120,12 +119,12 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
  p_index= 1.5
  q_index= 0.75
  gamma_ad= 5./3.
- np = int(get_command_option('np',default=nint(1e6))) ! can set default e.g. --np=1000 (for testsuite)
+ np = 1000000
  accrad = 4.      ! (GM/c^2)
  accradius1 = accrad
  gamma = gamma_ad
  ! default units
- call set_units(G=1.,c=1.,mass=mhole*solarm) ! Set central mass to M=1 in code units
+ call set_units(G=1.d0,c=1.d0,mass=mhole*solarm) ! Set central mass to M=1 in code units
 
  call update_metric(0.)
 
@@ -154,7 +153,7 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
 ! Convert to code units
 !
  mhole = mhole*solarm
- call set_units(G=1.,c=1.,mass=mhole) ! Set central mass to M=1 in code units
+ call set_units(G=1.d0,c=1.d0,mass=real(mhole,kind=8)) ! Set central mass to M=1 in code units
  mdisc           = mdisc*solarm/umass
  accradius1_hard = accradius1
  if (np > 0) then
@@ -176,11 +175,10 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
                   rhozero,npart_total,i_belong,ierr)
     do i=1,nstars
        nptmass_in = 0
-       ! convert stellar mass and radius to code units
-       mstar = in_code_units(star(i)%m,ierr)
-       rstar = in_code_units(star(i)%r,ierr)
-       call set_orbit(orbit(i),mhole/umass,mstar,r_in,rstar, &
+       ! place stars in orbit
+       call set_orbit(orbit(i),mhole/umass,star(i)%m_code,r_in,star(i)%hacc_code, &
                      xyzmh_ptmass_in,vxyz_ptmass_in,nptmass_in,(id==master),ierr)
+       if (ierr /= 0) stop 'error setting up orbit'
 
        ! shift the star to the position of the second body
        if (star(i)%iprofile > 0) then

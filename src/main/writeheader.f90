@@ -75,7 +75,8 @@ subroutine write_header(icall,infile,evfile,logfile,dumpfile,ntot)
  use io,               only:iprint
  use boundary,         only:print_boundaries
  use boundary_dyn,     only:dynamic_bdy,rho_thresh_bdy,width_bkg
- use options,          only:tolh,alpha,alphau,alphaB,ieos,alphamax,use_dustfrac,use_porosity,icooling
+ use options,          only:tolh,alpha,alphau,alphaB,ieos,alphamax,use_dustfrac,&
+                            use_porosity,icooling,implicit_radiation,two_kernel
  use part,             only:hfact,massoftype,mhd,gravity,periodic,massoftype,npartoftypetot,&
                             labeltype,maxtypes,igas
  use mpiutils,         only:reduceall_mpi
@@ -151,6 +152,8 @@ subroutine write_header(icall,infile,evfile,logfile,dumpfile,ntot)
     endif
 
     write(iprint,"(/,a)") ' Using '//trim(kernelname)//' kernel'
+    if (two_kernel) write(iprint,"(a)") &
+       ' Number density uses alternative h-finding kernel (two_kernel=T)'
 
     Nneigh = nint(4./3.*pi*(radkern*hfact)**3)
     write(iprint,50) hfact, massoftype(1), tolh, Nneigh
@@ -159,6 +162,8 @@ subroutine write_header(icall,infile,evfile,logfile,dumpfile,ntot)
 
     if (mhd)              write(iprint,"(1x,a)") 'Magnetic fields are ON, evolving B/rho with cleaning'
     if (gravity)          write(iprint,"(1x,a)") 'Self-gravity is ON, please cite Bernard et al. (2026) and Price & Monaghan (2007)'
+    if (implicit_radiation) write(iprint,"(1x,a)") 'Implicit radiation is ON, please cite ' // &
+                                                   'Lau et al. (2025) and Whitehouse & Bate (2006)'
     if (h2chemistry)      write(iprint,"(1x,a)") 'H2 Chemistry is ON'
     if (use_dust) then
        if (use_dustfrac) then

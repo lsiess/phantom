@@ -75,8 +75,8 @@ subroutine check_compile_time_settings(ierr)
  if (.not.gravity) call error(string,'-DGRAVITY but gravity=.false.')
 #endif
  if (gravity) then
-    if (ngradh < 2) then
-       if (id==master) call error(string,'gravity requires ngradh=2 for gradsoft storage')
+    if (ngradh < 3) then
+       if (id==master) call error(string,'gravity requires ngradh=3 for OmegaTilde, zeta and gradsoft')
        ierr = 2
     endif
  endif
@@ -90,6 +90,10 @@ subroutine check_compile_time_settings(ierr)
  if (gr .and. use_dust) then
     if (id==master) call error(string,'General relativity not compatible with dust.')
     ierr = 7
+ endif
+ if (gr .and. maxvxyzu < 4) then
+    if (id==master) call error(string,'GR not compatible with ISOTHERMAL=yes: use ishock_heating=0 for isentropic flow')
+    ierr = 9
  endif
  if (gr .and. gravity) then
     if (id==master) call warning(string,'You are using SELF GRAVITY in GENERAL RELATIVITY. Proceed with caution...!')
@@ -109,12 +113,6 @@ subroutine check_compile_time_settings(ierr)
  if (gr .and. disc_viscosity) then
     if (id==master) call warning(string,'General relativity not properly tested with disc viscosity.')
  endif
-#ifndef CONST_AV
- if (gr) then
-    if (id==master) call error(string,'General relativity should have CONST_AV=yes.')
-    ierr = 14
- endif
-#endif
 
 #ifdef DUSTGROWTH
  if (.not. use_dustgrowth) then

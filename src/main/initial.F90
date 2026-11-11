@@ -18,12 +18,12 @@ module initial
 !   centreofmass, checkconserved, checkoptions, checksetup, cons2prim,
 !   cooling, cpuinfo, deriv, dim, dust, dust_formation, dynamic_dtmax,
 !   energies, eos, evwrite, extern_gr, externalforces, fileutils, forcing,
-!   growth, growth_coala, inject, io, io_control, io_summary, metric,
-!   metric_et_utils, metric_tools, mf_write, mpibalance, mpidomain,
-!   mpimemory, mpitree, mpiutils, nicil, nicil_sup, omputils, options,
-!   part, partinject, porosity, ptmass, radiation_utils, readwrite_dumps,
-!   readwrite_infile, subgroup, timestep, timestep_ind, timing, units,
-!   utils_subgroup, writeheader
+!   growth, growth_coala, inject, io, io_control, io_summary,
+!   krome_interface, metric, metric_et_utils, metric_tools, mf_write,
+!   mpibalance, mpidomain, mpimemory, mpiutils, nicil, nicil_sup, omputils,
+!   options, part, partinject, porosity, ptmass, radiation_utils,
+!   readwrite_dumps, readwrite_infile, subgroup, timestep, timestep_ind,
+!   timing, units, utils_subgroup, writeheader
 !
 
  implicit none
@@ -108,11 +108,12 @@ subroutine startrun(infile,logfile,evfile,dumpfile,noread)
  use dynamic_dtmax,    only:get_dtmax_initial
  use energies,         only:xyzcom
  use inject,           only:init_inject,inject_particles
+ use krome_interface,  only:initialise_krome
  use mpibalance,       only:balancedomains
  use mpiutils,         only:reduceall_mpi
  use part,             only:npart,npartoftype,alphaind,ntot,update_npartoftypetot,&
                             iamtype,igas,nptmass,xyzmh_ptmass,vxyz_ptmass,&
-                            xyzh,vxyzu,ibin,ibin_old,ibin_wake,ibelong
+                            xyzh,vxyzu,ibin,ibin_old,ibin_wake,ibelong,rho
  use partinject,       only:update_injected_particles
  use readwrite_dumps,  only:dt_read_in
  use timing,           only:get_timings
@@ -146,7 +147,7 @@ subroutine startrun(infile,logfile,evfile,dumpfile,noread)
  call get_dtmax_initial(dtmax)
 
  ! initialise dynamic boundaries in the first instance
- if (dynamic_bdy) call init_dynamic_bdy(1,npart,nptmass,dtmax)
+ if (dynamic_bdy) call init_dynamic_bdy(1,npart,nptmass,dtmax,rho)
 
  ! initialize physics parameters and equation of state
  call initialise_physics_modules(dumpfile,infile,time,ierr)
@@ -192,16 +193,13 @@ subroutine startrun(infile,logfile,evfile,dumpfile,noread)
     call init_inject(ierr)
     if (ierr /= 0) call fatal('initial','error initialising particle injection')
     npart_old = npart
-    call inject_particles(time,0.,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass,&
+    call inject_particles(time,0.,xyzh,vxyzu,rho,xyzmh_ptmass,vxyz_ptmass,&
                           npart,npart_old,npartoftype,dtinject)
     call update_injected_particles(npart_old,npart,istepfrac,nbinmax,time,dtmax,dt,dtinject)
  endif
 
-#ifdef KROME
  ! set initial chemical abundance values
  call initialise_krome()
- dtextforce = min(dtextforce,dtmax/2.0**10)  ! Required since a cooling timestep is not initialised for implicit cooling
-#endif
 
  ! calculate initial derivatives (density, SPH forces, etc.)
  call get_derivs_initial(time,dumpfile,ntot,dtnew_first,ierr)
@@ -218,7 +216,7 @@ subroutine startrun(infile,logfile,evfile,dumpfile,noread)
  endif
 
  ! initialise dynamic boundaries in the second instance
- if (dynamic_bdy) call init_dynamic_bdy(2,npart,nptmass,dtmax)
+ if (dynamic_bdy) call init_dynamic_bdy(2,npart,nptmass,dtmax,rho)
 
  ! calculate current centre of mass
  call get_centreofmass(xyzcom,dummy,npart,xyzh,vxyzu,nptmass,xyzmh_ptmass,vxyz_ptmass)
@@ -261,8 +259,9 @@ subroutine read_infile_and_initial_conditions(infile,logfile,evfile,dumpfile,tim
  use writeheader,      only:write_codeinfo,write_header
  use cpuinfo,          only:print_cpuinfo
  use io,               only:fatal,warning
- use dim,              only:idumpfile,gr
+ use dim,              only:idumpfile,gr,do_radiation
  use metric,           only:update_metric
+ use part,             only:npart,radprop,itlastrad
  character(len=*), intent(inout) :: infile,logfile,evfile,dumpfile
  real,             intent(out)   :: time
  integer,          intent(out)   :: ierr
@@ -290,6 +289,9 @@ subroutine read_infile_and_initial_conditions(infile,logfile,evfile,dumpfile,tim
  ! read particle setup from dumpfile
  call read_dump(trim(dumpfile),time,hfactfile,idisk1,iprint,id,nprocs,ierr)
  if (ierr /= 0) call fatal('initial','error reading dumpfile')
+
+ ! implicit radiation integrates each particle from the time of its last update
+ if (do_radiation) radprop(itlastrad,1:npart) = time
 
  if (gr) call update_metric(time)
 
@@ -328,7 +330,7 @@ subroutine initialise_physics_modules(dumpfile,infile,time,ierr)
  use dust_formation, only:init_nucleation,set_abundances
  use options,        only:use_porosity,icooling,idamp
  use part,           only:apr_level,xyzh,vxyzu,npart,nden_nimhd,&
-                          eos_vars,tau,tau_lucy,imu,igamma
+                          eos_vars,tau,tau_lucy,imu,igamma,rho
  use units,        only:utime,udist,umass,unit_Bfield
  character(len=*), intent(in)  :: dumpfile,infile
  real,             intent(in)  :: time
@@ -374,7 +376,7 @@ subroutine initialise_physics_modules(dumpfile,infile,time,ierr)
        if (use_porosity) then
           call init_porosity(ierr)
           if (ierr /= 0) call fatal('initial','error initialising porosity variables')
-          call init_filfac(npart,xyzh,vxyzu)
+          call init_filfac(npart,xyzh,vxyzu,rho)
        endif
     endif
     if (use_dustgrowth_coala) then
@@ -422,9 +424,9 @@ subroutine get_density_and_initialise_conservative_variables()
  use deriv,        only:get_density_global
  use options,      only:use_dustfrac
  use part,         only:npart,Bevol,Bxyz,dustevol,dustfrac,&
-                        rhoh,massoftype,iamtype,iphase,ndustsmall,xyzh
- integer :: i,itype
- real :: hi,pmassi,rhoi1
+                        rho,ndustsmall
+ integer :: i
+ real :: rhoi1
  !
  !--The code works in B/rho as its conservative variable, but writes B to dumpfile
  !  So we now convert our primitive variable read, B, to the conservative B/rho
@@ -437,10 +439,7 @@ subroutine get_density_and_initialise_conservative_variables()
 
     ! now convert to B/rho
     do i=1,npart
-       itype      = iamtype(iphase(i))
-       hi         = xyzh(4,i)
-       pmassi     = massoftype(itype)
-       rhoi1      = 1.0/rhoh(hi,pmassi)
+       rhoi1      = 1.0/rho(i)
        if (mhd) then
           Bevol(1,i) = Bxyz(1,i) * rhoi1
           Bevol(2,i) = Bxyz(2,i) * rhoi1
@@ -465,7 +464,7 @@ subroutine initialise_external_forces_and_gr(time,dtextforce,ierr)
  use dim,            only:gr,maxp,maxphase
  use io,             only:iprint,id,master,fatal
  use part,           only:npart,xyzh,vxyzu,fext,iphase,iamtype,iboundary,&
-                          isdead_or_accreted,dens,metrics,metricderivs,pxyzu
+                          isdead_or_accreted,dens,metrics,metricderivs,pxyzu,rho
  use cons2prim,      only:prim2consall
  use deriv,          only:get_density_global
  use externalforces, only:initialise_externalforces,externalforce,&
@@ -486,12 +485,10 @@ subroutine initialise_external_forces_and_gr(time,dtextforce,ierr)
  fext(:,:)  = 0.
 
  if (gr) then
-    ! --- Need rho computed by sum to do primitive to conservative, since dens is not read from file
-    if (npart > 0) then
-       call get_density_global(2,zero_fxyzu=.true.)
-    endif
-    call init_metric(npart,xyzh,metrics,metricderivs)
-    call prim2consall(npart,xyzh,metrics,vxyzu,pxyzu,use_dens=.false.,dens=dens)
+    ! kernel-summed rho required for prim2consall (all MPI ranks must call this)
+    call get_density_global(2,zero_fxyzu=.true.)
+    call init_metric(npart,xyzh,metrics,metricderivs,time=time)
+    call prim2consall(npart,xyzh,metrics,vxyzu,pxyzu,dens=dens)
     if (iexternalforce > 0 .and. imetric /= imet_minkowski) then
        call initialise_externalforces(iexternalforce,ierr)
        if (ierr /= 0) call fatal('initial','error in external force settings/initialisation')
@@ -503,13 +500,13 @@ subroutine initialise_external_forces_and_gr(time,dtextforce,ierr)
        call update_externalforce(iexternalforce,time,0.)
        if (ierr /= 0) call fatal('initial','error in external force settings/initialisation')
        !$omp parallel do default(none) &
-       !$omp shared(npart,xyzh,vxyzu,fext,time,iexternalforce,C_force) &
+       !$omp shared(npart,xyzh,vxyzu,fext,time,iexternalforce,C_force,rho) &
        !$omp private(i,poti,dtf,fextv) &
        !$omp reduction(min:dtextforce)
        do i=1,npart
           if (.not.isdead_or_accreted(xyzh(4,i))) then
              call externalforce(iexternalforce,xyzh(1,i),xyzh(2,i),xyzh(3,i), &
-                                xyzh(4,i),time,fext(1,i),fext(2,i),fext(3,i),poti,dtf,i)
+                                xyzh(4,i),time,fext(1,i),fext(2,i),fext(3,i),poti,dtf,ii=i,rhoi=rho(i))
              dtextforce = min(dtextforce,C_force*dtf)
              ! add velocity-dependent part
              call externalforce_vdependent(iexternalforce,xyzh(1:3,i),vxyzu(1:3,i),fextv,poti)
@@ -619,9 +616,9 @@ subroutine initialise_sink_particle_forces(time,dtextforce,dtsinkgas,logfile,ier
 
     if (gr) then
        ! calculate metric derivatives and external force from metric on sink particles
-       call init_metric(nptmass,xyzmh_ptmass,metrics_ptmass,metricderivs_ptmass)
+       call init_metric(nptmass,xyzmh_ptmass,metrics_ptmass,metricderivs_ptmass,time=time)
        call prim2consall(nptmass,xyzmh_ptmass,metrics_ptmass,&
-                        vxyz_ptmass,pxyzu_ptmass,use_dens=.false.,use_sink=.true.)
+                        vxyz_ptmass,pxyzu_ptmass,use_sink=.true.)
        call get_grforce_all(nptmass,xyzmh_ptmass,metrics_ptmass,metricderivs_ptmass,&
                             vxyz_ptmass,fxyz_ptmass,dtextforce,use_sink=.true.)
        ! sinks in GR, provide external force due to metric to determine sink total force
@@ -633,6 +630,13 @@ subroutine initialise_sink_particle_forces(time,dtextforce,dtsinkgas,logfile,ier
     dtsinksink = C_force*dtsinksink
     if (id==master) write(iprint,*) 'dt(sink-sink) = ',dtsinksink
     dtextforce = min(dtextforce,dtsinksink)
+
+    ! the sink-sink forces are computed on every MPI task, so are kept
+    ! only on the master task to be counted once in the sum over tasks below
+    if (id /= master) then
+       fxyz_ptmass(:,1:nptmass) = 0.
+       dsdt_ptmass(:,1:nptmass) = 0.
+    endif
 
     ! compute initial sink-gas forces and get timestep
     pmassi = massoftype(igas)
@@ -662,13 +666,13 @@ subroutine initialise_sink_particle_forces(time,dtextforce,dtsinkgas,logfile,ier
 
     ! reduction of sink-gas forces from each MPI thread
     call reduce_in_place_mpi('+',fxyz_ptmass(:,1:nptmass))
-
-    if (id==master) write(iprint,*) 'dt(sink-gas)  = ',dtsinkgas
+    call reduce_in_place_mpi('+',dsdt_ptmass(:,1:nptmass))
 
     dtextforce = min(dtextforce,dtsinkgas)
     !  Reduce dt over MPI tasks
     dtsinkgas = reduceall_mpi('min',dtsinkgas)
     dtextforce = reduceall_mpi('min',dtextforce)
+    if (id==master) write(iprint,*) 'dt(sink-gas)  = ',dtsinkgas
     if (use_regnbody) then
        do i=1,n_group
           call get_subgroup(group_info,i,sid,eid,gsize)
@@ -694,12 +698,12 @@ end subroutine initialise_sink_particle_forces
 !----------------------------------------------------------------
 subroutine get_derivs_initial(time,dumpfile,ntot,dtnew_first,ierr)
  use dim,              only:maxalpha,maxp,nalpha,do_radiation
- use part,             only:npart,fxyzu,eos_vars,alphaind
+ use part,             only:npart,fxyzu,alphaind
  use deriv,            only:get_derivs_global,get_density_global
  use timestep,         only:dtmax
 #ifdef LIVE_ANALYSIS
  use analysis,         only:do_analysis
- use part,             only:igas,massoftype,rad,xyzh,vxyzu
+ use part,             only:igas,massoftype,rad,xyzh,vxyzu,rho
  use fileutils,        only:numfromfile
  use io,               only:ianalysis
  use radiation_utils,  only:set_radiation_and_gas_temperature_equal
@@ -718,10 +722,9 @@ subroutine get_derivs_initial(time,dumpfile,ntot,dtnew_first,ierr)
  if (maxalpha==maxp .and. nalpha >= 0) nderivinit = 2
 
  !$omp parallel do default(none) &
- !$omp shared(npart,eos_vars,fxyzu) &
+ !$omp shared(npart,fxyzu) &
  !$omp private(i)
  do i=1,npart
-    eos_vars(3,i) = -1.0 ! initial guess for temperature overridden in eos
     fxyzu(:,i) = 0.      ! so that div_a is 0 in first call to viscosity switch
  enddo
  !$omp end parallel do
@@ -732,13 +735,13 @@ subroutine get_derivs_initial(time,dumpfile,ntot,dtnew_first,ierr)
     call do_analysis(dumpfile,numfromfile(dumpfile),xyzh,vxyzu, &
                      massoftype(igas),npart,time,ianalysis)
     call get_derivs_global(dt_new=dtnew_first,dt=0.,icall=1)
-    if (do_radiation) call set_radiation_and_gas_temperature_equal(npart,xyzh,vxyzu,massoftype,rad)
+    if (do_radiation) call set_radiation_and_gas_temperature_equal(npart,vxyzu,rho,rad)
 #endif
  enddo
 
  if (nalpha >= 2) then
     ialphaloc = 2
-    !$omp parallel do private(i)
+    !$omp parallel do default(none) shared(npart,alphaind,ialphaloc) private(i)
     do i=1,npart
        alphaind(1,i) = max(alphaind(1,i),alphaind(ialphaloc,i)) ! set alpha = max(alphaloc,alpha)
     enddo
@@ -906,11 +909,9 @@ end subroutine write_initial_dump
 !----------------------------------------------------------------
 subroutine finalise()
  use dim, only:mpi
- use mpitree, only:finish_tree_comms
  use mpimemory, only:deallocate_mpi_memory
 
  if (mpi) then
-    call finish_tree_comms()
     call deallocate_mpi_memory()
  endif
 

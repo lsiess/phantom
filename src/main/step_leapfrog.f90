@@ -26,7 +26,7 @@ module step_lf_global
 !   cooling_radapprox, damping, deriv, dim, dynamic_dtmax, eos, extern_gr,
 !   growth, io, io_summary, metric_tools, mpiutils, options, part,
 !   porosity, ptmass, shock_capturing, substepping, timestep, timestep_ind,
-!   timing
+!   timing, utils_gr
 !
  use dim,  only:maxp,maxvxyzu,do_radiation,ind_timesteps
  use part, only:vpred,Bpred,dustpred,ppred
@@ -56,7 +56,8 @@ subroutine init_step(npart,time,dtmax)
  !
  if (ind_timesteps) then
     if (time < tiny(time)) then
-       !$omp parallel do schedule(static) private(i)
+       !$omp parallel do schedule(static) default(none) &
+       !$omp shared(npart,ibin,nbinmax,iphase) private(i)
        do i=1,npart
           ibin(i) = nbinmax
           if (iamboundary(iamtype(iphase(i)))) ibin(i) = 0
@@ -66,7 +67,8 @@ subroutine init_step(npart,time,dtmax)
     ! twas is set so that at start of step we predict
     ! forwards to half of current timestep
     !
-    !$omp parallel do schedule(static) private(i)
+    !$omp parallel do schedule(static) default(none) &
+    !$omp shared(npart,twas,time,dtmax,ibin) private(i)
     do i=1,npart
        twas(i) = time + 0.5*get_dt(dtmax,ibin(i))
     enddo
@@ -96,12 +98,12 @@ subroutine step(npart,nactive,t,dtsph,dtextforce,dtnew)
                           use_porosity,icooling
  use shock_capturing,only:avdecayconst,alpha,alphamax
  use part,           only:xyzh,vxyzu,fxyzu,fext,divcurlv,divcurlB,Bevol,dBevol, &
-                          rad,drad,radprop,isdead_or_accreted,rhoh,dhdrho,&
-                          iphase,iamtype,massoftype,maxphase,igas,idust,mhd,&
+                          rad,drad,radprop,isdead_or_accreted,rho,&
+                          iphase,iamtype,maxphase,igas,idust,mhd,&
                           iamboundary,get_ntypes,npartoftypetot,apr_level,&
                           dustfrac,dustevol,ddustevol,eos_vars,alphaind,nptmass,&
                           dustprop,ddustprop,dustproppred,pxyzu,dens,metrics,ics,&
-                          filfac,filfacpred,mprev,filfacprev,aprmassoftype,&
+                          filfac,filfacpred,mprev,filfacprev,&
                           fxyz_ptmass_tree
  use part,           only:nptmass,xyzmh_ptmass,vxyz_ptmass,fxyz_ptmass, &
                           dsdt_ptmass,fsink_old,ibin_wake,dptmass, &
@@ -123,11 +125,12 @@ subroutine step(npart,nactive,t,dtsph,dtextforce,dtnew)
  use extern_gr,      only:get_grforce_all
  use cooling,        only:ufloor,cooling_in_step,Tfloor
  use cooling_radapprox,only:radcool_evolve_ui
- use timing,         only:increment_timer,get_timings,itimer_substep
+ use timing,         only:increment_timer,get_timings,itimer_substep,itimer_predict,itimer_correct
  use growth,         only:check_dustprop
  use porosity,       only:get_filfac
  use damping,        only:idamp
  use cons2primsolver, only:conservative2primitive,primitive2conservative
+ use utils_gr,        only:get_u0
  use eos,             only:equationofstate
  use substepping,     only:substep,substep_gr,substep_sph_gr,substep_sph
  use ptmass,         only:ptmass_kick
@@ -137,15 +140,17 @@ subroutine step(npart,nactive,t,dtsph,dtextforce,dtnew)
  real,    intent(inout) :: dtextforce
  real,    intent(out)   :: dtnew
  integer            :: i,its,np,ntypes,itype,nwake,nvfloorp,nvfloorps,nvfloorc,ialphaloc
- real               :: timei,erri,errmax,v2i,errmaxmean
- real               :: vxi,vyi,vzi,eni,hdtsph,pmassi
- real               :: alphaloci,source,tdecay1,hi,rhoi,ddenom,spsoundi
+ real               :: timei,erri,errmax,v2i,errmaxmean,omega,errmax_prev
+ real               :: vxi,vyi,vzi,eni,hdtsph
+ real               :: alphaloci,source,tdecay1,hi,rhoi,ddenom,spsoundi,u0i
+ integer            :: ierru0
  real               :: v2mean,hdti
  real(kind=4)       :: t1,t2,tcpu1,tcpu2
  real               :: pxi,pyi,pzi,p2i,p2mean
  real               :: dti,time_now
  logical, parameter :: allow_waking = .true.
  integer, parameter :: maxits = 30
+ real,    parameter :: omegamin = 0.1  ! minimum damping factor in the velocity iterations
  logical            :: converged,store_itype
 
 !
@@ -166,15 +171,15 @@ subroutine step(npart,nactive,t,dtsph,dtextforce,dtnew)
 !--------------------------------------
  itype   = igas
  ntypes  = get_ntypes(npartoftypetot)
- pmassi  = massoftype(itype)
  store_itype = (maxphase==maxp .and. ntypes > 1)
  ialphaloc = 2
  nvfloorp  = 0
+ call get_timings(t1,tcpu1)
  !$omp parallel do default(none) &
  !$omp shared(npart,xyzh,vxyzu,fxyzu,iphase,hdtsph,store_itype) &
  !$omp shared(rad,drad,pxyzu) &
  !$omp shared(Bevol,dBevol,dustevol,ddustevol,use_dustfrac) &
- !$omp shared(dustprop,ddustprop,dustproppred,ufloor,icooling,Tfloor) &
+ !$omp shared(dustprop,ddustprop,dustproppred,ufloor,icooling,Tfloor,rho) &
  !$omp shared(mprev,filfacprev,filfac,use_porosity) &
  !$omp shared(ibin,ibin_old,twas,timei) &
  !$omp firstprivate(itype) &
@@ -202,7 +207,7 @@ subroutine step(npart,nactive,t,dtsph,dtextforce,dtnew)
        else
           if (icooling == 9) then
              vxyzu(1:3,i) = vxyzu(1:3,i) + hdti*fxyzu(1:3,i)
-             call radcool_evolve_ui(vxyzu(4,i),hdti,i,Tfloor,xyzh(4,i))
+             call radcool_evolve_ui(vxyzu(4,i),hdti,i,Tfloor,rho(i))
           else
              vxyzu(:,i) = vxyzu(:,i) + hdti*fxyzu(:,i)
           endif
@@ -233,6 +238,8 @@ subroutine step(npart,nactive,t,dtsph,dtextforce,dtnew)
     endif
  enddo predictor
  !$omp end parallel do
+ call get_timings(t2,tcpu2)
+ call increment_timer(itimer_predict,t2-t1,tcpu2-tcpu1)
 
  !
  ! 1st ptmass kick (sink-gas)
@@ -246,7 +253,7 @@ subroutine step(npart,nactive,t,dtsph,dtextforce,dtnew)
 
  if (use_dustgrowth) then
     if (use_porosity) then
-       call get_filfac(npart,xyzh,mprev,filfac,dustprop,hdti)
+       call get_filfac(npart,xyzh,mprev,filfac,dustprop,hdti,rho)
     endif
     call check_dustprop(npart,dustprop,filfac,mprev,filfacprev)
  endif
@@ -289,30 +296,26 @@ subroutine step(npart,nactive,t,dtsph,dtextforce,dtnew)
 ! interpolation of SPH quantities needed in the SPH
 ! force evaluations, using dtsph
 !----------------------------------------------------
-!$omp parallel do default(none) schedule(guided,1) &
+ call get_timings(t1,tcpu1)
+!$omp parallel do default(none) schedule(static) &
 !$omp shared(maxp,maxphase,maxalpha) &
-!$omp shared(xyzh,vxyzu,vpred,fxyzu,divcurlv,npart,store_itype) &
-!$omp shared(pxyzu,ppred,apr_level,aprmassoftype) &
-!$omp shared(Bevol,dBevol,Bpred,dtsph,massoftype,iphase) &
+!$omp shared(xyzh,vxyzu,vpred,fxyzu,divcurlv,npart,store_itype,rho) &
+!$omp shared(pxyzu,ppred) &
+!$omp shared(Bevol,dBevol,Bpred,dtsph,iphase) &
 !$omp shared(dustevol,ddustprop,dustprop,dustproppred,dustfrac,ddustevol,dustpred,use_dustfrac) &
 !$omp shared(filfac,filfacpred,use_porosity) &
-!$omp shared(alphaind,alphamax,ialphaloc) &
+!$omp shared(alphaind,alphamax,ialphaloc,metrics) &
 !$omp shared(eos_vars,ufloor,icooling,Tfloor) &
 !$omp shared(twas,timei) &
 !$omp shared(rad,drad,radpred)&
 !$omp private(hi,rhoi,tdecay1,source,ddenom,hdti) &
-!$omp private(i,spsoundi,alphaloci) &
-!$omp firstprivate(pmassi,itype,alpha) &
+!$omp private(i,spsoundi,alphaloci,u0i,ierru0) &
+!$omp firstprivate(itype,alpha) &
 !$omp reduction(+:nvfloorps)
  predict_sph: do i=1,npart
     if (.not.isdead_or_accreted(xyzh(4,i))) then
        if (store_itype) then
           itype = iamtype(iphase(i))
-          if (use_apr) then
-             pmassi = aprmassoftype(itype,apr_level(i))
-          else
-             pmassi = massoftype(itype)
-          endif
           if (iamboundary(itype)) then
              if (gr) then
                 ppred(:,i) = pxyzu(:,i)
@@ -329,7 +332,7 @@ subroutine step(npart,nactive,t,dtsph,dtextforce,dtnew)
        !
        ! make prediction for h
        !
-       xyzh(4,i) = xyzh(4,i) - dtsph*dhdrho(xyzh(4,i),pmassi)*rhoh(xyzh(4,i),pmassi)*divcurlv(1,i)
+       xyzh(4,i) = xyzh(4,i) - dtsph*(-xyzh(4,i)/3.)*divcurlv(1,i)
        !
        ! make a prediction for v and u to the full step for use in the
        ! force evaluation. These have already been updated to the
@@ -346,7 +349,7 @@ subroutine step(npart,nactive,t,dtsph,dtextforce,dtnew)
        else
           if (icooling == 9) then
              vpred(1:3,i) = vxyzu(1:3,i) + hdti*fxyzu(1:3,i)
-             call radcool_evolve_ui(vxyzu(4,i),hdti,i,Tfloor,xyzh(4,i),vpred(4,i))
+             call radcool_evolve_ui(vxyzu(4,i),hdti,i,Tfloor,rho(i),vpred(4,i))
           else
              vpred(:,i) = vxyzu(:,i) + hdti*fxyzu(:,i)
           endif
@@ -366,7 +369,7 @@ subroutine step(npart,nactive,t,dtsph,dtextforce,dtnew)
        if (itype==igas) then
           if (mhd) Bpred(:,i) = Bevol (:,i) + hdti*dBevol(:,i)
           if (use_dustfrac) then
-             rhoi          = rhoh(xyzh(4,i),pmassi)
+             rhoi          = rho(i)
              dustpred(:,i) = dustevol(:,i) + hdti*ddustevol(:,i)
              if (use_dustgrowth) dustproppred(:,i) = dustprop(:,i) + hdti*ddustprop(:,i)
           endif
@@ -377,9 +380,14 @@ subroutine step(npart,nactive,t,dtsph,dtextforce,dtnew)
        !
        if (maxalpha==maxp) then
           hi   = xyzh(4,i)
-          rhoi = rhoh(hi,pmassi)
+          rhoi = rho(i)
           spsoundi = eos_vars(ics,i)
           tdecay1  = avdecayconst*spsoundi/hi
+          if (gr) then
+             ! decay over the proper time of the fluid, dtau = dt/U^0
+             call get_u0(metrics(:,:,1,i),vxyzu(1:3,i),u0i,ierru0)
+             tdecay1 = tdecay1/u0i
+          endif
           ddenom   = 1./(1. + dtsph*tdecay1) ! implicit integration for decay term
           if (nalpha >= 2) then
              ! Cullen and Dehnen (2010) switch
@@ -398,9 +406,11 @@ subroutine step(npart,nactive,t,dtsph,dtextforce,dtnew)
     endif
  enddo predict_sph
  !$omp end parallel do
+ call get_timings(t2,tcpu2)
+ call increment_timer(itimer_predict,t2-t1,tcpu2-tcpu1)
  if (use_dustgrowth) then
     if (use_porosity) then
-       call get_filfac(npart,xyzh,dustprop(1,:),filfacpred,dustproppred,hdti)
+       call get_filfac(npart,xyzh,dustprop(1,:),filfacpred,dustproppred,hdti,rho)
     endif
     call check_dustprop(npart,dustproppred(:,:),filfacpred,dustprop(1,:),filfac)
  endif
@@ -448,6 +458,8 @@ subroutine step(npart,nactive,t,dtsph,dtextforce,dtnew)
  its        = 0
  converged  = .false.
  errmaxmean = 0.0
+ omega       = 1.
+ errmax_prev = huge(errmax_prev)
  nwake      = 0
  nvfloorc   = 0
  iterations: do while (its < maxits .and. .not.converged .and. npart > 0)
@@ -457,17 +469,17 @@ subroutine step(npart,nactive,t,dtsph,dtextforce,dtnew)
     p2mean  = 0.
     np      = 0
     itype   = igas
-    pmassi  = massoftype(igas) ! this does not appear to be used below
     ntypes  = get_ntypes(npartoftypetot)
     store_itype = (maxphase==maxp .and. ntypes > 1)
+    call get_timings(t1,tcpu1)
 !$omp parallel default(none) &
 !$omp shared(xyzh,vxyzu,vpred,fxyzu,npart,hdtsph,store_itype) &
 !$omp shared(pxyzu,ppred) &
 !$omp shared(Bevol,dBevol,iphase,its) &
 !$omp shared(dustevol,ddustevol,use_dustfrac) &
 !$omp shared(dustprop,ddustprop,dustproppred) &
-!$omp shared(xyzmh_ptmass,vxyz_ptmass,fxyz_ptmass,nptmass,massoftype) &
-!$omp shared(dtsph,ufloor,icooling,Tfloor) &
+!$omp shared(xyzmh_ptmass,vxyz_ptmass,fxyz_ptmass,nptmass) &
+!$omp shared(dtsph,ufloor,icooling,Tfloor,rho) &
 !$omp shared(ibin,ibin_old,twas,timei,ibin_wake) &
 !$omp shared(ibin_dts,nbinmax) &
 !$omp private(dti,hdti) &
@@ -477,7 +489,7 @@ subroutine step(npart,nactive,t,dtsph,dtextforce,dtnew)
 !$omp private(erri,v2i,eni) &
 !$omp reduction(max:errmax) &
 !$omp reduction(+:np,v2mean,p2mean,nwake,nvfloorc) &
-!$omp firstprivate(pmassi,itype)
+!$omp firstprivate(itype)
 !$omp do
     corrector: do i=1,npart
        if (.not.isdead_or_accreted(xyzh(4,i))) then
@@ -497,7 +509,7 @@ subroutine step(npart,nactive,t,dtsph,dtextforce,dtnew)
                 else
                    if (icooling == 9) then
                       vxyzu(1:3,i) = vxyzu(1:3,i) + dti*fxyzu(1:3,i)
-                      call radcool_evolve_ui(vxyzu(4,i),dti,i,Tfloor,xyzh(4,i))
+                      call radcool_evolve_ui(vxyzu(4,i),dti,i,Tfloor,rho(i))
                    else
                       vxyzu(:,i) = vxyzu(:,i) + dti*fxyzu(:,i)
                    endif
@@ -524,7 +536,7 @@ subroutine step(npart,nactive,t,dtsph,dtextforce,dtnew)
              else
                 if (icooling == 9) then
                    vxyzu(1:3,i) = vxyzu(1:3,i) + hdti*fxyzu(1:3,i)
-                   call radcool_evolve_ui(vxyzu(4,i),hdti,i,Tfloor,xyzh(4,i))
+                   call radcool_evolve_ui(vxyzu(4,i),hdti,i,Tfloor,rho(i))
                 else
                    vxyzu(:,i) = vxyzu(:,i) + hdti*fxyzu(:,i)
                 endif
@@ -587,7 +599,7 @@ subroutine step(npart,nactive,t,dtsph,dtextforce,dtnew)
                 vzi = vxyzu(3,i) + hdtsph*fxyzu(3,i)
                 if (maxvxyzu >= 4) then
                    if (icooling == 9) then
-                      call radcool_evolve_ui(vxyzu(4,i),hdtsph,i,Tfloor,xyzh(4,i),eni)
+                      call radcool_evolve_ui(vxyzu(4,i),hdtsph,i,Tfloor,rho(i),eni)
                    else
                       eni = vxyzu(4,i) + hdtsph*fxyzu(4,i)
                    endif
@@ -623,9 +635,11 @@ subroutine step(npart,nactive,t,dtsph,dtextforce,dtnew)
     enddo corrector
 !$omp enddo
 !$omp end parallel
+    call get_timings(t2,tcpu2)
+    call increment_timer(itimer_correct,t2-t1,tcpu2-tcpu1)
     if (use_dustgrowth) then
        if (use_porosity) then
-          call get_filfac(npart,xyzh,mprev,filfac,dustprop,dtsph)
+          call get_filfac(npart,xyzh,mprev,filfac,dustprop,dtsph,rho)
        endif
        call check_dustprop(npart,dustprop,filfac,mprev,filfacprev)
     endif
@@ -635,16 +649,21 @@ subroutine step(npart,nactive,t,dtsph,dtextforce,dtnew)
     else
        call check_velocity_error(errmax,v2mean,np,its,tolv,dtsph,timei,idamp,dterr,errmaxmean,converged)
     endif
+    ! damp the fixed point iteration for velocity-dependent forces if the error is decreasing
+    ! slowly, i.e. by less than a factor of 2, as when the iterations oscillate
+    if (.not.converged .and. its > 1 .and. errmax > 0.5*errmax_prev) omega = max(0.5*omega,omegamin)
+    errmax_prev = errmax
 
     if (.not.converged .and. npart > 0) then
+       call get_timings(t1,tcpu1)
 !$omp parallel do default(none)&
 !$omp private(i) &
-!$omp shared(npart,hdtsph)&
+!$omp shared(npart,hdtsph,omega)&
 !$omp shared(store_itype,vxyzu,fxyzu,vpred,iphase) &
 !$omp shared(Bevol,dBevol,Bpred,pxyzu,ppred) &
 !$omp shared(dustprop,ddustprop,dustproppred,use_dustfrac,dustevol,dustpred,ddustevol) &
 !$omp shared(filfac,filfacpred,use_porosity) &
-!$omp shared(rad,drad,radpred,icooling,Tfloor,xyzh) &
+!$omp shared(rad,drad,radpred,icooling,Tfloor,xyzh,rho) &
 !$omp firstprivate(itype) &
 !$omp schedule(static)
        until_converged: do i=1,npart
@@ -654,9 +673,9 @@ subroutine step(npart,nactive,t,dtsph,dtextforce,dtnew)
           if (ind_timesteps) then
              if (iactive(iphase(i))) then
                 if (gr) then
-                   ppred(:,i) = pxyzu(:,i)
+                   call update_prediction(ppred(:,i),pxyzu(:,i),omega)
                 else
-                   vpred(:,i) = vxyzu(:,i)
+                   call update_prediction(vpred(:,i),vxyzu(:,i),omega)
                 endif
                 if (use_dustgrowth) dustproppred(:,i) = dustprop(:,i)
                 if (use_porosity) filfacpred(i) = filfac(i)
@@ -666,9 +685,9 @@ subroutine step(npart,nactive,t,dtsph,dtextforce,dtnew)
              endif
           else
              if (gr) then
-                ppred(:,i) = pxyzu(:,i)
+                call update_prediction(ppred(:,i),pxyzu(:,i),omega)
              else
-                vpred(:,i) = vxyzu(:,i)
+                call update_prediction(vpred(:,i),vxyzu(:,i),omega)
              endif
              if (use_dustgrowth) dustproppred(:,i) = dustprop(:,i)
              if (use_porosity) filfacpred(i) = filfac(i)
@@ -682,7 +701,7 @@ subroutine step(npart,nactive,t,dtsph,dtextforce,dtnew)
                 pxyzu(:,i) = pxyzu(:,i) - hdtsph*fxyzu(:,i)
              else
                 if (icooling == 9) then
-                   call radcool_evolve_ui(vxyzu(4,i),-hdtsph,i,Tfloor,xyzh(4,i))
+                   call radcool_evolve_ui(vxyzu(4,i),-hdtsph,i,Tfloor,rho(i))
                    vxyzu(1:3,i) = vxyzu(1:3,i) - hdtsph*fxyzu(1:3,i)
                 else
                    vxyzu(:,i) = vxyzu(:,i) - hdtsph*fxyzu(:,i)
@@ -700,10 +719,12 @@ subroutine step(npart,nactive,t,dtsph,dtextforce,dtnew)
           endif
        enddo until_converged
 !$omp end parallel do
+       call get_timings(t2,tcpu2)
+       call increment_timer(itimer_correct,t2-t1,tcpu2-tcpu1)
 
        if (use_dustgrowth) then
           if (use_porosity) then
-             call get_filfac(npart,xyzh,mprev,filfac,dustprop,dtsph)
+             call get_filfac(npart,xyzh,mprev,filfac,dustprop,dtsph,rho)
           endif
           call check_dustprop(npart,dustprop,filfac,mprev,filfacprev)
        endif
@@ -758,6 +779,25 @@ subroutine step(npart,nactive,t,dtsph,dtextforce,dtnew)
  if (gr) call cons2primall(npart,xyzh,metrics,pxyzu,vxyzu,dens,eos_vars)
 
 end subroutine step
+
+!----------------------------------------------------------------
+!+
+!  update the prediction used in the fixed point iterations for
+!  velocity-dependent forces, damped by omega (< 1) if the
+!  iterations are not converging
+!+
+!----------------------------------------------------------------
+pure subroutine update_prediction(xpred,xnew,omega)
+ real, intent(inout) :: xpred(:)
+ real, intent(in)    :: xnew(:),omega
+
+ if (omega < 1.) then
+    xpred = xpred + omega*(xnew - xpred)
+ else
+    xpred = xnew
+ endif
+
+end subroutine update_prediction
 
 !-----------------------------------------------------
 !+

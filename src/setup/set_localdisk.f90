@@ -56,15 +56,15 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
  use boundary,    only:set_boundary
  use timestep,    only:tmax,dtmax
 
- integer,           intent(in)    :: id
- integer,           intent(inout) :: npart
- integer,           intent(out)   :: npartoftype(:)
- real,              intent(out)   :: xyzh(:,:)
- real,              intent(out)   :: massoftype(:)
- real,              intent(out)   :: polyk,gamma,hfact
- real,              intent(inout) :: time
- character(len=20), intent(in)    :: fileprefix
- real,              intent(out)   :: vxyzu(:,:)
+ integer,          intent(in)    :: id
+ integer,          intent(inout) :: npart
+ integer,          intent(out)   :: npartoftype(:)
+ real,             intent(out)   :: xyzh(:,:)
+ real,             intent(out)   :: massoftype(:)
+ real,             intent(out)   :: polyk,gamma,hfact
+ real,             intent(inout) :: time
+ character(len=*), intent(in)    :: fileprefix
+ real,             intent(out)   :: vxyzu(:,:)
 
  character(len=120) :: filename,infile
 
@@ -107,7 +107,7 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
  zmax = H
 
  call set_boundary(xmin,xmax,ymin,ymax,zmin,zmax)
- call set_units(dist=r_unit,time=r_unit/v_unit,G=1.)
+ call set_units(dist=real(r_unit,kind=8),time=real(r_unit/v_unit,kind=8),G=1.d0)
  time = 0.
  polyk = 0.
  gamma = 4./3.
