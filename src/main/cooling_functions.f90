@@ -231,7 +231,7 @@ subroutine rotational_CO_cooling_WJ(T, rho_cgs, CO_ab, div_v, Q_CO, dlnQ_dlnT)
 
     Lambda_TOT = Lambda_TOT_per_nCO * nCO
 
-    Q_CO = -Lambda_TOT  ! Cooling rate is negative
+    Q_CO = -Lambda_TOT/rho_cgs  ! Cooling rate is negative
     dlnQ_dlnT = 0.0  ! For now
 
 end subroutine rotational_CO_cooling_WJ
