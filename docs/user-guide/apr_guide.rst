@@ -3,7 +3,7 @@ Splitting/merging particles
 
 Splitting or merging particles can be used to increase (or decrease) the resolution of your simulation. The
 simplest form of this is to split (merge) a whole simulation into a higher (lower) resolution simulation. A good use
-case for this is to evolve an accretion disc for a long time at low resolution to settle initial transients, 
+case for this is to evolve an accretion disc for a long time at low resolution to settle initial transients,
 then split to high resolution for a smaller number of orbits.
 
 More complex splitting/merging can be achieved by using Adaptive Particle Refinement (APR) (see :ref:`apr`).
@@ -17,9 +17,11 @@ resolution simulation as follows::
   make splitpart
   ./splitpart dump_01000 split_01000 --nchild=13
 
-This will split each particle in the simulation into 13, placed in a regular lattice. The ``--nchild`` option
-specifies the number of children to split into. If you choose a number other than 13 the children will be
-be placed randomly rather than on a regular lattice.
+This will split each particle in the simulation into 13, placed on a regular lattice. The ``--nchild`` option
+specifies the number of children to split into. A regular lattice places 13 children; any other
+value of nchild places children randomly. You can also force random placement with 13 children using ``--lattice_type=1``.
+Without flags you will be prompted for these options. The first run saves the choices to ``split.moddump``
+and stops; run the same command again to split the particles (see :doc:`moddump`).
 
 Merging a whole simulation
 --------------------------
@@ -28,7 +30,8 @@ You can merge particles as follows::
   make mergepart
   ./mergepart dump_01000 merge_01000 --nchild=2
 
-which will produce a snapshot with npart/nchild particles. The merging procedure uses the tree structure
+which will produce a snapshot with npart/nchild particles (as for splitpart, the first run writes
+``merge.moddump`` and stops, so run the command twice). The merging procedure uses the tree structure
 of the particles to merge them into the correct number of particles, as described in Nealon & Price (2025).
 
 .. _apr:
@@ -112,6 +115,14 @@ particles being updated during the steps e.g.::
 > step 12 / 16 t = 21.64303 dt = 0.072 moved 1283 in 0.064 cpu-s <
 > step 14 / 16 t = 21.78732 dt = 0.072 moved 476 in 0.058 cpu-s < | np = 37900 |
 > step 16 / 16 t = 21.93160 dt = 0.072 moved 37860 in 0.31 cpu-s <
+
+APR with dust
+-------------
+APR can be used with dust either as a mixture (one-fluid, small grains) or as
+particles (two-fluid, large grains), including multiple dust species. All particle
+types inside the refinement region are split, and only particles of the same type
+are merged with each other. The hybrid method (small and large grains together)
+is not yet supported.
 
 Plotting with APR
 --------------------

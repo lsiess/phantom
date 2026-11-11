@@ -14,10 +14,10 @@ module checksetup
 !
 ! :Runtime parameters: None
 !
-! :Dependencies: HIIRegion, boundary, boundary_dyn, centreofmass, dim,
-!   dust, dust_formation, eos, externalforces, inject, io, metric_tools,
-!   nicil, options, part, physcon, ptmass, ptmass_radiation, sortutils,
-!   timestep, units, utils_gr
+! :Dependencies: HIIRegion, apr, boundary, boundary_dyn, centreofmass, dim,
+!   dust, dust_formation, eos, externalforces, inject, io, metric,
+!   metric_tools, nicil, options, part, physcon, ptmass, ptmass_radiation,
+!   sortutils, timestep, units, utils_gr
 !
  implicit none
  public :: check_setup
@@ -38,16 +38,19 @@ contains
 !+
 !------------------------------------------------------------------
 subroutine check_setup(nerror,nwarn,restart)
+ use, intrinsic :: ieee_arithmetic, only:ieee_is_nan
  use dim,  only:maxp,maxvxyzu,periodic,use_dust,ndim,mhd,use_dustgrowth, &
-                do_radiation,n_nden_phantom,mhd_nonideal,do_nucleation,use_krome,ind_timesteps
+                do_radiation,n_nden_phantom,mhd_nonideal,do_nucleation,use_krome,ind_timesteps,use_apr,&
+                maxdvdx
  use part, only:xyzh,massoftype,hfact,vxyzu,npart,npartoftype,nptmass,gravity, &
                 iphase,maxphase,isetphase,labeltype,igas,maxtypes,&
                 idust,xyzmh_ptmass,vxyz_ptmass,iboundary,isdeadh,ll,ideadhead,&
                 kill_particle,shuffle_part,iamtype,iamdust,Bxyz,rad,radprop, &
-                remove_particle_from_npartoftype,ien_type,ien_etotal,gr
- use eos,             only:gamma,polyk,eos_is_non_ideal,eos_requires_polyk
+                remove_particle_from_npartoftype,gr,eos_vars,itemp
+ use eos,             only:gamma,polyk,eos_requires_polyk,ieos_helmholtz
  use centreofmass,    only:get_centreofmass
- use options,         only:ieos,iexternalforce,use_dustfrac,use_hybrid
+ use apr,             only:sync_aprmassoftype
+ use options,         only:ieos,iexternalforce,use_dustfrac,use_hybrid,ireconav
  use io,              only:id,master
  use externalforces,  only:accrete_particles,update_externalforce,accradius1,iext_star
  use timestep,        only:time
@@ -98,11 +101,11 @@ subroutine check_setup(nerror,nwarn,restart)
     print*,'ERROR: sum of npartoftype  /=  npart: np=',npart,' but sum=',sum(npartoftype)
     nerror = nerror + 1
  endif
- if (hfact < 1. .or. isnan(hfact)) then
+ if (hfact < 1. .or. ieee_is_nan(hfact)) then
     print*,'ERROR: hfact = ',hfact,', should be >= 1'
     nerror = nerror + 1
  endif
- if (polyk < 0. .or. isnan(polyk)) then
+ if (polyk < 0. .or. ieee_is_nan(polyk)) then
     print*,'ERROR: polyk = ',polyk,', should be >= 0'
     nerror = nerror + 1
  endif
@@ -120,6 +123,11 @@ subroutine check_setup(nerror,nwarn,restart)
        if (id==master) print*,'WARNING! gamma not set (should be set > 0 even if not used)'
        nwarn = nwarn + 1
     endif
+ endif
+ ! reconstruction in the shock viscosity needs the stored velocity gradients
+ if (gr .and. ireconav >= 0 .and. maxdvdx /= maxp) then
+    print*,'ERROR: ireconav >= 0 requires velocity gradients to be stored (maxdvdx = maxp)'
+    nerror = nerror + 1
  endif
  if (npart < 0) then
     print*,'ERROR: npart = ',npart,', should be >= 0'
@@ -253,11 +261,27 @@ subroutine check_setup(nerror,nwarn,restart)
        nwarn = nwarn + 1
     endif
  endif
+ !
+ !--check that temperature guess is set if using Helmholtz EOS
+ !
+ if (ieos==ieos_helmholtz) then
+    nbad = 0
+    do i=1,npart
+       if (eos_vars(itemp,i) <= 0.) then
+          nbad = nbad + 1
+          if (nbad <= 10) print*,' particle ',i,' temperature guess = ',eos_vars(itemp,i)
+       endif
+    enddo
+    if (nbad > 0) then
+       print*,'ERROR: Using Helmholtz EOS but temperature guess not set on ',nbad,' of ',npart,' particles'
+       nerror = nerror + 1
+    endif
+ endif
 !
 !--check that mass of each type has been set
 !
  do itype=1,maxtypes
-    if (isnan(massoftype(itype))) then
+    if (ieee_is_nan(massoftype(itype))) then
        print*,'WARNING: massoftype = NaN for '//trim(labeltype(itype))//' particles'
        nwarn = nwarn + 1
        massoftype(itype) = 0.
@@ -364,10 +388,6 @@ subroutine check_setup(nerror,nwarn,restart)
        endif
     endif
  endif
- if (.not. gr .and. (gravity .or. mhd) .and. ien_type == ien_etotal) then
-    if (id==master) print*,'Cannot use total energy with self gravity or mhd'
-    nerror = nerror + 1
- endif
 !
 !--sanity checks on magnetic field
 !
@@ -457,6 +477,7 @@ subroutine check_setup(nerror,nwarn,restart)
 !
 !--check centre of mass
 !
+ call sync_aprmassoftype()
  call get_centreofmass(xcom,vcom,npart,xyzh,vxyzu,nptmass,xyzmh_ptmass,vxyz_ptmass)
 !
 !--check Forward symplectic integration method imcompatiblity
@@ -494,6 +515,7 @@ end subroutine check_setup
 !+
 !----------------------------------------------------
 subroutine check_NaN(npart,array,label,nerror)
+ use, intrinsic :: ieee_arithmetic, only:ieee_is_nan
  integer,          intent(in)    :: npart
  real,             intent(in)    :: array(:,:)
  character(len=*), intent(in)    :: label
@@ -507,7 +529,7 @@ subroutine check_NaN(npart,array,label,nerror)
  !$omp reduction(+:nbad)
  do i=1,npart
     !--check for NaNs in xyzh
-    if (any(isnan(array(:,i)))) then
+    if (any(ieee_is_nan(array(:,i)))) then
        if (nbad < 10) print*,'NaN in '//trim(label)//' : ', i
        nbad = nbad + 1
     endif
@@ -916,9 +938,10 @@ end subroutine check_setup_dustfrac
 !+
 !------------------------------------------------------------------
 subroutine check_gr(npart,nerror,xyzh,vxyzu)
- use metric_tools, only:pack_metric,unpack_metric
+ use metric_tools, only:pack_metric,unpack_metric,imet_rn,imetric
+ use metric,       only:charge,mass1
  use utils_gr,     only:get_u0
- use part,         only:isdead_or_accreted,ien_type,ien_entropy,ien_etotal,ien_entropy_s
+ use part,         only:isdead_or_accreted,ien_type,ien_entropy,ien_entropy_s
  use units,        only:in_geometric_units,get_G_code,get_c_code
  integer, intent(in)    :: npart
  integer, intent(inout) :: nerror
@@ -954,10 +977,19 @@ subroutine check_gr(npart,nerror,xyzh,vxyzu)
     nerror = nerror + 1
  endif
 
- if (ien_type /= ien_etotal .and. ien_type /= ien_entropy .and. ien_type /= ien_entropy_s) then
+ if (ien_type /= ien_entropy .and. ien_type /= ien_entropy_s) then
     print "(/,a,i1,a,i1,a,i3,/)",' ERROR: ien_type is incorrect for GR, need ', &
-                                 ien_entropy, ', ', ien_etotal, ' or ', ien_entropy_s, &
-                                 ' but get ', ien_type
+                                 ien_entropy, ' or ', ien_entropy_s, ' but get ', ien_type
+    nerror = nerror + 1
+ endif
+
+ if (imetric==imet_rn) then
+    if (abs(mass1-1.) > epsilon(mass1)) then
+       print*, ' mass1 in code units shall be unity for proper interpretation'
+       nerror = nerror + 1
+    endif
+ elseif (abs(charge) > 0.) then
+    print*,' charge should be zero for this metric'
     nerror = nerror + 1
  endif
 
@@ -1047,6 +1079,7 @@ end subroutine check_for_identical_positions
 !+
 !------------------------------------------------------------------
 subroutine check_setup_radiation(npart,nerror,nwarn,radprop,rad)
+ use, intrinsic :: ieee_arithmetic, only:ieee_is_nan
  use part, only:ithick, iradxi, ikappa
  integer, intent(in)    :: npart
  integer, intent(inout) :: nerror,nwarn
@@ -1060,7 +1093,7 @@ subroutine check_setup_radiation(npart,nerror,nwarn,radprop,rad)
  do i=1,npart
     if (radprop(ithick, i) < 0.5) nthin = nthin + 1
     if (rad(iradxi, i) < 0.) nradEn = nradEn + 1
-    if (radprop(ikappa, i) <= 0.0 .or. isnan(radprop(ikappa,i))) nkappa = nkappa + 1
+    if (radprop(ikappa, i) <= 0.0 .or. ieee_is_nan(radprop(ikappa,i))) nkappa = nkappa + 1
     if (rad(iradxi, i) <= 0.) nwarn_en = nwarn_en + 1
  enddo
 
@@ -1105,7 +1138,7 @@ subroutine check_cooling(xcom,vcom,nerror)
  use part,            only:nptmass
  use eos,             only:ipdv_heating,ishock_heating,eos_allows_shock_and_work,ieos
  integer, intent(inout) :: nerror
- real, intent(in)        :: xcom(ndim),vcom(ndim)
+ real,    intent(in)    :: xcom(ndim),vcom(ndim)
 
  if (.not.h2chemistry .and. maxvxyzu >= 4 .and. icooling == 3 .and. iexternalforce/=iext_corotate .and. nptmass==0) then
     if (dot_product(xcom,xcom) >  1.e-2) then

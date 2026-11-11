@@ -51,15 +51,15 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
  use datafiles, only:find_phantom_datafile
  use setup_params, only:npart_total
  use infile_utils, only:get_options
- integer,           intent(in)    :: id
- integer,           intent(inout) :: npart
- integer,           intent(out)   :: npartoftype(:)
- real,              intent(out)   :: xyzh(:,:)
- real,              intent(out)   :: massoftype(:)
- real,              intent(out)   :: polyk,gamma,hfact
- real,              intent(inout) :: time
- character(len=20), intent(in)    :: fileprefix
- real,              intent(out)   :: vxyzu(:,:)
+ integer,          intent(in)    :: id
+ integer,          intent(inout) :: npart
+ integer,          intent(out)   :: npartoftype(:)
+ real,             intent(out)   :: xyzh(:,:)
+ real,             intent(out)   :: massoftype(:)
+ real,             intent(out)   :: polyk,gamma,hfact
+ real,             intent(inout) :: time
+ character(len=*), intent(in)    :: fileprefix
+ real,             intent(out)   :: vxyzu(:,:)
  character(len=len(datafile)) :: filename
  integer :: ierr,i
  real    :: scale,psep
@@ -104,6 +104,7 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
 !
  filename=find_phantom_datafile(datafile,'galcen')
  call read_ptmass_data(filename,xyzmh_ptmass,vxyz_ptmass,nptmass,ierr)
+ if (ierr /= 0) call fatal('setup','data file not found: '//trim(filename))
  do i=2,nptmass
     xyzmh_ptmass(1:3,i)  = xyzmh_ptmass(1:3,i)
     xyzmh_ptmass(4,i)    = xyzmh_ptmass(4,i)

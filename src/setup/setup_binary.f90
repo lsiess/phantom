@@ -13,14 +13,15 @@ module setup
 ! :Owner: Daniel Price
 !
 ! :Runtime parameters:
-!   - corotate : *set stars in corotation*
-!   - deltat   : *output interval as fraction of binary period*
-!   - norbits  : *maximum number of binary orbits*
+!   - corotate   : *set stars in corotation*
+!   - deltat     : *output interval as fraction of binary period*
+!   - gwinspiral : *set gravitational wave inspiral*
+!   - norbits    : *maximum number of binary orbits*
 !
-! :Dependencies: centreofmass, dim, eos, externalforces, infile_utils, io,
-!   kernel, mpidomain, options, part, physcon, sethier_utils,
-!   sethierarchical, setorbit, setstar, setunits, setup_params, timestep,
-!   units
+! :Dependencies: centreofmass, dim, eos, extern_gwinspiral, externalforces,
+!   infile_utils, io, kernel, mpidomain, options, part, physcon,
+!   sethier_utils, sethierarchical, setorbit, setstar, setunits,
+!   setup_params, timestep, units
 !
  use setstar,       only:star_t
  use setorbit,      only:orbit_t
@@ -30,7 +31,7 @@ module setup
  implicit none
  public :: setpart
 
- logical :: relax,write_rho_to_file,corotate
+ logical :: relax,write_rho_to_file,corotate,gwinspiral
  integer, parameter :: max_stars = max_hier_levels
  type(star_t)  :: star(max_stars)
  type(orbit_t) :: orbit
@@ -53,7 +54,8 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,&
  use setorbit,       only:set_defaults_orbit,set_orbit
  use sethierarchical,only:set_hierarchical,set_hierarchical_default_options,hs,generate_hierarchy_string
  use options,        only:iexternalforce,alphau
- use externalforces, only:iext_corotate,iext_geopot,iext_star,omega_corotate,mass1,accradius1
+ use externalforces, only:iext_corotate,iext_geopot,iext_star,iext_gwinspiral,omega_corotate,mass1,accradius1
+ use extern_gwinspiral, only:Nstar_gw
  use io,             only:master,fatal
  use setstar,        only:set_defaults_stars,set_stars,shift_stars
  use eos,            only:X_in,Z_in,use_var_comp
@@ -65,15 +67,15 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,&
  use kernel,         only:hfact_default
  use infile_utils,   only:get_options,infile_exists
  use timestep,       only:tmax,dtmax
- integer,           intent(in)    :: id
- integer,           intent(inout) :: npart
- integer,           intent(out)   :: npartoftype(:)
- real,              intent(out)   :: xyzh(:,:)
- real,              intent(out)   :: massoftype(:)
- real,              intent(out)   :: polyk,gamma,hfact
- real,              intent(inout) :: time
- character(len=20), intent(in)    :: fileprefix
- real,              intent(out)   :: vxyzu(:,:)
+ integer,          intent(in)    :: id
+ integer,          intent(inout) :: npart
+ integer,          intent(out)   :: npartoftype(:)
+ real,             intent(out)   :: xyzh(:,:)
+ real,             intent(out)   :: massoftype(:)
+ real,             intent(out)   :: polyk,gamma,hfact
+ real,             intent(inout) :: time
+ character(len=*), intent(in)    :: fileprefix
+ real,             intent(out)   :: vxyzu(:,:)
  integer :: ierr,nptmass_in,iextern_prev,i
  logical :: add_spin
  real :: xyzmh_ptmass_in(nsinkproperties,max_stars),vxyz_ptmass_in(3,max_stars),angle
@@ -109,6 +111,7 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,&
  call set_hierarchical_default_options()
  relax = .true.
  corotate = .false.
+ gwinspiral = .false.
  use_var_comp = .false.
  write_rho_to_file = .true.
 
@@ -181,6 +184,10 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,&
     accradius1 = xyzmh_ptmass(ihacc,nptmass+1)
     xyzmh_ptmass(:,nptmass) = xyzmh_ptmass(:,nptmass+1)
     vxyz_ptmass(:,nptmass) = vxyz_ptmass(:,nptmass+1)
+ elseif (nstar == 2 .and. (gwinspiral .or. iexternalforce==iext_gwinspiral)) then
+    Nstar_gw(1) = star(1)%np
+    Nstar_gw(2) = npart - star(1)%np
+    iexternalforce = iext_gwinspiral
  elseif (nstar >= 1 .and. set_oblateness .and. star(1)%iprofile == 0) then
     ! set J2 for sink particle 1 to be equal to oblateness of Saturn
     xyzmh_ptmass(iJ2,1) = 0.01629
@@ -222,6 +229,7 @@ subroutine write_setupfile(filename)
     call write_hierarchical_setupfile(iunit,nstar)
  elseif (nstar == 2) then
     call write_inopt(corotate,'corotate','set stars in corotation',iunit)
+    call write_inopt(gwinspiral,'gwinspiral','set gravitational wave inspiral',iunit)
     call write_options_orbit(orbit,iunit)
 
     write(iunit,"(/,a)") '# timestepping'
@@ -261,6 +269,7 @@ subroutine read_setupfile(filename,ierr)
     call read_hierarchical_setupfile(db,nerr,nstar)
  elseif (nstar == 2) then
     call read_inopt(corotate,'corotate',db,errcount=nerr)
+    call read_inopt(gwinspiral,'gwinspiral',db,errcount=nerr,default=.false.)
     m1 = in_code_units(star(1)%m,ierr,unit_type='mass')
     m2 = in_code_units(star(2)%m,ierr1,unit_type='mass')
     if (ierr /= 0 .or. ierr1 /= 0) then

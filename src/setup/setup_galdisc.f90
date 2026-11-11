@@ -80,15 +80,15 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
  use infile_utils,   only:get_options
  use set_dust,       only:set_dustfrac
  use kernel,         only:hfact_default
- integer,           intent(in)    :: id
- integer,           intent(out)   :: npart
- integer,           intent(out)   :: npartoftype(:)
- real,              intent(out)   :: xyzh(:,:)
- real,              intent(out)   :: polyk,gamma,hfact
- real,              intent(out)   :: vxyzu(:,:)
- real,              intent(out)   :: massoftype(:)
- real,              intent(inout) :: time
- character(len=20), intent(in)    :: fileprefix
+ integer,          intent(in)    :: id
+ integer,          intent(out)   :: npart
+ integer,          intent(out)   :: npartoftype(:)
+ real,             intent(out)   :: xyzh(:,:)
+ real,             intent(out)   :: polyk,gamma,hfact
+ real,             intent(out)   :: vxyzu(:,:)
+ real,             intent(out)   :: massoftype(:)
+ real,             intent(inout) :: time
+ character(len=*), intent(in)    :: fileprefix
  integer :: i,ierr,iseed
  real :: h2ratio,gmw
 
@@ -308,6 +308,7 @@ subroutine add_component(file_in,itype,istart,iend,xyzh,vxyzu,massoftype,npartof
  use part,      only:set_particle_type
  use units,     only:udist,umass,unit_velocity
  use datafiles, only:find_phantom_datafile
+ use io,        only:fatal
  character(len=*), intent(in)    :: file_in,component_name
  integer,          intent(in)    :: itype,istart,iend
  real,             intent(inout) :: xyzh(:,:),vxyzu(:,:),massoftype(:)
@@ -315,13 +316,14 @@ subroutine add_component(file_in,itype,istart,iend,xyzh,vxyzu,massoftype,npartof
  real,             intent(inout) :: totmass
  real,             intent(in)    :: thermal,hfact,totvol
  character(len=120) :: filename
- integer :: i,lu
+ integer :: i,lu,ierr
  real :: xis,yis,zis,mis,vxis,vyis,vzis,phaseis
  real :: rhozero,h
 
  filename = find_phantom_datafile(file_in,'isolatedgalaxy/arpic_lowrestest')
 
- open(newunit=lu,file=filename,form='formatted')
+ open(newunit=lu,file=filename,form='formatted',status='old',iostat=ierr)
+ if (ierr /= 0) call fatal('setup_galdisc','data file not found: '//trim(filename))
  i = istart
  do while(i <= iend)
     read(lu,*) xis,yis,zis,mis,vxis,vyis,vzis,phaseis
@@ -649,12 +651,14 @@ end subroutine setup_live_stars
 !-----------------------------------------------------------------------
 subroutine read_ic_parameters(filename,npartoftype)
  use part, only:igas,istar,ibulge,idarkmatter
+ use io,   only:fatal
  character(len=*), intent(in)  :: filename
  integer,          intent(out) :: npartoftype(:)
- integer :: i,lu
+ integer :: i,lu,ierr
  character(30) :: sometext
 
- open(newunit=lu,file=filename,form='formatted')
+ open(newunit=lu,file=filename,form='formatted',status='old',iostat=ierr)
+ if (ierr /= 0) call fatal('setup_galdisc','data file not found: '//trim(filename))
  do i=1,5
     if (i==1) then
        read(lu,*) sometext,npartoftype(igas)

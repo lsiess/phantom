@@ -74,7 +74,10 @@ subroutine get_all_tau_adaptive(npart, primary, xyzh, kappa, Rstar, minOrder,&
     allocate(dists(size(listsOfDists(:,1))))
     allocate(rays_dim(nrays))
 
-    !$omp parallel do private(tau,dist,dir,dists,root,theta)
+    !$omp parallel do default(none) &
+    !$omp shared(nrays,dirs,unitCompanion,theta0,normCompanion,Rcomp,primary,xyzh) &
+    !$omp shared(kappa,Rstar,rays_dim,listsOfTaus,listsOfDists) &
+    !$omp private(tau,dist,dir,dists,root,theta,i)
     do i = 1, nrays
        tau=0.
        dists=0.
@@ -94,7 +97,9 @@ subroutine get_all_tau_adaptive(npart, primary, xyzh, kappa, Rstar, minOrder,&
 
     nsides = 2**(minOrder+refineLevel)
     taus = 0.
-    !$omp parallel do private(index,vec)
+    !$omp parallel do default(none) &
+    !$omp shared(npart,xyzh,primary,nsides,indices,listsOfTaus,listsOfDists,rays_dim,taus) &
+    !$omp private(index,vec,i)
     do i = 1, npart
        vec = xyzh(1:3,i)-primary
        call vec2pix_nest(nsides, vec, index)
@@ -163,9 +168,11 @@ subroutine get_rays(npart, primary, companion, Rcomp, xyzh, minOrder, refineLeve
 
  !Fill a list to have the number distribution in angular space
  distr = 0
- !$omp parallel do private(ind)
+ !$omp parallel do default(none) &
+ !$omp shared(npart,maxOrder,xyzh,primary,distr) private(ind,i)
  do i = 1, npart
     call vec2pix_nest(2**maxOrder, xyzh(1:3, i)-primary, ind)
+    !$omp atomic update
     distr(ind+1) = distr(ind+1)+1
  enddo
  max = maxval(distr)
@@ -981,7 +988,8 @@ subroutine get_all_tau_inwards_single(npart, primary, xyzh, neighbors, kappa, Rs
 
  integer :: i
 
- !$omp parallel do
+ !$omp parallel do default(none) &
+ !$omp shared(npart,primary,xyzh,neighbors,kappa,Rstar,tau) private(i)
  do i = 1, npart
     call get_tau_inwards(i, primary, xyzh, neighbors, kappa, Rstar, tau(i))
  enddo
@@ -1019,7 +1027,9 @@ subroutine get_all_tau_inwards_companion(npart, primary, xyzh, neighbors, kappa,
  uvecCompanion = uvecCompanion/normCompanion
  theta0        = asin(Rcomp/normCompanion)
 
- !$omp parallel do private(norm,theta,root,norm0)
+ !$omp parallel do default(none) &
+ !$omp shared(npart,xyzh,primary,uvecCompanion,theta0,normCompanion,Rcomp) &
+ !$omp shared(neighbors,kappa,Rstar,tau) private(norm,theta,root,norm0,i)
  do i = 1, npart
     norm  = norm2(xyzh(1:3,i)-primary)
     theta = acos(dot_product(uvecCompanion, xyzh(1:3,i)-primary)/norm)
@@ -1064,7 +1074,7 @@ subroutine get_tau_inwards(point, primary, xyzh, neighbors, kappa, Rstar, tau)
 
  integer :: i, next, previous, nneigh
  integer, parameter :: nmaxcache = 0
- real  :: xyzcache(0,nmaxcache)
+ real :: xyzcache(3, max(1,nmaxcache))
  real    :: ray(3), nextDist, previousDist, maxDist, dtaudr, previousdtaudr, nextdtaudr
 
  ray = primary - xyzh(1:3,point)
@@ -1179,7 +1189,7 @@ end subroutine find_next
  !--------------------------------------------------------------------------
 subroutine calc_opacity(r0, xyzh, opacities, listneigh, nneigh, dtaudr)
  use kernel,   only:cnormk,wkern
- use part,     only:hfact,rhoh,massoftype,igas
+ use part,     only:rho,hfact
  use dim,      only:maxpsph
  real,    intent(in)  :: r0(:), xyzh(:,:), opacities(:)
  integer, intent(in)  :: listneigh(:), nneigh
@@ -1193,7 +1203,7 @@ subroutine calc_opacity(r0, xyzh, opacities, listneigh, nneigh, dtaudr)
     j = listneigh(i)
     if (j > maxpsph) cycle
     q = norm2(r0 - xyzh(1:3,j))/xyzh(4,j)
-    dtaudr=dtaudr+wkern(q*q,q)*opacities(j)*rhoh(xyzh(4,j), massoftype(igas))
+    dtaudr=dtaudr+wkern(q*q,q)*opacities(j)*rho(j)
  enddo
  dtaudr = dtaudr*cnormk/hfact**3
 end subroutine calc_opacity

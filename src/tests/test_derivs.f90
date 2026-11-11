@@ -14,13 +14,14 @@ module testderivs
 !
 ! :Runtime parameters: None
 !
-! :Dependencies: boundary, densityforce, deriv, dim, dust, eos, io, kernel,
-!   mpidomain, mpiutils, neighkdtree, nicil, options, part, physcon,
-!   shock_capturing, testutils, timestep, timestep_ind, timing, unifdis,
-!   units, viscosity
+! :Dependencies: apr, boundary, densityforce, deriv, dim, dust, eos, io,
+!   kernel, mpidomain, mpiutils, neighkdtree, nicil, options, part,
+!   physcon, shock_capturing, testutils, timestep, timestep_ind, timing,
+!   unifdis, units, viscosity
 !
  use part, only:massoftype,ien_type,ien_entropy
  use dim,  only:isothermal,ind_timesteps
+ use apr,  only:sync_aprmassoftype
  implicit none
 
  public :: test_derivs
@@ -43,7 +44,7 @@ subroutine test_derivs(ntests,npass,string)
  use kernel,       only:radkern,kernelname
  use part,         only:npart,npartoftype,igas,xyzh,hfact,tolh,vxyzu,fxyzu,init_part,&
                         divcurlv,divcurlB,divBsymm,Bevol,dBevol,&
-                        Bextx,Bexty,Bextz,alphaind,maxphase,rhoh,mhd,&
+                        Bextx,Bexty,Bextz,alphaind,maxphase,rho,mhd,&
                         maxBevol,ndivcurlB,dvdx,dustfrac,dustevol,ddustevol,&
                         idivv,idivB,icurlBx,icurlBy,icurlBz,deltav,ndustsmall
  use unifdis,      only:set_unifdis
@@ -70,8 +71,8 @@ subroutine test_derivs(ntests,npass,string)
  real              :: fracactive,speedup
  real(kind=4)      :: tallactive
  real, allocatable :: fxyzstore(:,:),dBdtstore(:,:)
- real              :: psepblob,hblob,rhoblob,rblob,totvol,rtest
- integer           :: maxtrial,maxactual
+ real              :: hblob
+ integer           :: maxtrial,maxactual,minactual
  integer(kind=8)   :: nrhocalc,nactual,nexact
  real              :: trialmean,actualmean,realneigh
  real              :: rcut
@@ -80,10 +81,11 @@ subroutine test_derivs(ntests,npass,string)
  integer           :: nfailed(32),i,j,npartblob,nparttest,m,ierr
  integer           :: np,ieosprev
  logical           :: testhydroderivs,testav,testviscderivs,testambipolar,testdustderivs
- logical           :: testmhdderivs,testdensitycontrast,testcullendehnen,testindtimesteps,testall
+ logical           :: testmhdderivs,testdensitycontrast,testcullendehnen,testindtimesteps,testtwokernel,testall
+ logical           :: testunequal
  real              :: rhoi,sonrhoi(maxdustsmall),drhodti,depsdti(maxdustsmall),dustfracj
  integer(kind=8)   :: nptot
- real              :: tolh_old
+ real              :: tolh_old,tol_h,tol_fmhd
  logical, allocatable :: mask(:)
 
  if (id==master) write(*,"(a,/)") '--> TESTING DERIVS MODULE'
@@ -97,6 +99,8 @@ subroutine test_derivs(ntests,npass,string)
  testdensitycontrast = .false.
  testindtimesteps    = .false.
  testcullendehnen    = .false.
+ testtwokernel       = .false.
+ testunequal         = .false.
  testall             = .false.
  select case(string)
  case('derivshydro','derivhydro','hydroderivs')
@@ -117,6 +121,10 @@ subroutine test_derivs(ntests,npass,string)
     testcullendehnen = .true.
  case('derivsindtimesteps','derivsinddts','derivsind')
     testindtimesteps = .true.
+ case('derivstwokernel','derivs2k','derivstwo')
+    testtwokernel = .true.
+ case('derivsapr','derivsunequal')
+    testunequal = .true.
  case default
     testall = .true.
  end select
@@ -143,6 +151,7 @@ subroutine test_derivs(ntests,npass,string)
  npartoftype(1) = npart
  nptot = reduceall_mpi('+',npart)
  massoftype(1) = totmass/reduceall_mpi('+',npart)
+ call sync_aprmassoftype
 
  if (periodic) then
     ! include all particles
@@ -161,6 +170,15 @@ subroutine test_derivs(ntests,npass,string)
 !
  call reset_dissipation_to_zero
  tolh = 1.e-5 ! BEWARE: if you change this, some of the test results will be different
+ !
+ !--Wendland kernels (used with APR) have larger errors on a cubic lattice
+ !
+ tol_h    = 3.e-4
+ tol_fmhd = 2.5e-2
+ if (is_wendland()) then
+    tol_h    = 4.e-3
+    tol_fmhd = 3.e-2
+ endif
 
 !
 !--use isothermal or adiabatic equation of state for all tests
@@ -201,7 +219,7 @@ subroutine test_derivs(ntests,npass,string)
     !
 
     if (id==master .and. periodic .and. index(kernelname,'cubic') > 0) then
-       call get_neighbour_stats(trialmean,actualmean,maxtrial,maxactual,nrhocalc,nactual)
+       call get_neighbour_stats(trialmean,actualmean,maxtrial,maxactual,minactual,nrhocalc,nactual)
        realneigh = 4./3.*pi*(hfact*radkern)**3
        call checkval(actualmean,real(int(realneigh)),2.e-16,nfailed(11),'mean nneigh',thread_id=id)
        call checkval(maxactual,int(realneigh),0,nfailed(12),'max nneigh',thread_id=id)
@@ -315,7 +333,7 @@ subroutine test_derivs(ntests,npass,string)
 
     nfailed(:) = 0; m = 0; tol_fac = 1.
     call check_hydro(np,nfailed,m,hzero,mask)
-    if (use_apr) tol_fac = 5.
+    if (is_wendland()) tol_fac = 5.
     if (maxdvdx==maxp) then
        call checkvalf(np,xyzh,dvdx(1,:),dvxdx,1.7e-3,nfailed(m+1), 'dvxdx',mask)
        call checkvalf(np,xyzh,dvdx(2,:),dvxdy,2.5e-15*tol_fac,nfailed(m+2),'dvxdy',mask)
@@ -336,7 +354,7 @@ subroutine test_derivs(ntests,npass,string)
     !--also check that the number of neighbours is correct
     !
     if (id==master .and. periodic) then
-       call get_neighbour_stats(trialmean,actualmean,maxtrial,maxactual,nrhocalc,nactual)
+       call get_neighbour_stats(trialmean,actualmean,maxtrial,maxactual,minactual,nrhocalc,nactual)
        realneigh = 4./3.*pi*(hfact*radkern)**3
        if (testall) then
           nexact = nptot  ! should be no iterations here
@@ -355,7 +373,8 @@ subroutine test_derivs(ntests,npass,string)
     !
     if (.not.isothermal .and. nactive==npart) then
        tol = 5.e-12
-       if (maxdvdx==maxp) tol = 1.7e-6
+       if (maxdvdx==maxp) tol = 2.e-6
+       if (use_apr) tol = 5.e-6
        call check_energy_conservation(nfailed,m,tol)
     endif
 
@@ -425,7 +444,7 @@ subroutine test_derivs(ntests,npass,string)
           dmdust(:) = 0.
           do i=1,npart
              dustfraci(:)  = dustfrac(1:ndustsmall,i)
-             rhoi          = rhoh(xyzh(4,i),massoftype(igas))
+             rhoi          = rho(i)
              drhodti       = -rhoi*divcurlv(1,i)
              !--sqrt(epsilon/1-epsilon) method (Ballabio et al. 2018)
              sonrhoi(:)    = sqrt(dustfraci(:)*(1.-dustfraci(:)))
@@ -444,9 +463,9 @@ subroutine test_derivs(ntests,npass,string)
           !print "(3(a,es17.10))",' dE_kin = ',dekin,' dE_therm = ',deint,' dE_dust = ',dedust
           call checkval(massoftype(1)*(dekin + deint + dedust),0.,6.5e-15,nfailed(1),'energy conservation (dE=0)')
           do i=1,ndustsmall
-             call checkval(massoftype(1)*(dmdust(i)),0.,1.1e-15,nfailed(2),'dust mass conservation')
+             call checkval(massoftype(1)*(dmdust(i)),0.,1.1e-15,nfailed(1+i),'dust mass conservation')
           enddo
-          call update_test_scores(ntests,nfailed(1:1),npass)
+          call update_test_scores(ntests,nfailed(1:1+ndustsmall),npass)
        endif
        !
        ! reset dustfrac to zero for subsequent tests
@@ -458,6 +477,11 @@ subroutine test_derivs(ntests,npass,string)
        if (id==master) write(*,"(/,a)") '--> SKIPPING dust evolution terms (need -DDUST)'
     endif
  endif testdust
+
+ !
+ !--check conservation when neighbouring particles have different masses
+ !
+ if ((testunequal .or. testall) .and. use_apr) call test_unequal_masses(ntests,npass)
 
 !
 !--calculate derivatives with MHD forces ON, zero pressure
@@ -489,16 +513,16 @@ subroutine test_derivs(ntests,npass,string)
        !--check that various quantities come out as they should do
        !
        nfailed(:) = 0
-       call checkval(np,xyzh(4,:),hzero,3.e-4,nfailed(1),'h (density)',mask)
+       call checkval(np,xyzh(4,:),hzero,tol_h,nfailed(1),'h (density)',mask)
 
        call checkvalf(np,xyzh,divBsymm(:),divBfunc,2.e-3,nfailed(2),'divB (symm)',mask)
        call checkvalf(np,xyzh,dBevol(1,:),dBxdt,2.e-3,nfailed(3),'dBx/dt',mask)
        call checkvalf(np,xyzh,dBevol(2,:),dBydt,2.e-3,nfailed(4),'dBy/dt',mask)
        call checkvalf(np,xyzh,dBevol(3,:),dBzdt,2.e-2,nfailed(5),'dBz/dt',mask)
 
-       call checkvalf(np,xyzh,fxyzu(1,:),forcemhdx,2.5e-2,nfailed(9),'mhd force(x)',mask)
-       call checkvalf(np,xyzh,fxyzu(2,:),forcemhdy,2.5e-2,nfailed(10),'mhd force(y)',mask)
-       call checkvalf(np,xyzh,fxyzu(3,:),forcemhdz,2.5e-2,nfailed(11),'mhd force(z)',mask)
+       call checkvalf(np,xyzh,fxyzu(1,:),forcemhdx,tol_fmhd,nfailed(9),'mhd force(x)',mask)
+       call checkvalf(np,xyzh,fxyzu(2,:),forcemhdy,tol_fmhd,nfailed(10),'mhd force(y)',mask)
+       call checkvalf(np,xyzh,fxyzu(3,:),forcemhdz,tol_fmhd,nfailed(11),'mhd force(z)',mask)
        if (ndivcurlB >= 1) then
           call checkvalf(np,xyzh,divcurlB(idivB,:),divBfunc,1.e-3,nfailed(12),'div B (diff)',mask)
        endif
@@ -551,7 +575,7 @@ subroutine test_derivs(ntests,npass,string)
           deint = 0.
           demag = 0.
           do i=1,npart
-             rho1i = 1./rhoh(xyzh(4,i),massoftype(1))
+             rho1i = 1./rho(i)
              deint = deint + fxyzu(iu,i)
              demag = demag + dot_product(Bevol(1:3,i),dBevol(1:3,i))*rho1i
           enddo
@@ -588,7 +612,7 @@ subroutine test_derivs(ntests,npass,string)
        !--check that various quantities come out as they should do
        !
        nfailed(:) = 0
-       call checkval(np,xyzh(4,:),hzero,3.e-4,nfailed(1),'h (density)',mask)
+       call checkval(np,xyzh(4,:),hzero,tol_h,nfailed(1),'h (density)',mask)
        call checkvalf(np,xyzh,divBsymm(:),divBfunc,1.e-3,nfailed(2),'divB',mask)
        call checkvalf(np,xyzh,dBevol(1,:),dpsidx,8.5e-4,nfailed(3),'gradpsi_x',mask)
        call checkvalf(np,xyzh,dBevol(2,:),dpsidy,9.3e-4,nfailed(4),'gradpsi_y',mask)
@@ -627,7 +651,7 @@ subroutine test_derivs(ntests,npass,string)
           !--check that various quantities come out as they should do
           !
           nfailed(:) = 0
-          call checkval(np,xyzh(4,:),hzero,3.e-4,nfailed(1),'h (density)',mask)
+          call checkval(np,xyzh(4,:),hzero,tol_h,nfailed(1),'h (density)',mask)
           call checkvalf(np,xyzh,dBevol(1,:),dBambix,8.5e-4,nfailed(2),'dBambi_x',mask)
           call checkvalf(np,xyzh,dBevol(2,:),dBambiy,8.5e-4,nfailed(3),'dBambi_y',mask)
           call checkvalf(np,xyzh,dBevol(3,:),dBambiz,2.e-3,nfailed(4),'dBambi_z',mask)
@@ -652,37 +676,9 @@ subroutine test_derivs(ntests,npass,string)
  testdenscontrast: if ((testdensitycontrast .or. testall) .and. (nprocs == 1)) then
     if (id==master) write(*,"(/,a)") '--> testing Hydro derivs in setup with density contrast (derivscontrast)'
 
-    npart = 0
-    psep = dxbound/50.
-    rblob = 0.1
-    rhoblob = 1000.*rhozero
-    psepblob = psep*(rhozero/rhoblob)**(1./3.)
-    rtest = rblob - 2.*hfact*psep
-    !
-    !--setup high density blob
-    !
-    call set_unifdis('cubic',id,master,xmin,xmax,ymin,ymax,zmin,zmax,psepblob,&
-                     hfact,npart,xyzh,periodic,mask=i_belong,rmax=rtest)
-    nparttest = npart
-
-    call set_unifdis('cubic',id,master,xmin,xmax,ymin,ymax,zmin,zmax,psepblob,&
-                     hfact,npart,xyzh,periodic,mask=i_belong,rmin=rtest,rmax=rblob)
-    npartblob = npart
-    !
-    !--setup surrounding medium
-    !
-    call set_unifdis('cubic',id,master,xmin,xmax,ymin,ymax,zmin,zmax,psep,&
-                     hfact,npart,xyzh,periodic,mask=i_belong,rmin=rblob)
-    npartoftype(1) = npart
+    call setup_density_contrast(npart,npartblob,nparttest,hzero,hblob)
     nptot = reduceall_mpi('+',npart)
     print*,' thread ',id,' npart = ',npart,' in blob = ',npartblob,' to test = ',nparttest
-
-    totvol = dxbound*dybound*dzbound - 4./3.*pi*rblob**3
-    totmass = rhozero*totvol
-
-    massoftype(1) = totmass/reduceall_mpi('+',npart-npartblob)
-    hzero = hfact*(massoftype(1)/rhozero)**(1./3.)
-    hblob = hfact*(massoftype(1)/rhoblob)**(1./3.)
     call reset_dissipation_to_zero
     call set_velocity_and_energy
     call reset_mhd_to_zero
@@ -703,7 +699,7 @@ subroutine test_derivs(ntests,npass,string)
     !--also check that the number of neighbours is correct
     !
     if (id==master .and. periodic .and. index(kernelname,'cubic') > 0) then
-       call get_neighbour_stats(trialmean,actualmean,maxtrial,maxactual,nrhocalc,nactual)
+       call get_neighbour_stats(trialmean,actualmean,maxtrial,maxactual,minactual,nrhocalc,nactual)
        realneigh = 57.466651861721814
        call checkval(actualmean,realneigh,2.e-16,nfailed(m+1),'mean nneigh')
        call checkval(maxactual,988,0,nfailed(m+2),'max nneigh')
@@ -825,9 +821,372 @@ subroutine test_derivs(ntests,npass,string)
     if (allocated(dBdtstore)) deallocate(dBdtstore)
  endif testinddts
 
+!
+!--two-kernel scheme: neighbour-count range should narrow vs same-kernel h(n)
+!
+ test2k: if ((testtwokernel .or. testall) .and. (nprocs == 1) .and. periodic) then
+    if (index(kernelname,'cubic') <= 0) then
+       if (id==master) write(*,"(/,a)") &
+          '--> SKIPPING two-kernel nneigh range tests (need KERNEL=cubic)'
+    else
+       !
+       ! density-contrast blob
+       !
+       if (id==master) write(*,"(/,a)") &
+          '--> testing two-kernel nneigh range with density contrast (derivstwokernel)'
+       call setup_density_contrast(npart,npartblob,nparttest,hzero,hblob)
+       call check_twokernel_neigh_range('contrast',ntests,npass)
+       !
+       ! random cube
+       !
+       if (id==master) write(*,"(/,a)") &
+          '--> testing two-kernel nneigh range with random particles (derivstwokernel)'
+       npart = 0
+       psep = dxbound/40.
+       call set_unifdis('random',id,master,xmin,xmax,ymin,ymax,zmin,zmax,&
+                        psep,hfact,npart,xyzh,periodic,mask=i_belong)
+       npartoftype(1) = npart
+       totmass = rhozero*dxbound*dybound*dzbound
+       massoftype(1) = totmass/reduceall_mpi('+',npart)
+       call sync_aprmassoftype
+       call check_twokernel_neigh_range('random',ntests,npass)
+    endif
+ endif test2k
+
  if (id==master) write(*,"(/,a)") '<-- DERIVS TEST COMPLETE'
 
 end subroutine test_derivs
+
+!-----------------------------------------------------------------------
+!+
+!  check that hydro, shock viscosity, physical viscosity and one-fluid
+!  dust terms conserve momentum, energy and dust mass when neighbouring
+!  particles have different masses (alternate particles refined by APR)
+!+
+!-----------------------------------------------------------------------
+subroutine test_unequal_masses(ntests,npass)
+ use dim,       only:use_dust,maxdustsmall,maxalpha,maxp
+ use part,      only:npart,apr_level,dustevol,dustfrac,ndustsmall,ndustlarge,ndusttypes,&
+                     grainsize,graindens,xyzh,divcurlv,alphaind
+ use options,   only:alpha,alphau,use_dustfrac
+ use viscosity, only:bulkvisc,shearparam,irealvisc
+ use eos,       only:polyk
+ use dust,      only:init_drag,idrag,K_code
+ use deriv,     only:get_derivs_global,get_density_global
+ use io,        only:id,master
+ use testutils, only:checkval,update_test_scores
+ integer, intent(inout) :: ntests,npass
+ integer :: i,j,icase,nfailed(5),ierr
+ real    :: dustfracj
+ logical :: use_dustfrac_in
+ real    :: tol_en
+ ! alternating masses on the lattice degrade the SPH estimate of div v,
+ ! but using m_i instead of m_j in drho/dt roughly doubles the error
+ real, parameter :: tol_divv = 0.25, tol_divv_dens = 1.e-7
+ real(kind=4), allocatable :: divv_force(:)
+ character(len=20), parameter :: label(4) = &
+    (/'hydro             ','shock viscosity   ','physical viscosity','one-fluid dust    '/)
+
+ if (id==master) write(*,"(/,a)") '--> testing conservation with unequal masses (derivsapr)'
+ use_dustfrac_in = use_dustfrac
+ allocate(divv_force(npart))
+ do i=1,npart
+    if (mod(i,2)==0) apr_level(i) = 2
+ enddo
+
+ do icase=1,4
+    if (icase==4 .and. .not.use_dust) cycle
+    if (id==master) write(*,"(/,a)") '--> '//trim(label(icase))//', unequal masses'
+    if (isothermal) polyk = 3.
+    call reset_mhd_to_zero
+    call reset_dissipation_to_zero
+    call set_velocity_and_energy
+    use_dustfrac = .false.
+    select case(icase)
+    case(2)
+       alpha  = 0.753
+       alphau = 0.5
+       if (maxalpha==maxp) alphaind(1,:) = real(alpha,kind=kind(alphaind))
+    case(3)
+       irealvisc  = 1
+       shearparam = 6.66
+       bulkvisc   = 0.75
+    case(4)
+       ! several dust species with different dust fractions
+       use_dustfrac = .true.
+       ndustsmall = maxdustsmall
+       ndustlarge = 0
+       ndusttypes = ndustsmall
+       idrag  = 2
+       K_code = 10.
+       grainsize = 0.01
+       graindens = 3.
+       call init_drag(ierr)
+       do i=1,npart
+          do j=1,ndustsmall
+             dustfracj = real(dustfrac_func(xyzh(:,i)),kind=kind(dustfracj))*j/real(ndustsmall)
+             dustevol(j,i) = sqrt(dustfracj/(1.-dustfracj))
+          enddo
+       enddo
+    end select
+
+    call get_derivs_global()
+    nfailed(:) = 0
+    ! with physical viscosity, du/dt uses the strain tensor from the density
+    ! calculation, which matches the force only to the accuracy of the gradient
+    tol_en = 1.e-14
+    if (icase==3) tol_en = 2.e-9
+    call check_conservation_unequal(nfailed,trim(label(icase)),tol_en)
+    if (icase==1) then
+       ! div v = -(1/rho) drho/dt is a sum over neighbour masses
+       call checkval(divv_l2err(),0.,tol_divv,nfailed(4),'L2 error in divv (hydro)')
+       ! div v from the density calculation should match that from the force
+       divv_force(1:npart) = divcurlv(1,1:npart)
+       call get_density_global(1)
+       call checkval(npart,divcurlv(1,1:npart),divv_force(1:npart),tol_divv_dens,nfailed(5),&
+                     'divv from density matches force')
+    endif
+    call update_test_scores(ntests,nfailed,npass)
+ enddo
+
+ ! restore equal masses and no dust for subsequent tests
+ apr_level(1:npart) = 1
+ call reset_dissipation_to_zero
+ use_dustfrac = use_dustfrac_in
+ if (use_dust) then
+    dustfrac(:,:) = 0.
+    dustevol(:,:) = 0.
+ endif
+ ! later tests use the stored density, so recompute it with equal masses
+ call get_density_global(1)
+ deallocate(divv_force)
+
+end subroutine test_unequal_masses
+
+!-----------------------------------------------------------------------
+!+
+!  check \sum m dv/dt = 0, \sum m [v.dv/dt + (1 - eps) du/dt - u deps/dt] = 0
+!  (eq. 41 of Price & Laibe 2015) and \sum m deps/dt = 0 for each dust
+!  species, each relative to the sum of the magnitudes of the terms
+!+
+!-----------------------------------------------------------------------
+subroutine check_conservation_unequal(nfailed,label,tol_en)
+ use dim,       only:maxdustsmall
+ use part,      only:npart,fxyzu,vxyzu,dustfrac,ddustevol,ndustsmall,get_pmass
+ use options,   only:use_dustfrac
+ use mpiutils,  only:reduceall_mpi
+ use testutils, only:checkval
+ integer,          intent(inout) :: nfailed(3)
+ character(len=*), intent(in)    :: label
+ real,             intent(in)    :: tol_en
+ integer :: i
+ real    :: pmassi,dmom(3),smom,de,se,eps(maxdustsmall),depsdt(maxdustsmall)
+ real    :: dmdust(maxdustsmall),smdust(maxdustsmall),vdotai,dudti
+ real, parameter :: tol_mom = 1.e-12, tol_dust = 1.e-15
+
+ dmom = 0.; smom = 0.
+ de = 0.; se = 0.
+ dmdust = 0.; smdust = 0.
+ eps = 0.; depsdt = 0.
+ do i=1,npart
+    pmassi = get_pmass(i,.true.)
+    dmom = dmom + pmassi*fxyzu(1:3,i)
+    smom = smom + pmassi*sqrt(dot_product(fxyzu(1:3,i),fxyzu(1:3,i)))
+    if (use_dustfrac) then
+       !--sqrt(epsilon/1-epsilon) method (Ballabio et al. 2018)
+       eps(1:ndustsmall)    = dustfrac(1:ndustsmall,i)
+       depsdt(1:ndustsmall) = 2.*sqrt(eps(1:ndustsmall)*(1.-eps(1:ndustsmall)))*(1.-eps(1:ndustsmall))*&
+                              ddustevol(1:ndustsmall,i)
+       dmdust = dmdust + pmassi*depsdt
+       smdust = smdust + pmassi*abs(depsdt)
+    endif
+    if (.not.isothermal) then
+       vdotai = dot_product(vxyzu(1:3,i),fxyzu(1:3,i))
+       dudti  = (1. - sum(eps))*fxyzu(iu,i)
+       de = de + pmassi*(vdotai + dudti - vxyzu(iu,i)*sum(depsdt))
+       se = se + pmassi*(abs(vdotai) + abs(dudti) + abs(vxyzu(iu,i)*sum(depsdt)))
+    endif
+ enddo
+ dmom = reduceall_mpi('+',dmom)
+ smom = reduceall_mpi('+',smom)
+ de   = reduceall_mpi('+',de)
+ se   = reduceall_mpi('+',se)
+ dmdust = reduceall_mpi('+',dmdust)
+ smdust = reduceall_mpi('+',smdust)
+
+ call checkval(sqrt(dot_product(dmom,dmom))/smom,0.,tol_mom,nfailed(1),'momentum conservation ('//label//')')
+ if (.not.isothermal) call checkval(de/se,0.,tol_en,nfailed(2),'energy conservation ('//label//')')
+ if (use_dustfrac) call checkval(maxval(abs(dmdust(1:ndustsmall))/smdust(1:ndustsmall)),0.,tol_dust,&
+                                 nfailed(3),'dust mass conservation ('//label//')')
+
+end subroutine check_conservation_unequal
+
+!-----------------------------------------------------------------------
+!+
+!  relative L2 error in div v compared to the analytic solution
+!+
+!-----------------------------------------------------------------------
+real function divv_l2err()
+ use part,     only:npart,xyzh,divcurlv
+ use mpiutils, only:reduceall_mpi
+ integer :: i
+ real    :: err2,val2,divvi
+
+ err2 = 0.
+ val2 = 0.
+ do i=1,npart
+    divvi = divvfunc(xyzh(:,i))
+    err2  = err2 + (divcurlv(1,i) - divvi)**2
+    val2  = val2 + divvi**2
+ enddo
+ divv_l2err = sqrt(reduceall_mpi('+',err2)/reduceall_mpi('+',val2))
+
+end function divv_l2err
+
+!----------------------------------------------------
+!+
+!  dense sphere in a lower-density ambient cubic lattice
+!+
+!----------------------------------------------------
+subroutine setup_density_contrast(npart,npartblob,nparttest,hzero,hblob)
+ use boundary,  only:dxbound,dybound,dzbound,xmin,xmax,ymin,ymax,zmin,zmax
+ use dim,       only:periodic
+ use io,        only:id,master
+ use mpidomain, only:i_belong
+ use mpiutils,  only:reduceall_mpi
+ use part,      only:xyzh,hfact,npartoftype,massoftype
+ use physcon,   only:pi
+ use unifdis,   only:set_unifdis
+ integer, intent(out) :: npart,npartblob,nparttest
+ real,    intent(out) :: hzero,hblob
+ real :: psep,psepblob,rblob,rhoblob,rtest,totvol,totmass
+
+ npart = 0
+ psep = dxbound/50.
+ rblob = 0.1
+ rhoblob = 1000.*rhozero
+ psepblob = psep*(rhozero/rhoblob)**(1./3.)
+ rtest = rblob - 2.*hfact*psep
+ call set_unifdis('cubic',id,master,xmin,xmax,ymin,ymax,zmin,zmax,psepblob,&
+                  hfact,npart,xyzh,periodic,mask=i_belong,rmax=rtest)
+ nparttest = npart
+ call set_unifdis('cubic',id,master,xmin,xmax,ymin,ymax,zmin,zmax,psepblob,&
+                  hfact,npart,xyzh,periodic,mask=i_belong,rmin=rtest,rmax=rblob)
+ npartblob = npart
+ call set_unifdis('cubic',id,master,xmin,xmax,ymin,ymax,zmin,zmax,psep,&
+                  hfact,npart,xyzh,periodic,mask=i_belong,rmin=rblob)
+ npartoftype(1) = npart
+ totvol = dxbound*dybound*dzbound - 4./3.*pi*rblob**3
+ totmass = rhozero*totvol
+ massoftype(1) = totmass/reduceall_mpi('+',npart-npartblob)
+ call sync_aprmassoftype
+ hzero = hfact*(massoftype(1)/rhozero)**(1./3.)
+ hblob = hfact*(massoftype(1)/rhoblob)**(1./3.)
+
+end subroutine setup_density_contrast
+
+!----------------------------------------------------
+!+
+!  assert two_kernel narrows the neighbour-count range
+!+
+!----------------------------------------------------
+subroutine check_twokernel_neigh_range(label,ntests,npass)
+ use io,        only:id,master
+ use kernel,    only:radkern,wab0,wab0_tilde
+ use part,      only:npart,hfact
+ use physcon,   only:pi
+ use testutils, only:checkval,update_test_scores
+ character(len=*), intent(in)    :: label
+ integer,          intent(inout) :: ntests,npass
+ integer :: nmin1,nmax1,nmin2,nmax2,range1,range2,nfailed(3)
+ real    :: nmean1,nmean2,expected_nneigh
+
+ ! placeholder Wtilde == W: no narrower nneigh range to assert yet
+ if (abs(wab0_tilde - wab0) < tiny(wab0)) then
+    if (id==master) write(*,"(1x,a)") &
+       'SKIPPING two_kernel nneigh range ('//trim(label)//'): Wtilde identical to W'
+    return
+ endif
+
+ call reset_dissipation_to_zero
+ call set_velocity_and_energy
+ call reset_mhd_to_zero
+
+ call compare_twokernel_neigh_range(npart,nmin1,nmax1,nmean1,nmin2,nmax2,nmean2)
+ range1 = nmax1 - nmin1
+ range2 = nmax2 - nmin2
+ if (id==master) then
+    write(*,"(1x,a,i6,a,i6,a,i6)") ' one-kernel: min/max/range = ',nmin1,' / ',nmax1,' / ',range1
+    write(*,"(1x,a,i6,a,i6,a,i6)") ' two-kernel: min/max/range = ',nmin2,' / ',nmax2,' / ',range2
+ endif
+
+ expected_nneigh = 4./3.*pi*(hfact*radkern)**3
+ nfailed(:) = 0
+ call checkval(range2 < range1,.true.,nfailed(1),'two_kernel reduces nneigh range ('//trim(label)//')')
+ call checkval(nmean1,expected_nneigh,0.5,nfailed(2),'mean nneigh one-kernel ('//trim(label)//')')
+ call checkval(nmean2,expected_nneigh,0.5,nfailed(3),'mean nneigh two-kernel ('//trim(label)//')')
+ call update_test_scores(ntests,nfailed,npass)
+
+end subroutine check_twokernel_neigh_range
+
+!----------------------------------------------------
+!+
+!  compare neighbour-count range with/without two_kernel
+!  restores the setup h guess before each density call
+!+
+!----------------------------------------------------
+subroutine compare_twokernel_neigh_range(npart,nmin1,nmax1,nmean1,nmin2,nmax2,nmean2)
+ use options, only:two_kernel
+ use part,    only:xyzh
+ integer, intent(in)  :: npart
+ integer, intent(out) :: nmin1,nmax1,nmin2,nmax2
+ real,    intent(out) :: nmean1,nmean2
+ logical :: two_kernel_save
+ real, allocatable :: hsave(:)
+
+ allocate(hsave(npart))
+ hsave = xyzh(4,1:npart)
+ two_kernel_save = two_kernel
+
+ two_kernel = .false.
+ xyzh(4,1:npart) = hsave
+ call measure_neigh_range(npart,nmin1,nmax1,nmean1)
+
+ two_kernel = .true.
+ xyzh(4,1:npart) = hsave
+ call measure_neigh_range(npart,nmin2,nmax2,nmean2)
+
+ two_kernel = two_kernel_save
+ deallocate(hsave)
+
+end subroutine compare_twokernel_neigh_range
+
+!----------------------------------------------------
+!+
+!  run density and return actual neighbour min/max/mean
+!+
+!----------------------------------------------------
+subroutine measure_neigh_range(npart,nmin,nmax,nmean)
+ use part,         only:igas
+ use deriv,        only:get_derivs_global
+ use densityforce, only:get_neighbour_stats
+ use timestep_ind, only:nactive
+ integer, intent(in)  :: npart
+ integer, intent(out) :: nmin,nmax
+ real,    intent(out) :: nmean
+ integer           :: maxtrial,maxactual,minactual
+ integer(kind=8)   :: nrhocalc,nactual
+ real              :: trialmean,actualmean
+
+ nactive = npart
+ call set_active(npart,nactive,igas)
+ call get_derivs_global()
+ call get_neighbour_stats(trialmean,actualmean,maxtrial,maxactual,minactual,nrhocalc,nactual)
+ nmin  = minactual
+ nmax  = maxactual
+ nmean = actualmean
+
+end subroutine measure_neigh_range
 
 !----------------------------------------------------
 !+
@@ -1046,14 +1405,14 @@ end subroutine set_velocity_and_energy
 !+
 !----------------------------------
 subroutine set_magnetic_field
- use part, only:xyzh,Bxyz,Bevol,igas,mhd,npart,rhoh,massoftype
+ use part, only:xyzh,Bxyz,Bevol,mhd,npart,rho
  use eos,  only:polyk
  real :: vwavei,rho1i
  integer :: i
 
  do i=1,npart
     if (mhd) then
-       rho1i = 1.0/rhoh(xyzh(4,i),massoftype(igas))
+       rho1i = 1.0/rho(i)
        Bxyz(1,i) = Bx(xyzh(:,i))
        Bxyz(2,i) = By(xyzh(:,i))
        Bxyz(3,i) = Bz(xyzh(:,i))
@@ -1098,7 +1457,7 @@ end subroutine reset_mhd_to_zero
 !+
 !--------------------------------------
 subroutine check_hydro(n,nfailed,j,hzero,mask)
- use dim,       only:curlv,maxp,maxgradh,use_apr
+ use dim,       only:curlv,maxp,maxgradh
  use part,      only:xyzh,divcurlv,gradh,icurlvx,icurlvy,icurlvz
  use kernel,    only:kernelname
  use testutils, only:checkval,checkvalf
@@ -1110,7 +1469,7 @@ subroutine check_hydro(n,nfailed,j,hzero,mask)
  logical :: testgradh
 
  tol_dens = 3.6e-4
- if (use_apr) tol_dens = 4.e-3
+ if (is_wendland()) tol_dens = 4.e-3
  testgradh = (maxgradh==maxp .and. index(kernelname,'cubic') > 0)
 
  call checkval(n,xyzh(4,1:n),hzero,tol_dens,nfailed(j+1),'h (density)',mask)
@@ -1131,23 +1490,26 @@ end subroutine check_hydro
 !+
 !--------------------------------------
 subroutine check_energy_conservation(nfailed,j,tol)
- use part,      only:npart,fxyzu,vxyzu,massoftype,igas
+ use dim,       only:use_apr
+ use part,      only:npart,fxyzu,vxyzu,massoftype,igas,apr_level,aprmassoftype
  use mpiutils,  only:reduceall_mpi
  use testutils, only:checkval
  integer, intent(inout) :: nfailed(:),j
  real,    intent(in)    :: tol
  integer :: i
- real :: deint,dekin
+ real :: deint,dekin,pmassi
 
  deint = 0.
  dekin = 0.
  do i=1,npart
-    deint = deint + fxyzu(iu,i)
-    dekin = dekin + dot_product(vxyzu(1:3,i),fxyzu(1:3,i))
+    pmassi = massoftype(igas)
+    if (use_apr) pmassi = aprmassoftype(igas,apr_level(i))
+    deint = deint + pmassi*fxyzu(iu,i)
+    dekin = dekin + pmassi*dot_product(vxyzu(1:3,i),fxyzu(1:3,i))
  enddo
  deint = reduceall_mpi('+',deint)
  dekin = reduceall_mpi('+',dekin)
- call checkval(massoftype(igas)*(deint + dekin),0.,tol,nfailed(j+1),'\sum v.dv/dt + du/dt = 0')
+ call checkval(deint + dekin,0.,tol,nfailed(j+1),'\sum v.dv/dt + du/dt = 0')
 
  ! also check that dissipation is positive definite
  call checkval(all(fxyzu(iu,1:npart) >= 0.),.true.,nfailed(j+2),'du/dt >= 0 for all particles')
@@ -2697,5 +3059,18 @@ subroutine rcut_mask(rcut,xyzh,npart,mask)
  enddo
 
 end subroutine rcut_mask
+
+!--------------------------------------
+!+
+!  true for Wendland kernels, which have larger lattice errors
+!  than the cubic spline (APR builds use Wendland C2)
+!+
+!--------------------------------------
+logical function is_wendland()
+ use kernel, only:kernelname
+
+ is_wendland = index(kernelname,'Wendland') > 0
+
+end function is_wendland
 
 end module testderivs

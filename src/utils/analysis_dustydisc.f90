@@ -17,6 +17,7 @@ module analysis
 ! :Dependencies: dim, dust, infile_utils, io, leastsquares, options, part,
 !   physcon, solvelinearsystem, table_utils, units
 !
+ use, intrinsic :: ieee_arithmetic, only:ieee_is_nan
  use dim,  only:maxdusttypes
  use dust, only:grainsizecgs
  use part, only:ndusttypes
@@ -73,8 +74,8 @@ subroutine do_analysis(dumpfile,numfile,xyzh,vxyz,pmass,npart,time,iunit)
  use dim,          only:maxp
  use io,           only:fatal
  use physcon,      only:pi,jupiterm,years,au
- use part,         only:iphase,npartoftype,igas,idust,massoftype,labeltype,dustfrac,tstop, &
-                        rhoh,maxphase,iamtype,xyzmh_ptmass,vxyz_ptmass,nptmass,deltav, &
+ use part,         only:iphase,npartoftype,igas,idust,massoftype,labeltype,dustfrac,tstop,&
+                        rho,maxphase,iamtype,xyzmh_ptmass,vxyz_ptmass,nptmass,deltav, &
                         isdead_or_accreted,graindens,iamgas,iamdust,idusttype
  use options,      only:use_dustfrac,iexternalforce
  use units,        only:umass,udist,utime
@@ -457,12 +458,12 @@ subroutine do_analysis(dumpfile,numfile,xyzh,vxyz,pmass,npart,time,iunit)
     ri_mid = sqrt(dot_product(xyzh(1:2,i),xyzh(1:2,i)))
     do j=1,ndusttypes
        if (use_dustfrac) then
-          rhoi = rhoh(hi,pmassi)
+          rhoi = rho(i)
           rhog(i)    = (1.-dustfracisum)*rhoi
           rhod(j,i)  = dustfraci(j)*rhoi
           if (ndusttypes > 1) then
              do k=1,ndusttypes
-                if (isnan(deltavsum(k,i))) then
+                if (ieee_is_nan(deltavsum(k,i))) then
                    deltavsum(k,i) = 0.
                    deltav(:,k,i) = 0.
                 endif
@@ -475,11 +476,11 @@ subroutine do_analysis(dumpfile,numfile,xyzh,vxyz,pmass,npart,time,iunit)
           endif
        else
           if (iamgas(itypei)) then
-             rhog(i)    = rhog(i)   + rhoh(hi,pmassi)
+             rhog(i)    = rhog(i)   + rho(i)
              vgas(1:3)  = vxyz(1:3,i)
              vdust(:,j) = 0.
           elseif (iamdust(itypei) .and. j==idusttype(itypei)) then
-             rhod(j,i)  = rhod(j,i) + rhoh(hi,pmassi)
+             rhod(j,i)  = rhod(j,i) + rho(i)
              vgas(:)    = 0.
              vdust(1:3,j) = vxyz(1:3,i)
           else

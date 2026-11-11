@@ -45,11 +45,11 @@ module setup
 !
 ! :Dependencies: boundary, centreofmass, datafiles, dim, dynamic_dtmax,
 !   eos, eos_barotropic, infile_utils, io, io_control, kernel, mpidomain,
-!   options, part, physcon, prompting, ptmass, rho_profile,
-!   set_dust_options, setunits, setup_params, spherical, systemutils,
+!   options, part, physcon, prompting, ptmass, radiation_utils,
+!   rho_profile, set_dust_options, setunits, setup_params, spherical,
 !   timestep, unifdis, units, utils_shuffleparticles, velfield
 !
- use part,     only:mhd,graindens,grainsize,ndusttypes,ndustsmall,ndustlarge
+ use part,     only:mhd,graindens,grainsize,ndusttypes,ndustsmall,ndustlarge,rho
  use dim,      only:use_dust,maxvxyzu,periodic,maxdustsmall,gr,isothermal
  use options,  only:calc_erot,use_dustfrac
  use setunits, only:dist_unit,mass_unit
@@ -97,22 +97,24 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
  use setup_params, only:npart_total
  use io,           only:master,fatal
  use eos,          only:polyk2
- use part,         only:Bxyz,igas,idust,set_particle_type
+ use part,         only:Bxyz,igas,idust,set_particle_type,rad,rho,init_rho_from_h
+ use dim,          only:do_radiation
+ use radiation_utils, only:set_radiation_and_gas_temperature_equal
  use set_dust_options, only:dustbinfrac,set_dust_grain_distribution,dtg=>dust_to_gas,&
                             ndustsmallinp,ndustlargeinp,dust_method
  use options,      only:use_dustfrac
  use kernel,       only:hfact_default
  use infile_utils, only:get_options,infile_exists
  use units,        only:umass,udist
- integer,           intent(in)    :: id
- integer,           intent(inout) :: npart
- integer,           intent(out)   :: npartoftype(:)
- real,              intent(out)   :: xyzh(:,:)
- real,              intent(out)   :: vxyzu(:,:)
- real,              intent(out)   :: massoftype(:)
- real,              intent(out)   :: polyk,gamma,hfact
- real,              intent(inout) :: time
- character(len=20), intent(in)    :: fileprefix
+ integer,          intent(in)    :: id
+ integer,          intent(inout) :: npart
+ integer,          intent(out)   :: npartoftype(:)
+ real,             intent(out)   :: xyzh(:,:)
+ real,             intent(out)   :: vxyzu(:,:)
+ real,             intent(out)   :: massoftype(:)
+ real,             intent(out)   :: polyk,gamma,hfact
+ real,             intent(inout) :: time
+ character(len=*), intent(in)    :: fileprefix
  integer            :: ierr,iBElast,npartsphere
  real               :: totmass,vol_box,vol_sphere,cs_sphere
  real               :: dens_sphere,dens_medium,cs_medium,angvel_code,przero
@@ -156,6 +158,12 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
 
  ! add uniform rotation (in velocity and magnetic field)
  call set_rotating_sphere(npart,xyzh,vxyzu,Bxyz,dens_sphere,cs_sphere,cs_medium,angvel_code,Bzero)
+
+ ! start the radiation field in equilibrium with the gas
+ if (do_radiation) then
+    call init_rho_from_h()
+    call set_radiation_and_gas_temperature_equal(npart,vxyzu,rho,rad)
+ endif
 
  ! amend .in file as necessary
  call setup_runtime_parameters(fileprefix,t_ff,h_acc_setup)
@@ -356,7 +364,7 @@ subroutine setup_particles(id,master,hfact,npart,npartoftype,npartsphere,npart_t
  use unifdis,                only:set_unifdis
  use spherical,              only:set_sphere
  use mpidomain,              only:i_belong
- use part,                   only:set_particle_type,igas,idust,dustfrac,ndusttypes
+ use part,                   only:set_particle_type,igas,idust,dustfrac,ndusttypes,rho
  use utils_shuffleparticles, only:shuffleparticles
  use centreofmass,           only:reset_centreofmass
  use io,                     only:iprint
@@ -372,7 +380,7 @@ subroutine setup_particles(id,master,hfact,npart,npartoftype,npartsphere,npart_t
  real,              intent(inout) :: xyzh(:,:),vxyzu(:,:)
  real,              intent(out)   :: massoftype(:)
  real,              intent(in)    :: dens_sphere,dens_medium,totmass,vol_box,vol_sphere,dtg
- character(len=20), intent(in)    :: fileprefix
+ character(len=*),  intent(in)    :: fileprefix
  real, allocatable, intent(inout) :: rtab(:), rhotab(:)
  integer :: i,np_in,ierr
  real :: psep,psep_box,pmass_dusttogas
@@ -463,10 +471,10 @@ subroutine setup_particles(id,master,hfact,npart,npartoftype,npartsphere,npart_t
  if (shuffle_parts) then
     print*, "lets shuffle!"
     if (BEsphere) then
-       call shuffleparticles(iprint,npart,xyzh,massoftype(igas),dmedium=dens_medium,ntab=iBElast, &
+       call shuffleparticles(iprint,npart,xyzh,massoftype(igas),rho,dmedium=dens_medium,ntab=iBElast, &
                              rtab=rtab,dtab=rhotab,dcontrast=density_contrast,is_setup=.true.,prefix=trim(fileprefix))
     else
-       call shuffleparticles(iprint,npart,xyzh,massoftype(igas), &
+       call shuffleparticles(iprint,npart,xyzh,massoftype(igas),rho, &
                              rsphere=rmax,dsphere=dens_sphere,dmedium=dens_medium,is_setup=.true.,prefix=trim(fileprefix))
     endif
  endif
@@ -517,6 +525,7 @@ end subroutine set_binary_perturbation
 !+
 !----------------------------------------------------------------
 subroutine set_turbulent_velocity_field(npart,xyzh,vxyzu,cs_sphere,npartsphere)
+ use centreofmass, only:get_centreofmass
  use velfield,  only:set_velfield_from_cubes
  use datafiles, only:find_phantom_datafile
  use io,        only:fatal
@@ -527,7 +536,7 @@ subroutine set_turbulent_velocity_field(npart,xyzh,vxyzu,cs_sphere,npartsphere)
  real,    intent(in)    :: cs_sphere
  integer, intent(inout) :: npartsphere
  integer :: i,ierr
- real :: v2i,rmsmach,turbfac
+ real :: v2i,rmsmach,turbfac,xcom(3),vcom(3)
  character(len=120) :: filex,filey,filez
  character(len=20), parameter :: filevx = 'cube_v1.dat'
  character(len=20), parameter :: filevy = 'cube_v2.dat'
@@ -548,6 +557,12 @@ subroutine set_turbulent_velocity_field(npart,xyzh,vxyzu,cs_sphere,npartsphere)
  call set_velfield_from_cubes(xyzh(:,1:npartsphere),vxyzu(:,:npartsphere),npartsphere, &
                               filex,filey,filez,1.,r_sphere,.false.,ierr)
  if (ierr /= 0) call fatal('setup','error setting up velocity field on clouds')
+
+ ! remove the net velocity of the field sampled onto the sphere
+ call get_centreofmass(xcom,vcom,npartsphere,xyzh,vxyzu)
+ do i = 1,npartsphere
+    vxyzu(1:3,i) = vxyzu(1:3,i) - vcom
+ enddo
 
  rmsmach = 0.0
  print*, 'Turbulence being set by user'
@@ -614,9 +629,9 @@ subroutine setup_runtime_parameters(fileprefix,t_ff,h_acc_setup)
  use ptmass,       only:icreate_sinks,h_acc,r_crit
  use eos,          only:ieos,icooling
  use infile_utils, only:infile_exists
- character(len=20), intent(in) :: fileprefix
- real,              intent(in) :: t_ff
- real,              intent(in) :: h_acc_setup
+ character(len=*), intent(in) :: fileprefix
+ real,             intent(in) :: t_ff
+ real,             intent(in) :: h_acc_setup
  ! set default runtime parameters if .in file does not exist
  !
  dtmax = t_ff/100.  ! Since this variable can change, always reset it if running phantomsetup
@@ -879,7 +894,6 @@ subroutine setup_interactive()
  use units,            only:udist,umass
  use physcon,          only:au,solarm
  use set_dust_options, only:set_dust_interactive
- use systemutils,      only:get_command_option
  integer :: ilattice,npmax
  character(len=100) :: string
  logical :: make_sinks
@@ -895,7 +909,6 @@ subroutine setup_interactive()
  elseif (npmax < np) then
     np = 300000
  endif
- np = int(get_command_option('np',default=np)) ! can override default value with flag e.g. --np=1000 (mainly for test suite)
  call prompt('Enter the approximate number of particles in the sphere',np,0,npmax)
 
  ilattice = i_closepacked

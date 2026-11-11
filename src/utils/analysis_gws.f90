@@ -14,8 +14,8 @@ module analysis
 !
 ! :Runtime parameters: None
 !
-! :Dependencies: deriv, externalforces, gravwaveutils, infile_utils,
-!   initial, part, prompting, readwrite_infile, units
+! :Dependencies: externalforces, gravwaveutils, infile_utils, initial,
+!   part, prompting, readwrite_infile, units
 !
  implicit none
  character(len=20), parameter, public :: analysistype = 'gws'
@@ -28,7 +28,6 @@ contains
 
 subroutine do_analysis(dumpfile,numfile,xyzh,vxyzu,pmass,npart,time,iunitone)
  use externalforces,   only:initialise_externalforces,update_externalforce,externalforce,externalforce_vdependent
- use deriv,            only:derivs
  use initial,          only:initialise,startrun,endrun
  use readwrite_infile, only:read_infile
  use prompting,        only:prompt
@@ -50,7 +49,8 @@ subroutine do_analysis(dumpfile,numfile,xyzh,vxyzu,pmass,npart,time,iunitone)
  real, parameter        :: onethird=1/3.
  logical, save         :: first = .true., firstdump=.true.,firstdumpa=.true.
  real                  :: hp(4),hx(4),ddq_xy(3,3)
- real                  :: utime_tmp,umass_tmp,udist_tmp,dtmax
+ real                  :: dtmax
+ real(kind=8)          :: utime_tmp,umass_tmp,udist_tmp
 
 !
 !--store units, otherwise initialise() put them to 1

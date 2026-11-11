@@ -25,8 +25,8 @@ module relaxstar
  implicit none
  public :: relax_star,write_options_relax,read_options_relax
 
- real,    private :: tol_ekin = 1.e-7 ! criteria for being converged
- integer, private :: maxits = 1000
+ real,    public  :: tol_ekin = 1.e-7 ! criteria for being converged
+ integer, public  :: maxits = 1000
 
  real,    private :: gammaprev,hfactprev,mass1prev
  integer, private :: ieos_prev
@@ -47,20 +47,22 @@ contains
 !  and fixing the entropy as a function of r
 !
 !  IN:
-!    rho(nt)   - tabulated density as function of r (in code units)
-!    pr(nt)    - tabulated pressure as function of r (in code units)
-!    r(nt)     - radius for each point in the table
+!    rhotab(nt) - tabulated density as function of r (in code units)
+!    pr(nt)     - tabulated pressure as function of r (in code units)
+!    r(nt)      - radius for each point in the table
+!    omega      - optional angular speed about z, in code units
 !
 !  IN/OUT:
 !    xyzh(:,:) - positions and smoothing lengths of all particles
 !+
 !----------------------------------------------------------------
-subroutine relax_star(nt,rho,pr,r,npart,xyzh,use_var_comp,Xfrac,Yfrac,mu,&
-                      iptmass_core,xyzmh_ptmass,ierr,npin,label,write_dumps,density_error,energy_error,mtab)
+subroutine relax_star(nt,rhotab,pr,temp,r,npart,xyzh,use_var_comp,Xfrac,Yfrac,mu,&
+                      iptmass_core,xyzmh_ptmass,ierr,npin,label,write_dumps,density_error,energy_error,mtab,omega)
+ use, intrinsic :: ieee_arithmetic, only:ieee_is_finite
  use table_utils,     only:yinterp
  use deriv,           only:get_derivs_global
  use dim,             only:maxp,maxvxyzu,gr,gravity,use_apr
- use part,            only:vxyzu,rad,eos_vars,massoftype,igas,apr_level,fxyzu
+ use part,            only:vxyzu,rad,eos_vars,massoftype,igas,apr_level,fxyzu,init_rho_from_h
  use step_lf_global,  only:init_step,step
  use initial,         only:initialise
  use memory,          only:allocate_memory
@@ -68,17 +70,16 @@ subroutine relax_star(nt,rho,pr,r,npart,xyzh,use_var_comp,Xfrac,Yfrac,mu,&
  use checksetup,      only:check_setup
  use io,              only:error,warning,fatal,id,master
  use fileutils,       only:getnextfilename
- use readwrite_dumps, only:write_fulldump
  use eos,             only:gamma,eos_outputs_mu,ieos,eos_has_pressure_without_u,polyk
  use physcon,         only:pi
  use options,         only:iexternalforce
  use io_summary,      only:summary_initialise
  use setstar_utils,   only:set_star_thermalenergy,set_star_composition
  use apr,             only:init_apr,update_apr
- use neighkdtree,     only:allocate_neigh
+ use neighkdtree,     only:allocate_neigh,leaf_is_active
  integer,           intent(in)    :: nt,iptmass_core
  integer,           intent(inout) :: npart
- real,              intent(in)    :: rho(nt),pr(nt),r(nt)
+ real,              intent(in)    :: rhotab(nt),pr(nt),temp(nt),r(nt)
  logical,           intent(in)    :: use_var_comp
  real, allocatable, intent(in)    :: Xfrac(:),Yfrac(:),mu(:)
  real,              intent(inout) :: xyzh(:,:),xyzmh_ptmass(:,:)
@@ -88,9 +89,10 @@ subroutine relax_star(nt,rho,pr,r,npart,xyzh,use_var_comp,Xfrac,Yfrac,mu,&
  logical,           intent(in),  optional :: write_dumps
  real,              intent(out), optional :: density_error,energy_error
  real,              intent(in),  optional :: mtab(nt)
+ real,              intent(in),  optional :: omega ! signed angular speed about z, in code units
  integer :: nits,nerr,nwarn,iunit,i1
  real    :: t,dt,dtmax,rmserr,rstar,mstar,tdyn,x0(3),mtot
- real    :: entrop(nt),utherm(nt),mr(nt),rmax,dtext,dtnew
+ real    :: entrop(nt),utherm(nt),mr(nt),rmax,dtext,dtnew,omega_star
  logical :: converged,use_step,restart
  logical, parameter :: fix_entrop = .true. ! fix entropy instead of thermal energy
  logical :: write_files
@@ -112,6 +114,18 @@ subroutine relax_star(nt,rho,pr,r,npart,xyzh,use_var_comp,Xfrac,Yfrac,mu,&
  ! save settings and set a bunch of options
  !
  ierr = 0
+ omega_star = 0.
+ if (present(omega)) omega_star = omega
+ if (.not.ieee_is_finite(omega_star)) then
+    call error('relax_star','angular speed must be finite')
+    ierr = ierr_setup_errors
+    return
+ endif
+ if (omega_star /= 0. .and. (gr .or. .not.gravity .or. iexternalforce > 0)) then
+    call error('relax_star','rotating relaxation requires Newtonian gravity without external forces')
+    ierr = ierr_setup_errors
+    return
+ endif
  x0 = 0.
  if (gr) x0 = [1000.,0.,0.]   ! for GR need to shift star away from origin to avoid singularities
  rstar = maxval(r)
@@ -121,7 +135,7 @@ subroutine relax_star(nt,rho,pr,r,npart,xyzh,use_var_comp,Xfrac,Yfrac,mu,&
  if (present(mtab)) then
     mr=mtab
  else
-    mr = get_mr(rho,r)
+    mr = get_mr(rhotab,r)
  endif
 
  mstar = mr(nt)   ! mstar is the mass of the star excluding the core
@@ -167,7 +181,7 @@ subroutine relax_star(nt,rho,pr,r,npart,xyzh,use_var_comp,Xfrac,Yfrac,mu,&
 
  ! if using apr, options set in setup file but needs to be initialised here
  if (use_apr) then
-    call allocate_neigh
+    if (.not.allocated(leaf_is_active)) call allocate_neigh
     call init_apr(apr_level,ierr)
     call update_apr(npart,xyzh,vxyzu,fxyzu,apr_level)
  endif
@@ -176,9 +190,9 @@ subroutine relax_star(nt,rho,pr,r,npart,xyzh,use_var_comp,Xfrac,Yfrac,mu,&
  ! define utherm(r) based on P(r) and rho(r)
  ! and use this to set the thermal energy of all particles
  !
- where (rho > epsilon(0.) .and. gamma > 1.)
-    entrop = pr/rho**gamma
-    utherm = pr/(rho*(gamma-1.))
+ where (rhotab > epsilon(0.) .and. gamma > 1.)
+    entrop = pr/rhotab**gamma
+    utherm = pr/(rhotab*(gamma-1.))
  elsewhere
     entrop = 0.
     utherm = 0.
@@ -190,7 +204,8 @@ subroutine relax_star(nt,rho,pr,r,npart,xyzh,use_var_comp,Xfrac,Yfrac,mu,&
     ierr = ierr_no_pressure
     return
  endif
- call reset_u_and_get_errors(i1,npart,xyzh,vxyzu,x0,rad,nt,mr,rho,&
+ call init_rho_from_h(i1+1,npart)
+ call reset_u_and_get_errors(i1,npart,xyzh,vxyzu,x0,rad,nt,mr,rhotab,&
                              utherm,entrop,fix_entrop,rmax,rmserr)
  !
  ! compute derivatives the first time around (needed if using actual step routine)
@@ -198,8 +213,10 @@ subroutine relax_star(nt,rho,pr,r,npart,xyzh,use_var_comp,Xfrac,Yfrac,mu,&
  t = 0.
  call allocate_memory(int(min(2*npart,maxp),kind=8))
  call get_derivs_global()
- call reset_u_and_get_errors(i1,npart,xyzh,vxyzu,x0,rad,nt,mr,rho,&
-                             utherm,entrop,fix_entrop,rmax,rmserr)
+ ! particles just split by APR are clumped, so their density is too high to
+ ! set u from the entropy: use the u(m) profile until the star has relaxed
+ call reset_u_and_get_errors(i1,npart,xyzh,vxyzu,x0,rad,nt,mr,rhotab,&
+                             utherm,entrop,(fix_entrop .and. .not.use_apr),rmax,rmserr)
  call compute_energies(t)
  !
  ! perform sanity checks
@@ -218,7 +235,7 @@ subroutine relax_star(nt,rho,pr,r,npart,xyzh,use_var_comp,Xfrac,Yfrac,mu,&
 
  if (write_files) then
     if (gr) call shift_star_origin(-x0,i1,npart,xyzh,iptmass_core,xyzmh_ptmass)
-    if (.not.restart) call write_fulldump(t,filename)
+    if (.not.restart) call write_relaxed_dump(t,filename,i1,npart,xyzh,vxyzu,x0,omega_star)
     ! move star back to 100,0,0
     if (gr) call shift_star_origin(x0,i1,npart,xyzh,iptmass_core,xyzmh_ptmass)
     open(newunit=iunit,file='relax'//trim(mylabel)//'.ev',status='replace')
@@ -245,7 +262,7 @@ subroutine relax_star(nt,rho,pr,r,npart,xyzh,use_var_comp,Xfrac,Yfrac,mu,&
        call step(npart,npart,t,dt,dtext,dtnew)
        dt = dtnew
     else
-       call shift_particles(i1,npart,xyzh,vxyzu,dt)
+       call shift_particles(i1,npart,xyzh,vxyzu,dt,x0,omega_star)
     endif
     ! if using apr, update here
     if (use_apr) call update_apr(npart,xyzh,vxyzu,fxyzu,apr_level)
@@ -253,7 +270,7 @@ subroutine relax_star(nt,rho,pr,r,npart,xyzh,use_var_comp,Xfrac,Yfrac,mu,&
     ! reset thermal energy and calculate information
     !
     call reset_u_and_get_errors(i1,npart,xyzh,vxyzu,x0,rad,nt,mr,&
-         rho,utherm,entrop,fix_entrop,rmax,rmserr)
+         rhotab,utherm,entrop,fix_entrop,rmax,rmserr)
     !
     ! compute energies and check for convergence
     !
@@ -293,11 +310,10 @@ subroutine relax_star(nt,rho,pr,r,npart,xyzh,use_var_comp,Xfrac,Yfrac,mu,&
           ! before writing a file, set the real thermal energy profile
           ! so the file is useable as a starting file for the main calculation
           !
-          if (use_var_comp) call set_star_composition(use_var_comp,&
-                                 eos_outputs_mu(ieos_prev),npart,xyzh,&
-                                 Xfrac,Yfrac,mu,mr,mstar,eos_vars,npin=i1,x0=x0)
+          if (use_var_comp) call set_star_composition(eos_outputs_mu(ieos_prev),&
+                                 npart,xyzh,Xfrac,Yfrac,mu,mr,eos_vars,npin=i1,x0=x0)
 
-          if (maxvxyzu==4) call set_star_thermalenergy(ieos_prev,rho,pr,&
+          if (maxvxyzu==4) call set_star_thermalenergy(ieos_prev,rhotab,pr,temp,&
                                 r,nt,npart,xyzh,vxyzu,rad,eos_vars,.true.,&
                                 use_var_comp=.false.,initialtemp=1.e3,polyk_in=polyk,npin=i1,x0=x0)
 
@@ -306,7 +322,7 @@ subroutine relax_star(nt,rho,pr,r,npart,xyzh,use_var_comp,Xfrac,Yfrac,mu,&
              ! move star back to 0,0,0
              if (gr) call shift_star_origin(-x0,i1,npart,xyzh,iptmass_core,xyzmh_ptmass)
              ! write snapshot
-             call write_fulldump(t,filename)
+             call write_relaxed_dump(t,filename,i1,npart,xyzh,vxyzu,x0,omega_star)
              ! move star back to 100,0,0
              if (gr) call shift_star_origin(x0,i1,npart,xyzh,iptmass_core,xyzmh_ptmass)
           endif
@@ -315,7 +331,7 @@ subroutine relax_star(nt,rho,pr,r,npart,xyzh,use_var_comp,Xfrac,Yfrac,mu,&
           call flush(iunit)
 
           ! restore the fake thermal energy profile
-          call reset_u_and_get_errors(i1,npart,xyzh,vxyzu,x0,rad,nt,mr,rho,&
+          call reset_u_and_get_errors(i1,npart,xyzh,vxyzu,x0,rad,nt,mr,rhotab,&
                utherm,entrop,fix_entrop,rmax,rmserr)
        endif
     endif
@@ -348,6 +364,8 @@ subroutine relax_star(nt,rho,pr,r,npart,xyzh,use_var_comp,Xfrac,Yfrac,mu,&
  !
  call restore_original_options(i1,npart)
 
+ if (omega_star /= 0.) call set_spin_velocity(i1,npart,xyzh,vxyzu,x0,omega_star)
+
  ! move star back to 0,0,0
  if (gr) call shift_star_origin(-x0,i1,npart,xyzh,iptmass_core,xyzmh_ptmass)
 
@@ -360,18 +378,17 @@ end subroutine relax_star
 !  where dt is the local courant timestep, i.e. h/c_s
 !+
 !----------------------------------------------------------------
-subroutine shift_particles(i1,npart,xyzh,vxyzu,dtmin)
+subroutine shift_particles(i1,npart,xyzh,vxyzu,dtmin,x0,omega)
  use deriv, only:get_derivs_global
- use part,  only:fxyzu,fext,xyzmh_ptmass,nptmass,rhoh,massoftype,igas
- use part,  only:aprmassoftype,apr_level
+ use part,  only:fxyzu,fext,rho,xyzmh_ptmass,nptmass
  use ptmass,only:get_accel_sink_gas
  use eos,   only:get_spsound
  use options, only:ieos
- use dim,   only:use_apr
  integer, intent(in)    :: i1,npart
  real,    intent(inout) :: xyzh(:,:), vxyzu(:,:)
  real,    intent(out)   :: dtmin
- real :: dx(3),dti,phi,rhoi,cs,hi,pmassi
+ real,    intent(in)    :: x0(3),omega
+ real :: dx(3),dti,phi,rhoi,cs,hi,centrifugal(3)
  integer :: i,nlargeshift
 !
 ! shift particles asynchronously
@@ -379,9 +396,8 @@ subroutine shift_particles(i1,npart,xyzh,vxyzu,dtmin)
  dtmin = huge(dtmin)
  nlargeshift = 0
  !$omp parallel do schedule(guided) default(none) &
- !$omp shared(i1,npart,xyzh,vxyzu,fxyzu,fext,xyzmh_ptmass,nptmass,massoftype,ieos) &
- !$omp shared(apr_level,aprmassoftype) &
- !$omp private(i,dx,dti,phi,cs,rhoi,hi,pmassi) &
+!$omp shared(i1,npart,xyzh,vxyzu,fxyzu,fext,xyzmh_ptmass,nptmass,ieos,rho,x0,omega) &
+ !$omp private(i,dx,dti,phi,cs,rhoi,hi,centrifugal) &
  !$omp reduction(min:dtmin) &
  !$omp reduction(+:nlargeshift)
  do i=i1+1,npart
@@ -391,15 +407,12 @@ subroutine shift_particles(i1,npart,xyzh,vxyzu,dtmin)
                                xyzmh_ptmass,fext(1,i),fext(2,i),fext(3,i),phi)
     endif
     hi = xyzh(4,i)
-    if (use_apr) then
-       pmassi = aprmassoftype(igas,apr_level(i))
-    else
-       pmassi = massoftype(igas)
-    endif
-    rhoi = rhoh(hi,pmassi)
+    rhoi = rho(i)
     cs = get_spsound(ieos,xyzh(:,i),rhoi,vxyzu(:,i))
     dti = 0.3*hi/cs   ! h/cs
-    dx  = 0.5*dti**2*(fxyzu(1:3,i) + fext(1:3,i))
+    ! Find force balance in the rotating frame, without integrating an orbit.
+    centrifugal = omega**2*[xyzh(1,i)-x0(1),xyzh(2,i)-x0(2),0.]
+    dx  = 0.5*dti**2*(fxyzu(1:3,i) + fext(1:3,i) + centrifugal)
     if (dot_product(dx,dx) > hi**2) then
        dx = dx / sqrt(dot_product(dx,dx)) * hi  ! Avoid large shift in particle position
        nlargeshift = nlargeshift + 1
@@ -416,6 +429,45 @@ subroutine shift_particles(i1,npart,xyzh,vxyzu,dtmin)
  call get_derivs_global()
 
 end subroutine shift_particles
+
+!----------------------------------------------------------------
+!+
+!  assign the physical rigid-spin velocity after relaxation
+!+
+!----------------------------------------------------------------
+subroutine set_spin_velocity(i1,npart,xyzh,vxyzu,x0,omega)
+ integer, intent(in) :: i1,npart
+ real, intent(in) :: xyzh(:,:),x0(3),omega
+ real, intent(inout) :: vxyzu(:,:)
+
+ vxyzu(1,i1+1:npart) = -omega*(xyzh(2,i1+1:npart)-x0(2))
+ vxyzu(2,i1+1:npart) =  omega*(xyzh(1,i1+1:npart)-x0(1))
+ vxyzu(3,i1+1:npart) = 0.
+
+end subroutine set_spin_velocity
+
+!----------------------------------------------------------------
+!+
+!  save physical spin velocities, retaining residual velocities for
+!  the convergence criterion and subsequent asynchronous shifts
+!+
+!----------------------------------------------------------------
+subroutine write_relaxed_dump(t,filename,i1,npart,xyzh,vxyzu,x0,omega)
+ use readwrite_dumps, only:write_fulldump
+ real, intent(in) :: t,xyzh(:,:),x0(3),omega
+ character(len=*), intent(in) :: filename
+ integer, intent(in) :: i1,npart
+ real, intent(inout) :: vxyzu(:,:)
+ real, allocatable :: residual_velocity(:,:)
+
+ if (omega /= 0.) then
+    residual_velocity = vxyzu(1:3,i1+1:npart)
+    call set_spin_velocity(i1,npart,xyzh,vxyzu,x0,omega)
+ endif
+ call write_fulldump(t,filename)
+ if (omega /= 0.) vxyzu(1:3,i1+1:npart) = residual_velocity
+
+end subroutine write_relaxed_dump
 
 !----------------------------------------------------------------
 !+
@@ -451,24 +503,23 @@ end subroutine shift_star_origin
 !  also compute error between true rho(r) and desired rho(r)
 !+
 !----------------------------------------------------------------
-subroutine reset_u_and_get_errors(i1,npart,xyzh,vxyzu,x0,rad,nt,mr,rho,&
+subroutine reset_u_and_get_errors(i1,npart,xyzh,vxyzu,x0,rad,nt,mr,rhotab,&
                                   utherm,entrop,fix_entrop,rmax,rmserr)
  use table_utils,   only:yinterp
- use part,          only:rhoh,massoftype,igas,maxvxyzu
- use part,          only:apr_level,aprmassoftype
- use dim,           only:do_radiation,use_apr
+ use part,          only:rho,maxvxyzu
+ use dim,           only:do_radiation
  use eos,           only:gamma
  use setstar_utils, only:get_mass_coord
  integer, intent(in)    :: i1,npart,nt
- real,    intent(in)    :: xyzh(:,:),x0(3),mr(nt),rho(nt),utherm(nt),entrop(nt)
+ real,    intent(in)    :: xyzh(:,:),x0(3),mr(nt),rhotab(nt),utherm(nt),entrop(nt)
  real,    intent(inout) :: vxyzu(:,:),rad(:,:)
  real,    intent(out)   :: rmax,rmserr
  logical, intent(in)    :: fix_entrop
- real :: ri,rhor,rhoi,rho1,mstar,massri,pmassi
+ real :: ri,rhor,rhoi,rho1,mstar,massri
  real, allocatable :: mass_enclosed_r(:)
  integer :: i
 
- rho1 = yinterp(rho,mr,0.)
+ rho1 = yinterp(rhotab,mr,0.)
  rmax = 0.
  rmserr = 0.
 
@@ -476,22 +527,17 @@ subroutine reset_u_and_get_errors(i1,npart,xyzh,vxyzu,x0,rad,nt,mr,rho,&
  mstar = mr(nt)
 
  !$omp parallel do schedule(guided) default(none) &
- !$omp shared(i1,npart,xyzh,vxyzu,x0,mass_enclosed_r,mr,rho,utherm,entrop) &
- !$omp shared(fix_entrop,gamma,apr_level,aprmassoftype,massoftype) &
- !$omp private(i,ri,rhor,rhoi,massri,pmassi) &
+ !$omp shared(i1,npart,xyzh,vxyzu,x0,mass_enclosed_r,mr,rhotab,utherm,entrop) &
+ !$omp shared(fix_entrop,gamma,rho) &
+ !$omp private(i,ri,rhor,rhoi,massri) &
  !$omp reduction(+:rmserr) &
  !$omp reduction(max:rmax)
  do i = i1+1,npart
     ri = sqrt(dot_product(xyzh(1:3,i)-x0,xyzh(1:3,i)-x0))
     massri = mass_enclosed_r(i-i1)
-    rhor = yinterp(rho,mr,massri) ! analytic rho(r)
+    rhor = yinterp(rhotab,mr,massri) ! analytic rho(r)
 
-    if (use_apr) then
-       pmassi = aprmassoftype(igas,apr_level(i))
-    else
-       pmassi = massoftype(igas)
-    endif
-    rhoi = rhoh(xyzh(4,i),pmassi) ! actual rho
+    rhoi = rho(i) ! actual rho
     if (maxvxyzu >= 4) then
        if (fix_entrop .and. gamma > 1.) then
           vxyzu(4,i) = (yinterp(entrop,mr,massri)*rhoi**(gamma-1.))/(gamma-1.)
@@ -678,7 +724,7 @@ end subroutine write_options_relax
 !----------------------------------------------------------------
 subroutine read_options_relax(db,nerr)
  use infile_utils, only:inopts,read_inopt
- type(inopts), allocatable, intent(inout) :: db(:)
+ type(inopts),              intent(inout) :: db(:)
  integer,                   intent(inout) :: nerr
 
  call read_inopt(tol_ekin,'tol_ekin',db,errcount=nerr)

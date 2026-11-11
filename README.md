@@ -11,7 +11,7 @@ Phantom is a 3D Smoothed Particle Hydrodynamics and Magnetohydrodynamics code fo
 - Compressible hydrodynamics and magnetohydrodynamics
 - Advanced shock capturing using state-of-the-art methods
 - Sink particles with 4th order symplectic integration of gravitational dynamics
-- Self-gravity using a momentum-conserving fast multipole method and adaptive gravitational force softening
+- Self-gravity using a momentum conserving and angular momentum conserving tree code with adaptive gravitational force softening
 - Multi-species dust-gas mixtures (dust-as-mixture or dust-as-particles)
 - Dust growth and porosity evolution
 - General relativistic hydrodynamics in Kerr, Schwarzschild and Minkowski metrics
@@ -22,7 +22,7 @@ Phantom is a 3D Smoothed Particle Hydrodynamics and Magnetohydrodynamics code fo
 - N-body regularisation for fast simulation of star clusters
 - Easy and flexible setup of binary, triple and multiple stars with discs and planets in arbitrary configurations
 - Direct coupling with Monte Carlo radiative transfer for easy comparison with observations
-
+- Conservation of linear and angular momentum to machine precision with global timestepping
 
 Status
 ------
@@ -78,7 +78,15 @@ We welcome contributions, including (but not limited to):
 4. Documentation, also by [pull request](https://github.com/danieljprice/phantom/pulls). Docs can be edited in the docs/ directory of the main code.
 5. Suggestions for features or bug reports, via the [issue tracker](https://github.com/danieljprice/phantom/issues/new). Please file bugs via github rather than by email.
 
-[![Star History Chart](https://api.star-history.com/image?repos=danieljprice/phantom&type=date)](https://www.star-history.com/?repos=danieljprice%2Fphantom&type=date&legend=top-left)
+## Star History
+
+<a href="https://www.star-history.com/?repos=danieljprice%2Fphantom&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=danieljprice/phantom&type=date&theme=dark&legend=top-left&sealed_token=cwYs8sv2MUQzP4XysC87FcVsgwvFTB_YbJ1OQ3ar1TAucO0pC-pR5PHLU6hsMc85do5lca9iuH85E7kOD-BUsEuIsd7GgJtdXdRMMpaxAaqvrjYFoqFqRs-hr1z3Q6ITjzIzlDkNNcIuPtk9nvls3xYBEuffqQ5k1c5HLqinYhkUxv0SvsYEYTPoJRbr" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=danieljprice/phantom&type=date&legend=top-left&sealed_token=cwYs8sv2MUQzP4XysC87FcVsgwvFTB_YbJ1OQ3ar1TAucO0pC-pR5PHLU6hsMc85do5lca9iuH85E7kOD-BUsEuIsd7GgJtdXdRMMpaxAaqvrjYFoqFqRs-hr1z3Q6ITjzIzlDkNNcIuPtk9nvls3xYBEuffqQ5k1c5HLqinYhkUxv0SvsYEYTPoJRbr" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=danieljprice/phantom&type=date&legend=top-left&sealed_token=cwYs8sv2MUQzP4XysC87FcVsgwvFTB_YbJ1OQ3ar1TAucO0pC-pR5PHLU6hsMc85do5lca9iuH85E7kOD-BUsEuIsd7GgJtdXdRMMpaxAaqvrjYFoqFqRs-hr1z3Q6ITjzIzlDkNNcIuPtk9nvls3xYBEuffqQ5k1c5HLqinYhkUxv0SvsYEYTPoJRbr" />
+ </picture>
+</a>
 
 Citation
 --------

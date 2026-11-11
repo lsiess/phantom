@@ -14,7 +14,7 @@ module analysis
 !
 ! :Runtime parameters: None
 !
-! :Dependencies: discanalysisutils, io, part, physcon, sortutils
+! :Dependencies: discanalysisutils, io, physcon, sortutils
 !
  use discanalysisutils, only:read_discparams,createbins
  implicit none
@@ -31,7 +31,6 @@ contains
 subroutine do_analysis(dumpfile,numfile,xyzh,vxyz,pmass,npart,time,iunit)
  use io,      only:fatal
  use physcon, only:pi
- use part,    only:rhoh
  use sortutils, only:indexx
 
  character(len=*), intent(in) :: dumpfile

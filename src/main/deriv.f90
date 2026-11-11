@@ -17,7 +17,7 @@ module deriv
 ! :Dependencies: HIIRegion, cons2prim, densityforce, derivutils, dim,
 !   externalforces, forces, forcing, growth, io, metric_tools, neighkdtree,
 !   options, part, porosity, ptmass, ptmass_radiation, radiation_implicit,
-!   timestep, timestep_ind, timing
+!   timestep, timestep_ind, timing, utils_gr
 !
  implicit none
 
@@ -30,6 +30,38 @@ contains
 
 !-------------------------------------------------------------
 !+
+!  In GR, store the coordinate acceleration a = dv/dt in agr,
+!  computed from dp/dt = fxyzu + fext, for use in the
+!  Cullen & Dehnen shock detector
+!+
+!-------------------------------------------------------------
+subroutine get_coord_accel_all(npart,xyzh,vxyzu,fxyzu,fext,dens,eos_vars,metrics)
+ use part,     only:agr,metricderivs,igasP,isdead_or_accreted
+ use utils_gr, only:get_coord_accel
+ integer, intent(in) :: npart
+ real,    intent(in) :: xyzh(:,:),vxyzu(:,:),fxyzu(:,:),fext(:,:)
+ real,    intent(in) :: dens(:),eos_vars(:,:),metrics(:,:,:,:)
+ integer :: i
+ real    :: enth,dpdt(3)
+
+ !$omp parallel do default(none) &
+ !$omp shared(npart,xyzh,vxyzu,fxyzu,fext,dens,eos_vars,metrics,metricderivs,agr) &
+ !$omp private(i,enth,dpdt)
+ do i=1,npart
+    if (.not.isdead_or_accreted(xyzh(4,i)) .and. dens(i) > 0.) then
+       enth = 1. + vxyzu(4,i) + eos_vars(igasP,i)/dens(i)
+       dpdt = fxyzu(1:3,i) + fext(1:3,i)
+       call get_coord_accel(metrics(:,:,:,i),metricderivs(:,:,:,i),vxyzu(1:3,i),enth,dpdt,agr(:,i))
+    else
+       agr(:,i) = 0.
+    endif
+ enddo
+ !$omp end parallel do
+
+end subroutine get_coord_accel_all
+
+!-------------------------------------------------------------
+!+
 !  calculates derivatives of all particle quantities
 !  (wrapper for call to density and rates, calls neighbours etc first)
 !+
@@ -39,14 +71,14 @@ subroutine derivs(icall,npart,nactive,xyzh,vxyzu,fxyzu,fext,divcurlv,divcurlB,&
                   dustevol,ddustevol,filfac,dustfrac,eos_vars,time,dt,dtnew,pxyzu,&
                   dens,metrics,apr_level)
  use dim,            only:mhd,fast_divcurlB,gr,periodic,do_radiation,driving,&
-                          sink_radiation,use_dustgrowth,ind_timesteps,isothermal
- use io,             only:iprint,fatal,error
+                          sink_radiation,use_dustgrowth,ind_timesteps,isothermal,nalpha,mpi
+ use io,             only:iprint,fatal,error,nprocs
  use neighkdtree,    only:build_tree
  use densityforce,   only:densityiterate
  use ptmass,         only:ipart_rhomax,ptmass_calc_enclosed_mass,ptmass_boundary_crossing,get_pressure_on_sinks
  use externalforces, only:externalforce
- use part,           only:dustgasprop,dvdx,Bxyz,set_boundaries_to_active,&
-                          nptmass,xyzmh_ptmass,sinks_have_heating,dust_temp,VrelVf,fxyz_drag
+ use part,           only:dustgasprop,Vrel_disp,dvdx,Bxyz,set_boundaries_to_active,&
+                          nptmass,xyzmh_ptmass,sinks_have_heating,dust_temp,VrelVf,fxyz_drag,rho
  use timestep_ind,   only:nbinmax
  use timestep,       only:dtmax,dtcourant,dtforce,dtrad
  use forcing,        only:forceit
@@ -55,10 +87,10 @@ subroutine derivs(icall,npart,nactive,xyzh,vxyzu,fxyzu,fext,divcurlv,divcurlB,&
  use ptmass_radiation, only:get_dust_temperature
  use timing,         only:get_timings
  use forces,         only:force
- use part,           only:mhd,gradh,alphaind,igas,iradxi,ifluxx,ifluxy,ifluxz,ithick
+ use part,           only:mhd,gradh,alphaind,iradxi,ifluxx,ifluxy,ifluxz,ithick,metricderivs
  use derivutils,     only:do_timing
  use cons2prim,      only:cons2primall,cons2prim_everything
- use metric_tools,   only:init_metric
+ use metric_tools,   only:init_metric,metric_is_time_dependent
  use radiation_implicit, only:do_radiation_implicit,ierr_failed_to_converge
  use options,        only:implicit_radiation,implicit_radiation_store_drad,use_porosity,need_pressure_on_sinks
  use HIIRegion,      only:HIIupdateflag,iH2R,HII_feedback
@@ -114,8 +146,14 @@ subroutine derivs(icall,npart,nactive,xyzh,vxyzu,fxyzu,fext,divcurlv,divcurlB,&
     call build_tree(npart,nactive,xyzh,vxyzu)
 
     if (gr) then
-       ! Recalculate the metric after moving particles to their new tasks
-       call init_metric(npart,xyzh,metrics)
+       ! update time-dependent metric (e.g. binary BH) and repack at particle positions
+       if ((mpi .and. nprocs > 1) .or. metric_is_time_dependent()) then
+          ! also the derivatives, if the metric changes with time or
+          ! particles may have moved between ranks (derivatives are not sent)
+          call init_metric(npart,xyzh,metrics,metricderivs,time=time)
+       else
+          call init_metric(npart,xyzh,metrics,time=time)
+       endif
     endif
 
     if (nptmass > 0 .and. periodic) call ptmass_boundary_crossing(nptmass,xyzmh_ptmass)
@@ -126,12 +164,14 @@ subroutine derivs(icall,npart,nactive,xyzh,vxyzu,fxyzu,fext,divcurlv,divcurlB,&
  !
  ! compute disruption of dust particles
  !
- if (use_dustgrowth .and. use_porosity) call get_disruption(npart,xyzh,filfac,dustprop,dustgasprop)
+ if (use_dustgrowth .and. use_porosity) call get_disruption(npart,xyzh,filfac,dustprop,dustgasprop,rho)
 !
 ! calculate density by direct summation
 !
 
  if (icall==1) then
+    ! coordinate acceleration for the Cullen & Dehnen shock detector in GR
+    if (gr .and. nalpha >= 2) call get_coord_accel_all(npart,xyzh,vxyzu,fxyzu,fext,dens,eos_vars,metrics)
     call densityiterate(1,npart,nactive,xyzh,vxyzu,divcurlv,divcurlB,Bevol,&
                         stressmax,fxyzu,fext,alphaind,gradh,rad,radprop,dvdx,apr_level)
     if (.not. fast_divcurlB) then
@@ -140,6 +180,7 @@ subroutine derivs(icall,npart,nactive,xyzh,vxyzu,fxyzu,fext,divcurlv,divcurlB,&
        ! if fast_divcurlB = .false., then all additional quantities are calculated during the previous call
        call densityiterate(3,npart,nactive,xyzh,vxyzu,divcurlv,divcurlB,Bevol,&
                            stressmax,fxyzu,fext,alphaind,gradh,rad,radprop,dvdx,apr_level)
+       ! put a similar flag for pressure calculation from dens: call cons2primall/everyhting and densityiterate(3. Import pressure from eos_vars in dens and use it to calculate delta_v
     endif
     set_boundaries_to_active = .false.     ! boundary particles are no longer treated as active
     call do_timing('dens',tlast,tcpulast)
@@ -149,14 +190,14 @@ subroutine derivs(icall,npart,nactive,xyzh,vxyzu,fxyzu,fext,divcurlv,divcurlB,&
 !
  if (iH2R >0) then
     if (HIIupdateflag) then
-       call HII_feedback(nptmass,npart,xyzh,xyzmh_ptmass,vxyzu,eos_vars)
+       call HII_feedback(nptmass,npart,xyzh,xyzmh_ptmass,vxyzu,rho,eos_vars)
        HIIupdateflag = .false.
     endif
     call do_timing('HII_region',tlast,tcpulast)
  endif
 
  if (gr) then
-    call cons2primall(npart,xyzh,metrics,pxyzu,vxyzu,dens,eos_vars)
+    call cons2primall(npart,xyzh,metrics,pxyzu,vxyzu,dens,eos_vars,dvdx,alphaind)
  else
     call cons2prim_everything(npart,xyzh,vxyzu,dvdx,rad,eos_vars,radprop,Bevol,Bxyz,dustevol,dustfrac,alphaind)
  endif
@@ -166,7 +207,7 @@ subroutine derivs(icall,npart,nactive,xyzh,vxyzu,fxyzu,fext,divcurlv,divcurlB,&
  ! implicit radiation update
  !
  if (do_radiation .and. implicit_radiation .and. dt > 0.) then
-    call do_radiation_implicit(dt,npart,rad,xyzh,vxyzu,radprop,drad,ierr)
+    call do_radiation_implicit(dt,time,npart,rad,xyzh,vxyzu,radprop,drad,ierr)
     if (ierr /= 0 .and. ierr /= ierr_failed_to_converge) call fatal('radiation','Failed in radiation')
     call do_timing('radiation',tlast,tcpulast)
  endif
@@ -186,7 +227,7 @@ subroutine derivs(icall,npart,nactive,xyzh,vxyzu,fxyzu,fext,divcurlv,divcurlB,&
  stressmax = 0.
  if (sinks_have_heating(nptmass,xyzmh_ptmass)) call ptmass_calc_enclosed_mass(nptmass,npart,xyzh)
  call force(icall,npart,xyzh,vxyzu,fxyzu,divcurlv,divcurlB,Bevol,dBevol,&
-            rad,drad,radprop,dustprop,dustgasprop,dustfrac,ddustevol,fext,fxyz_drag,&
+            rad,drad,radprop,dustprop,dustgasprop,Vrel_disp,dustfrac,ddustevol,fext,fxyz_drag,&
             ipart_rhomax,dt,stressmax,eos_vars,dens,metrics,apr_level)
  call do_timing('force',tlast,tcpulast)
 
@@ -194,7 +235,7 @@ subroutine derivs(icall,npart,nactive,xyzh,vxyzu,fxyzu,fext,divcurlv,divcurlB,&
  ! compute growth rate of dust particles
  !
  if (use_dustgrowth) then
-    call get_growth_rate(npart,xyzh,vxyzu,dustgasprop,VrelVf,dustprop,filfac,ddustprop(1,:))!--we only get dm/dt (i.e 1st dimension of ddustprop)
+    call get_growth_rate(npart,xyzh,vxyzu,rho,dustgasprop,VrelVf,dustprop,filfac,ddustprop(1,:),Vrel_disp)!--we only get dm/dt (i.e 1st dimension of ddustprop)
     ! compute growth rate and probability of sticking/bouncing of porous dust
     if (use_porosity) call get_probastick(npart,xyzh,ddustprop(1,:),dustprop,dustgasprop,filfac)
  endif
@@ -210,7 +251,7 @@ subroutine derivs(icall,npart,nactive,xyzh,vxyzu,fxyzu,fext,divcurlv,divcurlB,&
  endif
 
  if (do_radiation .and. implicit_radiation .and. .not.implicit_radiation_store_drad) then
-    !$omp parallel do shared(drad,fxyzu,npart) private(i)
+    !$omp parallel do default(none) shared(drad,fxyzu,npart) private(i)
     do i=1,npart
        drad(:,i) = 0.
        fxyzu(4,i) = 0.
@@ -245,9 +286,10 @@ subroutine get_derivs_global(tused,dt_new,dt,icall)
  use part,         only:npart,xyzh,vxyzu,fxyzu,fext,divcurlv,divcurlB,&
                         Bevol,dBevol,rad,drad,radprop,dustprop,ddustprop,filfac,&
                         dustfrac,ddustevol,eos_vars,pxyzu,dens,metrics,dustevol,gr,&
-                        apr_level
+                        apr_level,sync_aprmassoftype,itlastrad
  use timing,       only:printused,getused
  use io,           only:id,master
+ use dim,          only:do_radiation
  use cons2prim,    only:prim2consall
  use metric_tools, only:init_metric
  real(kind=4), intent(out), optional :: tused
@@ -255,8 +297,7 @@ subroutine get_derivs_global(tused,dt_new,dt,icall)
  real,         intent(in),  optional :: dt  ! optional argument needed to test implicit radiation routine
  integer,      intent(in),  optional :: icall
  real(kind=4) :: t1,t2
- real    :: dtnew
- real    :: time,dti
+ real    :: dtnew,dti,time
  integer :: icalli
 
  time = 0.
@@ -267,9 +308,17 @@ subroutine get_derivs_global(tused,dt_new,dt,icall)
  call getused(t1)
  ! update conserved quantities in the GR code
  if (gr) then
-    call init_metric(npart,xyzh,metrics)
-    call prim2consall(npart,xyzh,metrics,vxyzu,pxyzu,use_dens=.false.,dens=dens)
+    ! kernel-summed rho required for prim2consall (all MPI ranks must call this)
+    call get_density_global(2,zero_fxyzu=.true.)
+    call init_metric(npart,xyzh,metrics,time=time)
+    call prim2consall(npart,xyzh,metrics,vxyzu,pxyzu,dens=dens)
  endif
+
+ ! masses at each refinement level, in case massoftype has been changed
+ call sync_aprmassoftype()
+
+ ! implicit radiation integrates each particle from its last update: make that one dt ago
+ if (do_radiation .and. dti > 0.) radprop(itlastrad,1:npart) = time - dti
 
  ! evaluate derivatives
  call derivs(icalli,npart,npart,xyzh,vxyzu,fxyzu,fext,divcurlv,divcurlB,Bevol,dBevol,&
@@ -295,7 +344,7 @@ end subroutine get_derivs_global
 !--------------------------------------
 subroutine get_density_global(icall,nactive,zero_fxyzu,make_tree)
  use part,         only:npart,xyzh,vxyzu,fxyzu,fext,divcurlv,divcurlB,&
-                        Bevol,alphaind,gradh,rad,radprop,dvdx,apr_level
+                        Bevol,alphaind,gradh,rad,radprop,dvdx,apr_level,sync_aprmassoftype
  use densityforce, only:densityiterate
  use neighkdtree,  only:build_tree
  integer, intent(in) :: icall
@@ -311,6 +360,9 @@ subroutine get_density_global(icall,nactive,zero_fxyzu,make_tree)
 
  do_tree = .true.
  if (present(make_tree)) do_tree = make_tree
+
+ ! masses at each refinement level, in case massoftype has been changed
+ call sync_aprmassoftype()
 
  ! build tree to prepare neighbour finding (if requested)
  if (do_tree) call build_tree(npart,nactivei,xyzh,vxyzu)

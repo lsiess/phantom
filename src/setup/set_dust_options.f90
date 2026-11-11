@@ -13,7 +13,6 @@ module set_dust_options
 ! :Owner: Mark Hutchison
 !
 ! :Runtime parameters:
-!   - dust_method       : *dust method (1=one fluid,2=two fluid,3=Hybrid)*
 !   - dust_to_gas       : *dust to gas ratio*
 !   - graindensinp      : *intrinsic grain density (in g/cm^3)*
 !   - graindenslargeinp : *intrinsic grain density (in g/cm^3)*
@@ -26,6 +25,7 @@ module set_dust_options
 !   - ndustlargeinp     : *number of large grain sizes*
 !   - ndustsmallinp     : *number of small grain sizes*
 !   - ndusttypesinp     : *number of grain sizes*
+!   - renorm_dust       : *renormalise dust to keep global dust_to_gas*
 !
 ! :Dependencies: dim, dust, eos, fileutils, growth, infile_utils, io,
 !   options, part, porosity, prompting, set_dust
@@ -52,7 +52,7 @@ module set_dust_options
  integer, public :: igraindenssmall
  integer, public :: isetdust
  integer, public :: ndust_max_mrn
- integer, public :: idust_to_gas_norm
+ logical, public :: renorm_dust   ! renormalise dust to keep the global dust-to-gas ratio
  real,    public :: smincgs
  real,    public :: smaxcgs
  real,    public :: s1cgs
@@ -111,7 +111,7 @@ subroutine set_dust_default_options()
  igrainsizesmall = 0
  igraindenssmall = 0
  isetdust = 0
- idust_to_gas_norm = 0
+ renorm_dust = .true.
  smincgs      = 1.e-4
  sminsmallcgs = 1.e-4
  sminlargecgs = 1.e-4
@@ -262,11 +262,9 @@ subroutine set_dust_interactive(method)
             ' 2=equal to the gas, but with unique cutoffs'//new_line('A'),isetdust,0,2)
 
  if (isetdust /= 0) then
-    call prompt('How do you want to handle dust cutoffs?'//new_line('A')// &
-               ' 0=renormalise dust to keep global dust_to_gas'//new_line('A')// &
-               ' 1=do not renormalise (global dust_to_gas can decrease)',idust_to_gas_norm,0,1)
+    call prompt('Renormalise dust after cutoffs to keep the global dust_to_gas?',renorm_dust)
  else
-    idust_to_gas_norm = 0
+    renorm_dust = .true.
  endif
 
 end subroutine set_dust_interactive
@@ -314,7 +312,7 @@ subroutine read_dust_setup_options(db,nerr,method)
     call read_inopt(dust_method,'dust_method',db,min=1,max=3,errcount=nerr)
  endif
  call read_inopt(dust_to_gas,'dust_to_gas',db,min=0.,errcount=nerr)
- call read_inopt(idust_to_gas_norm,'idust_to_gas_norm',db,min=0,max=1,err=ierr)
+ call read_inopt(renorm_dust,'renorm_dust',db,err=ierr)
  !--options for setting up the dust grid
  select case(dust_method)
  case(1)
@@ -600,11 +598,11 @@ subroutine write_dust_setup_options(iunit,method)
  if (present(method)) then
     dust_method = method
  else
-    call write_inopt(dust_method,'dust_method','dust method (1=one fluid,2=two fluid,3=Hybrid)',iunit)
+    call write_inopt(dust_method,'dust_method',&
+        'dust method (1=dust-as-mixture,2=dust-as-particles,3=Hybrid)',iunit)
  endif
  call write_inopt(dust_to_gas,'dust_to_gas','dust to gas ratio',iunit)
- call write_inopt(idust_to_gas_norm,'idust_to_gas_norm', &
-    'renormalise dust to keep global dust_to_gas (0=yes,1=no)',iunit)
+ call write_inopt(renorm_dust,'renorm_dust','renormalise dust to keep global dust_to_gas',iunit)
 
  if (dust_method == 3) then
     call write_inopt(ndustsmallinp,'ndustsmallinp','number of small grain sizes',iunit)
@@ -843,8 +841,8 @@ subroutine check_dust_method(dust_method,ichange_method)
  use eos,     only:ieos,get_spsound
  use io,      only:master
  use options, only:use_dustfrac
- use part,    only:npart,massoftype,xyzh,vxyzu,rhoh,igas,dustfrac,&
-                   grainsize,graindens,ndusttypes
+ use part,    only:npart,xyzh,vxyzu,rho,dustfrac,&
+                   grainsize,graindens,ndusttypes,init_rho_from_h
  integer, intent(inout) :: dust_method
  logical, intent(out)   :: ichange_method
  integer :: i,l,iregime,ierr,icheckdust(maxdusttypes)
@@ -856,13 +854,15 @@ subroutine check_dust_method(dust_method,ichange_method)
  iforce_dust_method = .false.
 
  call init_drag(ierr)
+ ! setup is before the density sum; seed rho from h for the Stokes check
+ call init_rho_from_h()
 
  dustfraci(:) = 0.
  icheckdust(:) = 0
  do i=1,npart
     r = sqrt(xyzh(1,i)**2 + xyzh(2,i)**2)
     if (use_dustfrac) then
-       rhoi = rhoh(xyzh(4,i),massoftype(igas))
+       rhoi = rho(i)
        dustfraci(1:ndusttypes) = dustfrac(1:ndusttypes,i)
        dustfracisum = sum(dustfraci(1:ndusttypes))
        rhogasi      = rhoi*(1.-dustfracisum)

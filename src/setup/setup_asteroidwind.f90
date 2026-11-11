@@ -12,7 +12,7 @@ module setup
 ! :References:
 !   Trevascus et al. (2021), MNRAS 505, L21-L25
 !
-! :Owner: David Liptai
+! :Owner: Daniel Price
 !
 ! :Runtime parameters:
 !   - dumpsperorbit : *number of dumps per orbit*
@@ -60,15 +60,15 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
  use extern_lensethirring, only:blackhole_spin
  use kernel,               only:hfact_default
  use infile_utils,         only:get_options
- integer,           intent(in)    :: id
- integer,           intent(inout) :: npart
- integer,           intent(out)   :: npartoftype(:)
- real,              intent(out)   :: xyzh(:,:)
- real,              intent(inout) :: massoftype(:)
- real,              intent(inout) :: polyk,gamma,hfact
- real,              intent(inout) :: time
- character(len=20), intent(in)    :: fileprefix
- real,              intent(out)   :: vxyzu(:,:)
+ integer,          intent(in)    :: id
+ integer,          intent(inout) :: npart
+ integer,          intent(out)   :: npartoftype(:)
+ real,             intent(out)   :: xyzh(:,:)
+ real,             intent(inout) :: massoftype(:)
+ real,             intent(inout) :: polyk,gamma,hfact
+ real,             intent(inout) :: time
+ character(len=*), intent(in)    :: fileprefix
+ real,             intent(out)   :: vxyzu(:,:)
  integer :: ierr
  real    :: period,hacc2,temperature_coef
  real    :: rp
@@ -103,7 +103,7 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
  if (ipot == 0 .and. .not. gr) then
     call set_units(mass=solarm,dist=solarr,G=1.d0)
  else
-    call set_units(c=1.0,G=1.0,mass=m1)
+    call set_units(c=1.d0,G=1.d0,mass=real(m1,kind=8))
     print*,'Code units changed to c=G=m1=1.0 for LT'
  endif
 

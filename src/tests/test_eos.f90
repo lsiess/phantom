@@ -39,6 +39,8 @@ subroutine test_eos(ntests,npass)
  use eos_gasradrec, only:irecomb
  use testeos_stratified, only:test_eos_stratified
  use test_eos_stam, only:run_test_stam
+ use dim,           only:gr
+ use eos,           only:eos_works_with_gr
  integer, intent(inout) :: ntests,npass
 
  if (id==master) write(*,"(/,a,/)") '--> TESTING EQUATION OF STATE MODULE'
@@ -56,12 +58,15 @@ subroutine test_eos(ntests,npass)
  !  call test_helmholtz(ntests, npass)
  call test_idealplusrad(ntests, npass)
 
- do irecomb = 0,3
-    call test_hormone(ntests,npass)
- enddo
+ ! skip tests of equations of state that cannot be used with GR
+ if (.not.gr .or. eos_works_with_gr(20)) then
+    do irecomb = 0,3
+       call test_hormone(ntests,npass)
+    enddo
+ endif
 
- call test_eos_stratified(ntests,npass)
- call run_test_stam(ntests,npass)
+ if (.not.gr .or. eos_works_with_gr(7)) call test_eos_stratified(ntests,npass)
+ if (.not.gr .or. eos_works_with_gr(24)) call run_test_stam(ntests,npass)
 
  if (id==master) write(*,"(/,a)") '<-- EQUATION OF STATE TEST COMPLETE'
 
@@ -75,10 +80,10 @@ end subroutine test_eos
 subroutine test_all(ntests, npass)
  use eos,       only:maxeos,init_eos,isink,polyk,polyk2,qfacdisc,&
                      ierr_file_not_found,ierr_option_conflict,&
-                     eos_is_not_implemented
+                     eos_is_not_implemented,eos_works_with_radiation,eos_works_with_gr
  use io,        only:id,master
  use testutils, only:checkval,update_test_scores
- use dim,       only:do_radiation
+ use dim,       only:do_radiation,gr
  use part,      only:xyzmh_ptmass,vxyz_ptmass,nptmass
  integer, intent(inout) :: ntests,npass
  integer :: nfailed(1)
@@ -109,6 +114,7 @@ subroutine test_all(ntests, npass)
     ! skip equations of state that are not implemented
     if (eos_is_not_implemented(ieos)) cycle
     if (ieos==24) cycle ! skip Stamatellos/Lombardi -tested separately
+    if (gr .and. .not.eos_works_with_gr(ieos)) cycle
     if (id==master) write(*,"(/,a,i2)") '--> testing equation of state ',ieos
     call init_eos(ieos,ierr)
     correct_answer = 0
@@ -116,7 +122,7 @@ subroutine test_all(ntests, npass)
     if (ieos==15 .and. ierr /= 0 .and. .not. got_phantom_dir) cycle ! skip helmholtz
     if (ieos==16 .and. ierr /= 0 .and. .not. got_phantom_dir) cycle ! skip Shen
 
-    if (do_radiation .and. (ieos==10 .or. ieos==12)) correct_answer = ierr_option_conflict
+    if (do_radiation .and. (.not. eos_works_with_radiation(ieos))) correct_answer = ierr_option_conflict
     call checkval(ierr,correct_answer,0,nfailed(1),'eos initialisation')
     call update_test_scores(ntests,nfailed,npass)
     !
@@ -199,14 +205,18 @@ end subroutine test_u_from_Prho
 !----------------------------------------------------------------------------
 subroutine test_idealplusrad(ntests, npass)
  use io,               only:id,master,stdout
- use eos,              only:init_eos,equationofstate
- use eos_idealplusrad, only:get_idealplusrad_enfromtemp,get_idealplusrad_pres
+ use eos,              only:init_eos,equationofstate,get_entropy,get_p_from_rho_s
+ use eos_idealplusrad, only:get_idealplusrad_enfromtemp,get_idealplusrad_pres,&
+                            get_idealgasplusrad_tempfrompres
  use testutils,        only:checkval,checkvalbuf_start,checkvalbuf,checkvalbuf_end,update_test_scores
  use units,            only:unit_density,unit_pressure,unit_ergg
  use physcon,          only:Rg
  integer, intent(inout) :: ntests,npass
- integer                :: npts,ieos,ierr,i,j,nfail(2),ncheck(2)
- real                   :: rhocodei,gamma,presi,dum,csound,eni,temp,ponrhoi,mu,tol,errmax(2),pres2,code_eni
+ integer                :: npts,ieos,ierr,i,j,iwarm,niter
+ integer                :: nfail(8),ncheck(8)
+ real                   :: rhocodei,gamma,presi,dum,csound,eni,temp,ponrhoi,mu,tol
+ real                   :: errmax(8),pres2,code_eni,pres_code,p_rec,temp_guess,s_code
+ real                   :: tol_s
  real, allocatable      :: rhogrid(:),Tgrid(:)
 
  if (id==master) write(*,"(/,a)") '--> testing ideal gas + radiation equation of state'
@@ -217,30 +227,129 @@ subroutine test_idealplusrad(ntests, npass)
  call get_rhoT_grid(npts,rhogrid,Tgrid)
  dum = 0.
  tol = 2.e-15
+ tol_s = 1.e-12
  nfail = 0; ncheck = 0; errmax = 0.
  call init_eos(ieos,ierr)
  do i=1,npts
     do j=1,npts
-       ! Get u, P from rho, T
        call get_idealplusrad_enfromtemp(rhogrid(i),Tgrid(j),mu,eni)
        call get_idealplusrad_pres(rhogrid(i),Tgrid(j),mu,presi)
 
-       ! Recalculate T, P, from rho, u
+       rhocodei  = rhogrid(i)/unit_density
+       pres_code = presi/unit_pressure
+
        code_eni = eni/unit_ergg
-       temp = eni*mu/Rg ! guess
-       rhocodei = rhogrid(i)/unit_density
+       temp = eni*mu/Rg
        call equationofstate(ieos,ponrhoi,csound,rhocodei,dum,dum,dum,temp,code_eni,mu_local=mu,gamma_local=gamma)
        pres2 = ponrhoi * rhocodei * unit_pressure
 
        call checkvalbuf(temp,Tgrid(j),tol,'T from rho, u',nfail(1),ncheck(1),errmax(1),use_rel_tol)
        call checkvalbuf(pres2,presi,tol,'P from rho, u',nfail(2),ncheck(2),errmax(2),use_rel_tol)
+
+       do iwarm=0,1
+          temp_guess = 1.
+          if (iwarm==1) temp_guess = Tgrid(j)
+          call get_idealgasplusrad_tempfrompres(presi,rhogrid(i),mu,temp_guess)
+          call checkvalbuf(temp_guess,Tgrid(j),tol,'T from rho, P',nfail(3+iwarm),ncheck(3+iwarm),errmax(3+iwarm),use_rel_tol)
+       enddo
+
+       s_code = get_entropy(rhocodei,pres_code,mu,ieos)
+       do iwarm=0,1
+          temp_guess = 1.
+          if (iwarm==1) temp_guess = Tgrid(j)
+          call get_p_from_rho_s(ieos,s_code,rhocodei,mu,p_rec,temp_guess,niter_out=niter)
+          call checkvalbuf(temp_guess,Tgrid(j),tol_s,'T from rho, S',nfail(5+iwarm),ncheck(5+iwarm),errmax(5+iwarm),use_rel_tol)
+          call checkvalbuf(p_rec,pres_code,tol_s,'P from rho, S',nfail(7+iwarm),ncheck(7+iwarm),errmax(7+iwarm),use_rel_tol)
+       enddo
     enddo
  enddo
  call checkvalbuf_end('T from rho, u',ncheck(1),nfail(1),errmax(1),tol)
  call checkvalbuf_end('P from rho, u',ncheck(2),nfail(2),errmax(2),tol)
+ call checkvalbuf_end('T from rho, P (cold)',ncheck(3),nfail(3),errmax(3),tol)
+ call checkvalbuf_end('T from rho, P (warm)',ncheck(4),nfail(4),errmax(4),tol)
+ call checkvalbuf_end('T from rho, S (cold)',ncheck(5),nfail(5),errmax(5),tol_s)
+ call checkvalbuf_end('T from rho, S (warm)',ncheck(6),nfail(6),errmax(6),tol_s)
+ call checkvalbuf_end('P from rho, S (cold)',ncheck(7),nfail(7),errmax(7),tol_s)
+ call checkvalbuf_end('P from rho, S (warm)',ncheck(8),nfail(8),errmax(8),tol_s)
  call update_test_scores(ntests,nfail,npass)
 
+ if (id==master) then
+    call benchmark_idealplusrad_kernel(npts,rhogrid,Tgrid,mu,ieos,.true.,.false.,'get_idealgasplusrad_tempfrompres (cold)')
+    call benchmark_idealplusrad_kernel(npts,rhogrid,Tgrid,mu,ieos,.false.,.false.,'get_idealgasplusrad_tempfrompres (warm)')
+    call benchmark_idealplusrad_kernel(npts,rhogrid,Tgrid,mu,ieos,.true.,.true.,'get_p_from_rho_s (cold)')
+    call benchmark_idealplusrad_kernel(npts,rhogrid,Tgrid,mu,ieos,.false.,.true.,'get_p_from_rho_s (warm)')
+ endif
+
+ deallocate(rhogrid,Tgrid)
+
 end subroutine test_idealplusrad
+
+!----------------------------------------------------------------------------
+!+
+!  Benchmark one ideal gas + radiation kernel over the rho-T grid
+!+
+!----------------------------------------------------------------------------
+subroutine benchmark_idealplusrad_kernel(npts,rhogrid,Tgrid,mu,ieos,warm,entropy,label)
+ use io,               only:id,master
+ use eos,              only:get_entropy,get_p_from_rho_s
+ use eos_idealplusrad, only:get_idealplusrad_pres,get_idealgasplusrad_tempfrompres
+ use units,            only:unit_density,unit_pressure
+ integer,          intent(in) :: npts,ieos
+ real,             intent(in) :: rhogrid(npts),Tgrid(npts),mu
+ logical,          intent(in) :: warm,entropy
+ character(len=*), intent(in) :: label
+ integer, parameter            :: nrepeat = 10
+ integer                       :: i,j,irep,ncall,niter,niter_sum,niter_max
+ integer                       :: n_zero
+ real                          :: t1,t2,temp_guess,p_rec,us_per_call,p_code
+ real, allocatable             :: pres_cgs(:,:),rhocode(:,:),s_code(:,:)
+
+ if (id /= master) return
+
+ allocate(pres_cgs(npts,npts),rhocode(npts,npts),s_code(npts,npts))
+ do i=1,npts
+    do j=1,npts
+       rhocode(i,j) = rhogrid(i)/unit_density
+       call get_idealplusrad_pres(rhogrid(i),Tgrid(j),mu,pres_cgs(i,j))
+       p_code = pres_cgs(i,j)/unit_pressure
+       if (entropy) s_code(i,j) = get_entropy(rhocode(i,j),p_code,mu,ieos)
+    enddo
+ enddo
+
+ ncall = npts*npts*nrepeat
+ niter_sum = 0
+ niter_max = 0
+ n_zero = 0
+ call cpu_time(t1)
+ do irep=1,nrepeat
+    do i=1,npts
+       do j=1,npts
+          niter = 0
+          temp_guess = 1.
+          if (warm) temp_guess = Tgrid(j)
+          if (entropy) then
+             call get_p_from_rho_s(ieos,s_code(i,j),rhocode(i,j),mu,p_rec,temp_guess,niter_out=niter)
+             if (niter==0) n_zero = n_zero + 1
+          else
+             call get_idealgasplusrad_tempfrompres(pres_cgs(i,j),rhogrid(i),mu,temp_guess)
+          endif
+          niter_sum = niter_sum + niter
+          niter_max = max(niter_max,niter)
+       enddo
+    enddo
+ enddo
+ call cpu_time(t2)
+
+ us_per_call = (t2-t1)/real(ncall)*1.e6
+ if (entropy) then
+    write(*,'(a,f12.6,a,i0,a,i0,a,i0)') '   mean niter = ',real(niter_sum)/real(ncall),'  max niter = ',niter_max,&
+         '  niter=0 on ',n_zero,'/',ncall
+ endif
+ write(*,'(1x,a,1x,f10.2,a)') trim(label),us_per_call,' us/call'
+
+ deallocate(pres_cgs,rhocode,s_code)
+
+end subroutine benchmark_idealplusrad_kernel
 
 !----------------------------------------------------------------------------
 !+
@@ -273,8 +382,10 @@ subroutine test_hormone(ntests, npass)
 
  ! Testing
  dum = 0.
- tol = 2.e-14
+ tol = 3.e-14
  tempi = -1.
+ mu2 = 0.
+ gamma_eff = 0.
  nfail = 0; ncheck = 0; errmax = 0.
  call init_eos(ieos,ierr)
  do i=1,npts
@@ -359,7 +470,7 @@ end subroutine get_rhoT_grid
 !+
 !----------------------------------------------------------------------------
 subroutine test_p_is_continuous(ntests, npass,ieos)
- use eos,            only:equationofstate,eos_requires_isothermal
+ use eos,            only:equationofstate,eos_requires_isothermal,rho_branch_cgs
  use eos_barotropic, only:rhocrit1cgs
  use eos_helmholtz,  only:eos_helmholtz_get_minrho
  use eos_tillotson,  only:rho_0,u_iv
@@ -369,9 +480,10 @@ subroutine test_p_is_continuous(ntests, npass,ieos)
  integer, intent(inout) :: ntests,npass
  integer, intent(in)    :: ieos
  integer :: nfailed(2),ncheck(2)
- integer :: i,maxpts,ierrmax,itest
+ integer :: i,maxpts,ierrmax,itest,nskipped
  real    :: rhoi,eni,xi,yi,zi,tempi,ponrhoi,spsoundi,ponrhoprev,spsoundprev
- real    :: errmax,rho_test
+ real    :: errmax,rho_test,rhoprev
+ logical :: same_phase
  character(len=3) :: var
 
  call barrier_mpi
@@ -403,6 +515,7 @@ subroutine test_p_is_continuous(ntests, npass,ieos)
  over_tests: do itest=1,2
     nfailed = 0
     ncheck  = 0
+    nskipped = 0
     ! first test, fix u and vary rho
     var = 'rho'
     ! second test, fix rho and vary u
@@ -425,18 +538,30 @@ subroutine test_p_is_continuous(ntests, npass,ieos)
           call equationofstate(ieos,ponrhoi,spsoundi,rhoi,xi,yi,zi,tempi,eni)
        endif
        !if (ieos==23 .and. itest==2) write(1,*) rhoi*unit_density,eni*unit_ergg,ponrhoi*rhoi*unit_pressure,spsoundi*unit_velocity
-       if (i > 1) call checkvalbuf(ponrhoi,ponrhoprev,1.e-2,'p/rho continuous with '//trim(var),nfailed(1),ncheck(1),errmax)
+       if (i > 1) then
+          same_phase = .true.
+          ! The two-phase EOS has an intentional jump at rho_branch_cgs.
+          ! Check continuity within each phase, not across that switch.
+          if (ieos==26) same_phase = (rhoi*unit_density < rho_branch_cgs) .eqv. &
+                                    (rhoprev*unit_density < rho_branch_cgs)
+          if (same_phase) then
+             call checkvalbuf(ponrhoi,ponrhoprev,1.e-2,'p/rho continuous with '//trim(var),nfailed(1),ncheck(1),errmax)
+          else
+             nskipped = nskipped + 1
+          endif
+       endif
        !if (i > 1) call checkvalbuf(spsoundi,spsoundprev,1.e-2,'cs is continuous',nfailed(2),ncheck(2),errmax)
        ponrhoprev = ponrhoi
        spsoundprev = spsoundi
+       rhoprev = rhoi
     enddo
     ierrmax = 0
-    call checkvalbuf_end('p/rho continuous with '//trim(var),ncheck(1),nfailed(1),ierrmax,0,maxpts-1)
+    call checkvalbuf_end('p/rho continuous with '//trim(var),ncheck(1),nfailed(1),ierrmax,0,maxpts-1-nskipped)
+    ! score each sub-test here, as nfailed is reset at the start of each pass
+    call update_test_scores(ntests,nfailed(1:1),npass)
  enddo over_tests
 
 !call checkvalbuf_end('cs is continuous',ncheck(2),nfailed(2),0,0,maxpts)
-
- call update_test_scores(ntests,nfailed(1:1),npass)
 
 end subroutine test_p_is_continuous
 

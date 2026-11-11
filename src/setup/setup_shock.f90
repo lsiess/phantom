@@ -91,7 +91,7 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
  use boundary,        only:ymin,zmin,ymax,zmax,set_boundary
  use dim,             only:ndim
  use options,         only:use_dustfrac,ieos
- use part,            only:labeltype,set_particle_type,igas,iboundary,hrho,Bxyz,&
+ use part,            only:labeltype,set_particle_type,igas,iboundary,hn,Bxyz,&
                            periodic,dustfrac,gr,ndustsmall,ndustlarge,ndusttypes,ikappa
  use part,            only:rad,radprop,iradxi
  use kernel,          only:radkern,hfact_default
@@ -107,15 +107,15 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
  use cooling,         only:T0_value,lambda_shock_cgs
  use nicil,           only:eta_constant,eta_const_type,icnstsemi
  use infile_utils,    only:get_options
- integer,           intent(in)    :: id
- integer,           intent(out)   :: npartoftype(:)
- integer,           intent(inout) :: npart
- real,              intent(out)   :: xyzh(:,:)
- real,              intent(out)   :: vxyzu(:,:)
- real,              intent(out)   :: massoftype(:)
- real,              intent(out)   :: polyk,gamma,hfact
- real,              intent(inout) :: time
- character(len=20), intent(in)    :: fileprefix
+ integer,          intent(in)    :: id
+ integer,          intent(out)   :: npartoftype(:)
+ integer,          intent(inout) :: npart
+ real,             intent(out)   :: xyzh(:,:)
+ real,             intent(out)   :: vxyzu(:,:)
+ real,             intent(out)   :: massoftype(:)
+ real,             intent(out)   :: polyk,gamma,hfact
+ real,             intent(inout) :: time
+ character(len=*), intent(in)    :: fileprefix
  real                             :: delta,gam1,fac,dtg
  real                             :: uuleft,uuright,xbdyleft,xbdyright,dxright
  real                             :: rholeft,rhoright,denscgs,Pcgs,ucgs,temp
@@ -169,9 +169,9 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
  ! default is to use code units everywhere, but some shock tube
  ! problems require physical units to be set
  if (gr) then
-    call set_units(G=1.,c=1.,mass=10.*solarm)
+    call set_units(G=1.d0,c=1.d0,mass=10.*solarm)
  elseif (use_radpulse_units) then
-    call set_units(dist=1.,mass=1.,time=1.e-4)
+    call set_units(dist=1.d0,mass=1.d0,time=1.d-4)
  elseif (do_radiation .or. icooling > 0 .or. mhd_nonideal) then
     call set_units(dist=au,mass=solarm,G=1.d0)
  endif
@@ -282,7 +282,7 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
  do i=1,npart
     delta = xyzh(1,i) - xshock
     if (delta > 0.) then
-       xyzh(4,i)  = hrho(rhoright,massoftype(igas))
+       xyzh(4,i)  = hn(rhoright/massoftype(igas))
        vxyzu(1,i) = rightstate(ivx)
        vxyzu(2,i) = rightstate(ivy)
        vxyzu(3,i) = rightstate(ivz)
@@ -290,7 +290,7 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
        if (mhd) Bxyz(1:3,i) = rightstate(iBx:iBz)
        if (do_radiation) rad(iradxi,i) = rightstate(ixi)
     else
-       xyzh(4,i)  = hrho(rholeft,massoftype(igas))
+       xyzh(4,i)  = hn(rholeft/massoftype(igas))
        vxyzu(1,i) = leftstate(ivx)
        vxyzu(2,i) = leftstate(ivy)
        vxyzu(3,i) = leftstate(ivz)
@@ -484,7 +484,7 @@ subroutine choose_shock()
        call prompt('Follow recommendation?',use_radpulse_units)
     endif
     if ((choice==11) .and. use_radpulse_units) then
-       call set_units(dist=1.,mass=1.,time=1.e-4)
+       call set_units(dist=1.d0,mass=1.d0,time=1.d-4)
     else
        call set_units_interactive(gr)
     endif
