@@ -314,7 +314,7 @@ subroutine dust_growth_condensation(T,rho_cgs,dt,wind_CO_ratio,fol,fqu,fpy,fir,f
  if (S_sc > 1.0d-30) then
     Jdec_sc = Jgr_sc / S_sc
  else
-    Jdec_sc = 0.0d0
+    Jdec_sc = 0.
  endif
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
@@ -324,7 +324,7 @@ subroutine dust_growth_condensation(T,rho_cgs,dt,wind_CO_ratio,fol,fqu,fpy,fir,f
  if (S_carb > 1.0d-30) then
     Jdec_carb = Jgr_carb / S_carb
  else
-    Jdec_carb = 0.0d0
+    Jdec_carb = 0.
  endif
 
  r_ol = max(r_ol + Vo_ol * (Jgr_ol-Jdec_ol) * dt , a_init_dust)
@@ -334,8 +334,14 @@ subroutine dust_growth_condensation(T,rho_cgs,dt,wind_CO_ratio,fol,fqu,fpy,fir,f
  r_sc = max(r_sc + Vo_sc * (Jgr_sc-Jdec_sc) * dt , a_init_dust)
  r_carb = max(r_carb + Vo_carb * (Jgr_carb-Jdec_carb) * dt , a_init_dust)
 
- Jgr = Jgr_ol
- Jdec = Jdec_ol
+ if (wind_CO_ratio < 1.) then
+    Jgr = Jgr_ol
+    Jdec = Jdec_ol
+ else
+    Jgr = Jgr_carb
+    Jdec = Jdec_carb
+ endif
+
 
  fol_max = max(0.,min(1.0, min(0.5*eps(iMg)/eps(iSi),(eps(iOx)-eps(iC)-eps(iSi))/3./eps(iSi))))
  fol     = min(fol_max, max(0., fourpi*(r_ol**3-a_init_dust**3)*1.d-13/3./Vo_ol/eps(iSi)))
