@@ -18,7 +18,7 @@ module mpiforce
 !
  use io,       only:nprocs,fatal
  use dim,      only:minpart,maxfsum,maxxpartveciforce,maxxpartvecGR,gr
- use mpidens,  only:put_reals,get_reals
+ use mpidens,  only:put_reals,get_reals,select_packed_particles
 
  implicit none
  private
@@ -38,6 +38,9 @@ module mpiforce
  ! of its particles there (a cell paired with more leaves is sent several times).
  ! They travel only in the message, not in the cell, so the stacks of cells stay small
  integer, parameter, public :: maxcellleaves = 256
+ ! index in fsums of the largest sink force (between ifskzi and ipertouti in force),
+ ! which is combined over neighbour blocks and tasks as a maximum, not a sum
+ integer, parameter, public :: ifonrmaxi = 16
  integer, parameter, public :: maxpack_cellforce = max(9 + maxcellleaves + minpart*(maxxpartveciforce + 4), &
                                                        26 + minpart*(maxfsum + 4))
  ! particle values sent outbound: the metric values at the end of xpartvec only with GR
@@ -298,29 +301,17 @@ subroutine pack_cellforce(cell,outbound,buf,n,mask,leaves)
  integer,         intent(out) :: n
  logical,         intent(in), optional :: mask(:)
  integer,         intent(in), optional :: leaves(:) ! leaves of the receiving task to use as trial neighbours
- integer :: np,i,k,idx(minpart),nleaves
+ integer :: np,k,idx(minpart),nleaves
 
  !--particles sent: those selected by mask (outbound only), each with its
  !  position in the owner's cell, so that the results can be added back
- if (outbound .and. present(mask)) then
-    np = 0
-    do i=1,cell%npcell
-       if (mask(i)) then
-          np = np + 1
-          idx(np) = i
-       endif
-    enddo
- elseif (outbound) then
-    np = cell%npcell
-    idx(1:np) = (/(i,i=1,np)/)
- else
-    np = cell%npcell
-    idx(1:np) = cell%ipos(1:np)
- endif
+ call select_packed_particles(cell%npcell,outbound,cell%ipos,idx,np,mask)
  n  = 0
  call put_reals(buf,n,real((/np,cell%owner,cell%waiting_index/)))
  if (outbound) then
     call put_reals(buf,n,(/cell%xpos,cell%xsizei,cell%rcuti/))
+
+    ! the data of each particle
     do k=1,np
        call put_reals(buf,n,cell%xpartvec(1:nxpartvec_pack,idx(k)))
     enddo

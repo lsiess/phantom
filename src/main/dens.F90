@@ -16,7 +16,7 @@ module densityforce
 ! :Runtime parameters: None
 !
 ! :Dependencies: boundary, dim, io, io_summary, kdtree, kernel, mpidens,
-!   mpiderivs, mpimemory, mpiutils, neighkdtree, omputils, options, part,
+!   mpiderivs, mpikdtree, mpimemory, mpiutils, neighkdtree, options, part,
 !   timestep, timing, viscosity
 !
  use dim,     only:maxdvdx,maxp,maxrhosum,maxdustlarge,minpart
@@ -128,8 +128,9 @@ subroutine densityiterate(icall,npart,nactive,xyzh,vxyzu,divcurlv,divcurlB,Bevol
                      use_dust,fast_divcurlB,mpi,gr,use_apr
  use io,          only:iprint,fatal,iverbose,id,master,real4,warning,error,nprocs
  use neighkdtree, only:leaf_is_active,get_neighbour_list,get_hmaxcell,&
-                     listneigh,get_cell_location,set_hmaxcell,sync_hmax_mpi,&
+                     listneigh,get_cell_location,set_hmaxcell,&
                      active_leaves,nactive_leaves,ncellchunk
+ use mpikdtree,   only:sync_hmax_mpi
  use part,        only:mhd,get_partinfo,iactive,&
                        iphase,igas,idust,iamgas,periodic,all_active,dustfrac
  use mpiutils,    only:reduceall_mpi,barrier_mpi,reduce_mpi,reduceall_mpi
@@ -303,7 +304,6 @@ subroutine densityiterate(icall,npart,nactive,xyzh,vxyzu,divcurlv,divcurlB,Bevol
  call get_timings(t1,tcpu1)
  !$omp end single
 
-
  !$omp do schedule(dynamic,ncellchunk)
  over_cells: do ia=1,nactive_leaves
     icell = active_leaves(ia)
@@ -323,6 +323,7 @@ subroutine densityiterate(icall,npart,nactive,xyzh,vxyzu,divcurlv,divcurlB,Bevol
     call start_cell(cell,iphase,xyzh,vxyzu,fxyzu,fext,Bevol,rad,apr_level)
     call get_cell_location(icell,cell%xpos,cell%xsizei,cell%rcuti)
     call get_hmaxcell(icell,cell%hmax)
+
     !--send each task only the particles that have neighbours there
     if (do_export) then
        call particle_targets(cell,remote_export,ptargets)
@@ -388,7 +389,6 @@ subroutine densityiterate(icall,npart,nactive,xyzh,vxyzu,divcurlv,divcurlB,Bevol
  endif
  !$omp end single
 
-
  if (exchange) then
     call recv_while_wait(stack_remote,cell_counters)
  endif
@@ -440,7 +440,6 @@ subroutine densityiterate(icall,npart,nactive,xyzh,vxyzu,divcurlv,divcurlB,Bevol
           nimport_useful = nimport_useful + count(cell%nneigh(1:cell%npcell) > 0)
           remote_export = .false.
           remote_export(cell%owner+1) = .true. ! use remote_export array to send back to the owner
-
 
           call send_cell(cell,remote_export,stack_waiting,cell_counters) ! send the cell back to owner
        enddo over_remote
@@ -676,6 +675,7 @@ pure subroutine get_density_sums(i,xpartveci,hi,hi1,hi21,iamtypei,iamgasi,iamdus
  ! these are determined from iphase if multiple phases are used
  same_type = .true.
  gas_gas   = .true.
+ iamdustj  = .false.
  iamtypej  = iamtypei
 
  dphidhi   = 0.
@@ -1378,6 +1378,7 @@ pure subroutine compute_cell(cell,listneigh,nneigh,getdv,getdB,Bevol,xyzh,vxyzu,
  use viscosity,   only:irealvisc
  use io,          only:id
  use dim,         only:mpi,use_apr
+ use neighkdtree, only:nneighblock
 
  type(celldens), intent(inout) :: cell
 
@@ -1402,48 +1403,59 @@ pure subroutine compute_cell(cell,listneigh,nneigh,getdv,getdB,Bevol,xyzh,vxyzu,
  logical                         :: realviscosity
  logical                         :: ignoreself
  integer                         :: nneighi,apri
- integer                         :: i,lli
+ integer                         :: i,lli,n1,n2
+ real                            :: rhosum(maxrhosum)
 
  realviscosity = (irealvisc > 0)
 
- over_parts: do i = 1,cell%npcell
-    !--particle index is only known on the owner (used only to exclude self)
-    if (cell%owner == id) then
-       lli = inodeparts(cell%arr_index(i))
-    else
-       lli = 0
-    endif
-    ! note: only active particles have been sent here
-    if (maxphase==maxp) then
-       call get_partinfo(cell%iphase(i),iactivei,iamgasi,iamdusti,iamtypei)
-    else
-       iactivei = .true.
-       iamtypei = igas
-       iamgasi  = .true.
-    endif
+ over_blocks: do n1 = 1,max(nneigh,1),nneighblock
+    n2 = min(n1+nneighblock-1,nneigh)
+    over_parts: do i = 1,cell%npcell
+       !--particle index is only known on the owner (used only to exclude self)
+       if (cell%owner == id) then
+          lli = inodeparts(cell%arr_index(i))
+       else
+          lli = 0
+       endif
+       ! note: only active particles have been sent here
+       if (maxphase==maxp) then
+          call get_partinfo(cell%iphase(i),iactivei,iamgasi,iamdusti,iamtypei)
+       else
+          iactivei = .true.
+          iamtypei = igas
+          iamgasi  = .true.
+       endif
 
-    hi    = cell%h(i)
-    hi1   = 1./hi
-    hi21  = hi1*hi1
-    hi31  = hi1*hi21
-    hi41  = hi21*hi21
+       hi    = cell%h(i)
+       hi1   = 1./hi
+       hi21  = hi1*hi1
+       hi31  = hi1*hi21
+       hi41  = hi21*hi21
 
-    if (use_apr) then
-       apri = cell%apr(i)
-    else
-       apri = 1
-    endif
+       if (use_apr) then
+          apri = cell%apr(i)
+       else
+          apri = 1
+       endif
 
-    ignoreself = (cell%owner == id)
+       ignoreself = (cell%owner == id)
 
-    call get_density_sums(lli,cell%xpartvec(:,i),hi,hi1,hi21,iamtypei,iamgasi,iamdusti,&
-                          apri,listneigh,nneigh,nneighi,dxcache,xyzcache,&
-                          cell%rhosums(:,i),.true.,.false.,getdv,getdB,realviscosity,&
+       call get_density_sums(lli,cell%xpartvec(:,i),hi,hi1,hi21,iamtypei,iamgasi,iamdusti,&
+                          apri,listneigh(n1:n2),n2-n1+1,nneighi,dxcache,xyzcache,&
+                          rhosum,(n1==1),.false.,getdv,getdB,realviscosity,&
                           xyzh,vxyzu,Bevol,fxyzu,fext,ignoreself,rad,apr_level)
 
-    cell%nneightry = nneigh
-    cell%nneigh(i) = nneighi
- enddo over_parts
+       cell%nneightry = nneigh
+       if (n1 == 1) then
+          cell%rhosums(:,i) = rhosum
+          cell%nneigh(i)    = nneighi
+       else
+          ! self is counted once in each block
+          cell%rhosums(:,i) = cell%rhosums(:,i) + rhosum
+          cell%nneigh(i)    = cell%nneigh(i) + nneighi - merge(1,0,ignoreself)
+       endif
+    enddo over_parts
+ enddo over_blocks
 
 end subroutine compute_cell
 !--------------------------------------------------------------------------
@@ -1983,6 +1995,7 @@ subroutine particle_targets(cell,remote_export,ptargets)
  integer :: np
 
  np = cell%npcell
+
  ! a fraction more than the kernel radius, so that rounding can never drop a neighbour
  call get_particle_targets(np,cell%xpartvec(ixi:izi,1:np),radkern*cell%h(1:np)*(1. + 1.e-6),&
                            .false.,remote_export,ptargets)

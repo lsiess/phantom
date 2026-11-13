@@ -15,7 +15,7 @@ module memory
 ! :Runtime parameters: None
 !
 ! :Dependencies: allocutils, dim, io, mpibalance, mpiderivs, mpimemory,
-!   mpitree, neighkdtree, part, ptmass_tree
+!   neighkdtree, part, ptmass_tree
 !
  implicit none
 
@@ -24,20 +24,20 @@ contains
  !
  !--Allocate all allocatable arrays: mostly part arrays, and tree structures
  !
-subroutine allocate_memory(ntot, part_only,reallocation)
+subroutine allocate_memory(ntot, part_only,reallocation,nfirsttouch)
  use io,          only:iprint,warning,nprocs,id,master
  use dim,         only:update_max_sizes,maxp,mpi
- use allocutils,  only:nbytes_allocated,bytes2human
+ use allocutils,  only:nbytes_allocated,bytes2human,set_first_touch
  use part,        only:allocate_part
  use neighkdtree, only:allocate_neigh,leaf_is_active
  use ptmass_tree, only:allocate_ptmasstree
  use mpimemory,   only:allocate_mpi_memory
  use mpibalance,  only:allocate_balance_arrays
  use mpiderivs,   only:allocate_cell_comms_arrays
- use mpitree,     only:allocate_tree_comms_arrays
 
  integer(kind=8), intent(in) :: ntot
  logical,         intent(in), optional :: part_only,reallocation
+ integer(kind=8), intent(in), optional :: nfirsttouch  ! particles to be read, on all tasks
 
  integer :: n
  logical :: part_only_,realloc_
@@ -87,14 +87,17 @@ subroutine allocate_memory(ntot, part_only,reallocation)
  endif
 
  call update_max_sizes(n,ntot)
+ ! when the number of particles is known, the entries of the particle arrays they
+ ! will use are first touched by the threads that will use them
+ if (present(nfirsttouch)) call set_first_touch(maxp,int(nfirsttouch/nprocs))
  call allocate_part
+ call set_first_touch(0,0)
  if (.not. part_only_) then
     call allocate_neigh
     call allocate_ptmasstree
     if (mpi) then
        call allocate_mpi_memory(npart=ntot) ! total number of particles on all tasks
        call allocate_balance_arrays
-       call allocate_tree_comms_arrays
     endif
     call allocate_cell_comms_arrays ! some dummy arrays need to be allocated when mpi=.false.
 
@@ -119,7 +122,6 @@ subroutine deallocate_memory(part_only,reallocation)
  use mpimemory,   only:deallocate_mpi_memory
  use mpibalance,  only:deallocate_balance_arrays
  use mpiderivs,   only:deallocate_cell_comms_arrays
- use mpitree,     only:deallocate_tree_comms_arrays
  use allocutils,  only:nbytes_allocated
 
  logical, intent(in), optional :: part_only,reallocation
@@ -146,7 +148,6 @@ subroutine deallocate_memory(part_only,reallocation)
  if (mpi) then
     call deallocate_mpi_memory
     call deallocate_balance_arrays
-    call deallocate_tree_comms_arrays
  endif
  call deallocate_cell_comms_arrays
 

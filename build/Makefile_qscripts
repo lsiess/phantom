@@ -31,7 +31,9 @@ endif
 ifeq ($(USEMPI),yes)
     ifndef NMPI
         NMPI=4
-        NOMP=8
+    endif
+    ifndef NOMP
+        NOMP=1
     endif
     ifndef QPE
         QPE=mpi
@@ -39,10 +41,12 @@ ifeq ($(USEMPI),yes)
     ifndef NPAR
         NPAR=$(NMPI)
     endif
-    ifeq ($(QSYS),slurm)
-        MPIEXEC=srun
-    else ifndef MPIEXEC
-        MPIEXEC=mpiexec -np ${NMPI}
+    ifndef MPIEXEC
+        ifeq ($(QSYS),slurm)
+            MPIEXEC=srun --cpus-per-task=$(NOMP)
+        else
+            MPIEXEC=mpiexec -np ${NMPI}
+        endif
     endif
 else
     ifndef NMPI
@@ -283,6 +287,22 @@ qscript:
 	   @echo 'export OMP_SCHEDULE="'$(OMP_SCHEDULE)'"'
 	   @echo 'export OMP_NUM_THREADS='$(NOMP)
 	   @echo 'export OMP_STACKSIZE=1024m'
+           ifeq ($(USEMPI),yes)
+	      @echo 'export OMP_PROC_BIND=close OMP_PLACES=cores'
+           endif
+        endif
+    endif
+    #-- let MPI-IO write dumps with direct I/O on Lustre: Intel MPI, and Open MPI preferring
+    #   ROMIO (romio321 in 4.x, romio341 in 5.x) to OMPIO where it has both
+    ifeq ($(USEMPI),yes)
+        ifeq ($(QSHELL),tcsh)
+	   @echo 'setenv I_MPI_EXTRA_FILESYSTEM 1'
+	   @echo 'setenv OMPI_MCA_io_romio321_priority 100'
+	   @echo 'setenv OMPI_MCA_io_romio341_priority 100'
+        else
+	   @echo 'export I_MPI_EXTRA_FILESYSTEM=1'
+	   @echo 'export OMPI_MCA_io_romio321_priority=100'
+	   @echo 'export OMPI_MCA_io_romio341_priority=100'
         endif
     endif
 	@echo
@@ -314,8 +334,13 @@ qscript:
 	@printf '%s\n' "$$QSCRIPT_CMD"
     else ifeq ($(USEMPI),yes)
 	@echo $(MPIEXEC)' '$(CMD)
-    else
+    else ifeq ($(QSHELL),tcsh)
 	@echo $(CMD)
+    else
+	@echo '# openMP alone: spread the memory over all NUMA domains of the node, which is'
+	@echo '# faster when the threads span several of them (numactl --hardware lists them)'
+	@echo 'numactl --interleave=all true > /dev/null 2>&1 && NUMACTL="numactl --interleave=all"'
+	@echo '$$NUMACTL '$(CMD)
     endif
     ifeq ($(PBSRESUBMIT),yes)
 	@echo
