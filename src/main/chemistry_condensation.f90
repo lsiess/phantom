@@ -23,31 +23,71 @@ module chemistry_condensation
 
  !      real :: wind_CO_ratio = 0.34 !Based on Ferrarotti and Gail 2002
 
-! Indices for elements and molecules:
- integer, parameter, public :: nElements = 11
+ ! Indices for elements and molecules:
+ integer, parameter, public :: nElements = 12 !Formerly 10 without Al and Ca
  real, public :: mass_per_H, eps(nElements)
-! Indices for initial elemental composition
- integer, parameter, public :: iH=1, iHe=2, iC=3, iOx=4, iN=5, iNe=6, iSi=7, iS=8, iFe=9, iTi=10, iMg=11
+ ! Indices for initial elemental composition
+ !--------------------------------------
+ !Addition of iAl and iCa indexes
+ !-------------------------------------
+ integer, parameter, public :: iH=1, iHe=2, iC=3, iOx=4, iN=5, iSi=6, iS=7, iFe=8, iTi=9, iMg=10, iAl=11, iCa=12 
+ !----------------
+ !iNe gone 
+ !Al and Ca added
+ !---------------
 
-! Indices for molecules
+ ! Indices for molecules
+ !----------------------------------------------------------------------------------
+ !The order of these indices is important to the parameter coefs(5,nMolecules) below
+ !----------------------------------------------------------------------------------
  integer, parameter, public :: iH2=1, iOH=2, iH2O=3, iCO=4, iCO2=5, iCH4=6, iC2H=7, iC2H2=8, iN2=9, iNH3=10, iCN=11, &
       iHCN=12, iSi2=13, iSi3=14, iSiO=15, iSi2C=16, iSiH4=17, iS2=18, iHS=19, iH2S=20, iSiS=21, &
       iSiH=22, iTiO=23, iTiO2=24, iC2=25, iO2=26, iCH=27,iCOH=28, iC2O=29, iCH2=30, iH2CO=31, iCH3=32, &
       iC2H4=33, iNH=34, iNO=35, iNCO=36, iHCNO=37, iC2N=38, iC2N2=39, iHNO=40, iHNO2=41, iHNO3=42, &
       iNH2=43, iNO2=44, INO3=45, iN2O=46, iN2O4=47, iMgH=48, iMgOH=49, iMgO2H2=50, iMgN=51, iMgO=52, &
       iSiC=53, iSiH2=54, iSiH3=55, iSiN=56, iSiO2=57, iFeO=58, iFeO2H2=59, iCOS=60, iCS=61, &
-      iCS2=62, iFeS=63, iH2SO4=64, iMgS=65, iSN=66, iSO=67, iSO2=68, iSO3=69, iTiS=70
-! Indices for atomic abundances
- integer, parameter, public :: iaH=70, iaHe=71, iaC=72, iaO=73, iaN=74, iaSi=75, iaS=76, iaFe=77, iaMg=78
+      iCS2=62, iFeS=63, iH2SO4=64, iMgS=65, iSN=66, iSO=67, iSO2=68, iSO3=69, iTiS=70, &
+ !----------------------------------------------------------------------
+ !Addition of Al-, Ca-, and Ti-bearing molecules to the chemical network
+ !----------------------------------------------------------------------
+      iAlH=71, iAlOH=72, iAlO2H=73, iAlN=74, iAlO=75, iAlO2=76, iAlS=77, iAl2O=78, iAl2O2=89, &
+      iAlC=80, iCaH=81, iCaOH=82, iCaO2H2=83, iCaO=84, iCaS=85, iTiN=86, iAl2=87, iCa2=88, &
+      iC2Ti=89, iC4Ti=90 
+
+ ! Indices for atomic abundances
+ integer, parameter, public :: iaH=91, iaHe=92, iaC=93, iaO=94, iaN=95, iaSi=96, iaS=97, &
+                               iaFe=98, iaTi=99, iaMg=100, iaAl=101, iaCa=102
+ !-------------------------
+ !iaAl, iaTi and iaCa added
+ !-------------------------
 
  private
- integer, parameter :: nMolecules = 69
+ integer, parameter :: nMolecules = 90 
+ !---------------------------------------------------------------------
+ !formerly nMolecules = 69 because without Al- and Ca-bearing molecules
+ !---------------------------------------------------------------------
  real, parameter :: exp_lim = 700.,log_lim = exp_lim/2.71828182846
 
- real :: Aw(nElements) = [1.0079, 4.0026, 12.011, 15.9994, 14.0067, 20.17, 28.0855, 32.06, 55.847, 47.867, 24.305]
+ real :: Aw(nElements) = [1.0080, 4.0026, 12.0110, 15.9990, 14.0070, 20.1800, &
+                          28.0850, 32.0600, 55.8450, 47.8670, 24.3050, 26.9820, 40.0780] 
+ !-------------------------------------------------------------------
+ !Molar masses of Al and Ca added
+ !Aw is the molar mass. Taken from KnowledgeDoor and citations within
+ !-------------------------------------------------------------------
 
- !Coefficients can be found in  Sharp, C. M. ; Huebner, W. F. 1990, ApJS, 72, 417
- real, parameter :: coefs(5,nMolecules) = reshape([&
+ !----------------------------------------------------------------------------------------------
+ !Coefficients below can be found in Table 2A of Sharp, C. M. ; Huebner, W. F. 1990, ApJS, 72, 417
+ !Table 2A gives coefficients for the Gibbs Energy Delta G, not the equilibrium coefficient Kp
+ !UNLESS indicated in the last column of the same table with an "A". In those cases, the 
+ !coefficients corresponds to the formula 7 given by Tsuji in A&A 23, 411 (1973)
+ !Table should be used only at temperatures between 1000 K and 2000 K
+ !-------------------------------------------------------------------------------------------
+
+ !----------------------------------------------------------------------------------------
+ !IMPORTANT TO ADD NEW MELOCULES IN THE TABLE BELOW IN THE SAME ORDER AS THAT OF
+ !INDICES FOR MOLECULES (FOR INSTANCE, MOLECULE TiO2 SHOULD BE IN PLACE 24 SINCE iTiO2=24)
+ !---------------------------------------------------------------------------------------
+ real, parameter :: coefs-Sharp(5,nMolecules) = reshape([&
       4.25321d+05, -1.07123d+05, 2.69980d+01, 5.48280d-04, -3.81498d-08, & !H2-
       4.15670d+05, -1.05260d+05, 2.54985d+01, 4.78020d-04, -2.82416d-08, & !OH-
       8.66184d+05, -2.27851d+05, 5.61473d+01, 7.62548d-04, -4.95254d-08, & !H2O
@@ -116,10 +156,147 @@ module chemistry_condensation
       2.71848d+05, -1.18293d+05, 2.65189d+01, 1.88122d-04, -5.20791d-09, & !SN
       3.21629d+05, -1.27035d+05, 2.89402d+01, 1.25603d-04, -9.85969d-09, & !SO
       4.16261d+05, -2.59787d+05, 6.30161d+01, 2.30250d-04, -1.21022d-08, & !SO2
-      4.54902d+05, -3.43672d+05, 1.00999d+02, 5.09991d-05,  0.00000d+00], shape(coefs)) !SO3
+      4.54902d+05, -3.43672d+05, 1.00999d+02, 5.09991d-05,  0.00000d+00, & !SO3
+      1.33160d+01, -6.22160d+00, 4.58290d-01, -6.49030d-02, 3.27880d-03, &!TiS
+      !AlH
+      !AlOH
+      !AlO2H
+      !AlN
+      !AlO
+      !AlO2
+      !AlS
+      !Al2O
+      !Al2O2
+      !AlC
+      !CaH
+      !CaOH
+      !CaO2H2
+      !CaO
+      !CaS
+      ], shape(coefs))!TiN
 
- integer, public, parameter :: ncols = nElements + nMolecules -2 !Not including Ne and Ti
+!---------------------------------------------------------------------------
+!The coefficients a_i for the equilibrium constant Kp is taken from Table 8
+!of "Comparison Catalogue of Gas-Equilibrium Constants, Kp" by Worters et al. 
+!(2017), University of St Andrews.
+!
+!The data set is used by the new GGChem program (see Woitke et al. A&A 614, A1, 2018). 
+!
+!The value of ln(Kp) is calculated by 
+!
+! ln(Kp) = a_0/T_gas + a_1 * ln(T_gas) + a_2 + a_3 * T_gas + a_4 * T_gas**2
+!
+!where Kp is dimensionless, or
+!
+! ln(Kp) = (1-n) * ln(p_0) + (a_0/T_gas + a_1 * ln(T_gas) + a_2 + a_3 * T_gas + a_4 * T_gas**2)
+!
+!if Kp has units of (dyn cm-2) ** (1-n), where p_0 = 1bar and n = a+b+c for a molecule AaBbCc
+!
+! The fit for Kp can be used at temperatures between 100K and 6000K
+!---------------------------------------------------------------------------
+ !----------------------------------------------------------------------------------------
+ !IMPORTANT TO ADD NEW MELOCULES IN THE TABLE BELOW IN THE SAME ORDER AS THAT OF
+ !INDICES FOR MOLECULES (FOR INSTANCE, MOLECULE TiO2 SHOULD BE IN PLACE 24 SINCE iTiO2=24)
+ !---------------------------------------------------------------------------------------
+  real, parameter :: coefs(5,nMolecules) = reshape([&
+      5.19096E+04, -1.80117E+00,  8.72246E-02,  2.56139E-04, -5.35403E-09, & !H2-
+      5.09586E+04, -1.86657E+00,  1.28296E+00,  3.27612E-04, -1.27895E-08, & !OH-
+      1.10336E+05, -4.17836E+00,  3.17447E+00,  9.40647E-04, -4.04825E-08, & !H2O
+      1.28998E+05, -1.75498E+00, -3.16258E+00,  4.13362E-04, -2.35800E-08, & !CO
+      1.92841E+05, -2.77259E+00, -1.43745E+01,  9.55278E-04, -5.32731E-08, & !CO2
+      1.97846E+05, -8.83168E+00,  5.27931E+00,  2.75677E-03, -1.39667E-07, & !CH4
+      1.40483E+05, -3.02583E+00, -7.31209E+00,  9.07164E-04, -4.24041E-08, & !C2H
+      1.96460E+05, -4.51429E+00, -1.24279E+01,  1.51777E-03, -7.45421E-08, & !C2H2
+      1.13210E+05, -1.79949E+00, -2.03355E+00,  4.31303E-04, -2.48433E-08, & !N2
+      1.39343E+05, -6.39532E+00,  4.95981E+00,  1.81530E-03, -8.85794E-08, & !NH3
+      9.02324E+04, -1.75861E+00, -1.56088E+00,  4.20862E-04, -1.59741E-08, & !CN
+      1.52208E+05, -3.20440E+00, -6.26703E+00,  9.84333E-04, -5.17826E-08, & !HCN
+      3.73518E+04, -2.45866E-01, -1.15745E+01,  1.50992E-04, -1.59304E-08, & !Si2
+      8.58689E+04, -3.61657E-01, -2.62701E+01,  3.22000E-05, -1.58542E-09, & !Si3
+      9.58807E+04, -1.26716E+00, -5.98429E+00,  2.61720E-04, -1.67404E-08, & !SiO
+      1.29802E+05, -1.23194E+00, -2.25394E+01,  2.98881E-04, -8.01112E-09, & !Si2C
+      1.53342E+05, -6.67419E+00, -8.19009E+00,  2.30166E-03, -1.23954E-07, & !SiH4
+      5.08019E+04, -1.51882E+00, -3.18934E+00,  4.61697E-04, -2.60902E-08, & !S2
+      4.22975E+04, -1.06889E+00, -3.46116E+00, -6.66000E-05,  9.32263E-09, & !HS
+      8.71685E+04, -4.03150E+00,  3.16992E+00,  1.08827E-03, -5.46714E-08, & !H2S
+      7.44656E+04, -1.05114E+00, -6.74615E+00,  1.80683E-04, -1.29591E-08, & !SiS
+      3.46400E+04, -1.54955E+00, -8.92506E-02,  3.23215E-04, -1.63317E-08, & !SiH
+      8.02469E+04, -8.46602E-01, -7.67141E+00,  1.51196E-04, -2.20473E-08, & !TiO
+      1.53310E+05, -1.71501E+00, -1.83346E+01,  4.42822E-04, -4.38785E-08, & !TiO2
+      7.13486E+04, -7.53302E-01, -8.82633E+00,  8.41000E-05, -8.34907E-10, & !C2
+      5.95336E+04, -1.61517E+00, -3.60977E+00,  4.06274E-04, -1.86946E-08, & !O2
+      4.03796E+04, -2.06523E+00,  2.73563E+00,  6.03534E-04, -2.96038E-08, & !CH
+      1.36277E+05, -3.47855E+00, -2.64678E+00,  9.51657E-04, -5.11327E-08, & !COH
+      1.67387E+05, -2.23683E+00, -1.51504E+01,  8.99197E-04, -5.29613E-08, & !C2O
+      9.11697E+04, -3.73503E+00,  1.06433E+00,  9.79096E-04, -4.94662E-08, & !CH2
+      1.81076E+05, -5.95395E+00, -1.27437E+00,  1.86009E-03, -9.86705E-08, & !H2CO
+      1.45821E+05, -5.79871E+00,  6.20786E-01,  1.63241E-03, -8.09944E-08, & !CH3
+      2.68664E+05, -9.52900E+00, -5.66852E+00,  3.19357E-03, -1.66353E-07, & !C2H4
+      3.72483E+04, -1.85316E+00,  1.80469E+00,  3.61042E-04, -1.42478E-08, & !NH
+      7.55243E+04, -1.66485E+00, -1.61409E+00,  4.13077E-04, -2.37492E-08, & !NO
+      1.53330E+05, -2.32714E+00, -1.40991E+01,  8.24890E-04, -4.94008E-08, & !NCO
+      2.10425E+05, -4.30285E+00, -1.42930E+01,  1.33044E-03, -7.24817E-08, & !HCNO
+      1.62054E+05, -1.35960E+00, -2.01803E+01,  5.27257E-04, -3.56032E-08, & !C2N
+      2.48283E+05, -2.84562E+00, -2.77626E+01,  1.12826E-03, -6.72781E-08, & !C2N2
+      1.00185E+05, -3.46381E+00, -2.62213E+00,  9.45251E-04, -5.14088E-08, & !HNO
+      1.51533E+05, -4.06412E+00, -1.49544E+01,  1.28552E-03, -6.98861E-08, & !HNO2 (trans)
+      1.88003E+05, -5.14751E+00, -2.56506E+01,  1.85951E-03, -1.02730E-07, & !HNO3
+      8.52744E+04, -4.06091E+00,  4.01425E+00,  9.46257E-04, -3.84480E-08, & !NH2
+      1.12149E+05, -2.82494E+00, -1.02040E+01,  8.36977E-04, -4.92832E-08, & !NO2
+      1.37605E+05, -3.09452E+00, -2.67985E+01,  1.16486E-03, -6.98024E-08, & !NO3
+      1.33220E+05, -2.55801E+00, -1.34773E+01,  8.95715E-04, -5.25572E-08, & !N2O
+      2.31628E+05, -4.45135E+00, -4.99813E+01,  1.97018E-03, -1.15438E-07, & !N2O4
+      2.32206E+04, -1.42911E+00,  8.11874E-01,  3.89732E-04, -2.05585E-08, & !MgH
+      9.31677E+04, -2.13709E+00, -1.00212E+01,  6.29804E-04, -3.46633E-08, & !MgOH
+      1.98022E+05, -3.71156E+00, -2.82449E+01,  1.20500E-03, -6.33156E-08, & !MgO2H2
+      3.95834E+04, -9.35351E-01, -3.21109E+00,  2.44788E-04, -1.73353E-08, & !MgN
+      4.10915E+04,  4.80940E-01, -1.57611E+01,  2.75858E-04, -3.48644E-08, & !MgO
+      5.38781E+04,  4.16290E-01, -1.62625E+01, -2.85599E-04,  1.44412E-08, & !SiC
+      7.50441E+04, -1.11618E+00, -1.93312E+01,  9.98000E-05, -7.15829E-10, & !SiH2
+      1.16152E+05, -2.16682E+00, -2.41859E+01,  3.65595E-04, -1.18831E-08, & !SiH3
+      6.57987E+04, -1.53565E+00, -2.64502E+00,  5.01934E-04, -2.62641E-08, & !SiN
+      1.50469E+05, -1.70934E+00, -2.06909E+01,  5.98301E-04, -3.73582E-08, & !SiO2
+      4.93909E+04, -1.54389E+00, -2.08333E+00,  3.92414E-04, -2.89557E-08, & !FeO
+      2.01370E+05, -3.53207E+00, -3.17623E+01,  1.44539E-03, -9.15799E-08, & !FeO2H2
+      1.65625E+05, -2.33683E+00, -1.59211E+01,  8.52197E-04, -4.93878E-08, & !COS
+      8.54423E+04, -1.49342E+00, -4.26643E+00,  3.66935E-04, -2.34112E-08, & !CS
+      1.38365E+05, -1.96405E+00, -1.84236E+01,  7.55600E-04, -4.64468E-08, & !CS2
+      3.83485E+04, -1.48336E+00, -2.02950E+00,  3.73194E-04, -2.90273E-08, & !FeS
+      2.92715E+05, -6.31402E+00, -4.94951E+01,  2.47825E-03, -1.34895E-07, & !H2SO4
+      3.41340E+04,  1.12247E+00, -1.92306E+01, -9.70000E-05, -1.19684E-08, & !MgS
+      5.81195E+04, -1.39806E+00, -2.88207E+00,  3.53347E-04, -2.28622E-08, & !SN
+      6.22989E+04, -1.59126E+00, -2.62423E+00,  4.40388E-04, -2.29940E-08, & !SO
+      1.28382E+05, -2.58129E+00, -1.26320E+01,  7.94980E-04, -4.60823E-08, & !SO2
+      1.70155E+05, -3.28748E+00, -2.67274E+01,  1.19646E-03, -7.14017E-08, & !SO3
+      5.63551E+04,  1.82507E+00, -2.47828E+01, -1.48505E-03,  8.20702E-08, & !TiS
+      3.42887E+04, -1.51855E+00, -1.14794E+00,  3.83819E-04, -1.87632E-08, & !AlH
+      1.16643E+05, -3.49644E+00, -4.46506E+00,  1.06912E-03, -5.30554E-08, & !AlOH
+      1.80386E+05, -3.42803E+00, -1.98423E+01,  1.08737E-03, -5.85448E-08, & !AlO2H
+      3.33805E+04, -9.12019E-01, -4.84637E+00,  1.97911E-04, -1.11046E-08, & !AlN
+      6.11077E+04, -1.79020E+00, -1.35971E+00,  7.68615E-04, -3.93150E-08, & !AlO
+      1.09779E+05, -1.02797E+00, -2.18620E+01,  3.81694E-04, -2.17081E-08, & !AlO2
+      4.38521E+04, -1.73346E+00, -1.15384E+00,  8.41827E-04, -4.98671E-08, & !AlS
+      1.26583E+05, -8.80611E-01, -2.31266E+01,  3.35552E-04, -2.01455E-08, & !Al2O
+      1.86515E+05, -1.16079E+00, -3.73783E+01,  4.58680E-04, -2.85415E-08, & !Al2O2
+      4.27037E+04, -9.01708E-01, -6.11243E+00,  1.89365E-04, -1.16993E-08, & !AlC
+      2.13972E+04,  2.36656E+00, -2.49933E+01, -1.53148E-03,  8.21590E-08, & !CaH
+      1.00318E+05, -2.24867E+00, -8.95653E+00,  7.99317E-04, -5.91430E-08, & !CaOH
+      2.06312E+05, -3.67249E+00, -2.69984E+01,  1.34817E-03, -8.94131E-08, & !CaO2H2
+      4.53278E+04, -2.48368E+00,  4.66213E+00,  1.24840E-03, -6.67350E-08, & !CaO
+      3.89498E+04, -3.02245E+00,  8.78829E+00,  1.75934E-03, -1.12821E-07, & !CaS
+      5.89712E+04,  4.33175E+00, -4.46443E+01, -2.34649E-03,  1.23102E-07, & !TiN
+      2.08161E+04,  1.98352E-01, -1.28542E+01, -1.49552E-04,  1.17923E-08, & !Al2
+      8.98860E+02, -2.17354E+00,  8.56959E+00,  2.38871E-04, -5.44705E-08, & !Ca2
+      1.42116E+05,  2.43265E+00, -4.72869E+01, -1.63154E-03,  8.80077E-08, & !C2Ti
+      2.92656E+05,  2.79141E+00, -8.51696E+01, -1.43539E-03,  7.41507E-08], shape(coefs)) !C4Ti
+
+
+ integer, public, parameter :: ncols = nElements + nMolecules
+ !---------------------------------------------- 
+ !Originally Not including Ne and Ti
+ !Now includes Ti, Al and Ca, but Ne is omitted 
  !The vector columns include molecules and atoms
+ !----------------------------------------------
 
 contains
 
@@ -127,28 +304,35 @@ subroutine set_abundances_condensation(wind_CO_ratio)
  use physcon, only:atomic_mass_unit
  real, intent(in) :: wind_CO_ratio
  logical :: ferrarotti = .true. !A&A 2002, 382, 256
- ! These abundances are with respect to H, so take Table 2.1 of Gail and Sedlmayr (Book) and divide by the listed H abundance.
+ ! These AGB stars abundances are with respect to H, 
+ ! so take Table 2.1 of Gail and Sedlmayr (Book) and 
+ ! divide by the listed H abundance.
  if (ferrarotti) then
     eps(iH)  = 1.0
     eps(iHe) = 1.04d-1
     eps(iOx) = 6.87d-4
     eps(iN)  = 2.52d-4
     eps(iMg) = 3.85d-5
-    eps(iNe) = 1.17d-4
+    !eps(iNe) = 1.17d-4 GONE
     eps(iSi) = 3.58d-5
     eps(iS)  = 1.85d-5
     eps(iFe) = 3.24d-5
     eps(iTi) = 8.6d-8
+    eps(iAl) = 3.032d-6 !Not from Ferrarotti, but from Gail & Sedlmayr book
+    eps(iCa) = 2.194d-6 !Not from Ferrarotti, but from Gail & Sedlmayr book
  else
+    eps(iH)  = 1.0
     eps(iHe) = 1.009d-1 !1.04d-1
     eps(iOx) = 7.211d-4 !6.64 6.87d-4
     eps(iN)  = 2.106d-4 !2.52d-4
     eps(iMg) = 3.859d-5 !3.85d-5
-    eps(iNe) = 1.18d-4  !1.17d-4
+    !eps(iNe) = 1.18d-4  !1.17d-4 GONE
     eps(iSi) = 3.561d-5 !3.58d-5
     eps(iS)  = 1.863d-5 !1.85d-5
     eps(iFe) = 3.241d-5 !3.24d-5
     eps(iTi) = 8.621d-8 !8.6d-8
+    eps(iAl) = 3.032d-6
+    eps(iCa) = 2.194d-6
  endif
  eps(iC)  = eps(iOx) * wind_CO_ratio
  mass_per_H = atomic_mass_unit*dot_product(Aw,eps)
@@ -210,14 +394,13 @@ end subroutine read_headeropts_dust_condensation
 subroutine network(T,rho_cgs,mu,gamma,wind_CO_ratio,pH_tot,fol,fpy,fqu,fir,fsc,fcarb,abundance,pressure_cgs)
 ! all pressures are in bar
  use physcon, only:patm,kboltz
- real, intent(in)     :: wind_CO_ratio, fol, fpy, fqu, fir, fsc, fcarb
- real, intent(out)    :: mu,gamma,pH_tot
- real, intent(inout)  :: T, rho_cgs
- real, intent(out)    :: abundance(ncols)
+ real, intent(in)               :: wind_CO_ratio, fol, fpy, fqu, fir, fsc, fcarb
+ real, intent(out)              :: mu,gamma, pH_tot, abundance(ncols)
+ real, intent(inout)            :: T, rho_cgs
  real, intent(in), optional :: pressure_cgs
- integer :: j
+ integer :: j, fac
  real, dimension(nMolecules)    :: pmol
- real                           :: pelm(nElements),fac
+ real, dimension(nElements)     :: pelm
 
  pelm = 0.
  pmol = 0.
@@ -234,7 +417,7 @@ subroutine network(T,rho_cgs,mu,gamma,wind_CO_ratio,pH_tot,fol,fpy,fqu,fir,fsc,f
 
  !convert the pressure of the molecules in number density (cgs, hence the factor patm in fac)
  fac = patm/(kboltz*T)
- do j=1,ncols-9
+ do j=1,ncols-nElements !the loop is only for molecules, not elements
     abundance(j) = max(1.d-50,pmol(j)*fac)
  enddo
  abundance(iaH)  = max(1.d-50,pelm(iH) *fac)
@@ -245,7 +428,10 @@ subroutine network(T,rho_cgs,mu,gamma,wind_CO_ratio,pH_tot,fol,fpy,fqu,fir,fsc,f
  abundance(iaSi) = max(1.d-50,pelm(iSi)*fac)
  abundance(iaS)  = max(1.d-50,pelm(iS) *fac)
  abundance(iaFe) = max(1.d-50,pelm(iFe)*fac)
- abundance(iaMg) = max(1.d-50,pelm(iMg)*fac)
+ abundance(iaTi) = max(1.d-50,pelm(iTi)*fac) !PENDING TO CALCULATE pelm(iTi) in chemical_equilibrium routine
+ abundance(iaMg) = max(1.d-50,pelm(iMg)*fac) 
+ abundance(iaAl) = max(1.d-50,pelm(iAl)*fac) !PENDING TO CALCULATE pelm(iAl) in chemical equilibrium routine
+ abundance(iaCa) = max(1.d-50,pelm(iCa)*fac) !PENDING TO CALCULATE pelm(iCa) in chemical equilibrium routine
 
  !abundance(iH2O) = abundance(iH2O) - (3.*fol + 2.*fpy + fqu) * eps(iSi)*fac *pH_tot
  !abundance(iSiO) = abundance(iSiO) - (fol + fpy + fqu) * eps(iSi)*fac * pH_tot
@@ -266,11 +452,10 @@ end subroutine network
 subroutine chemical_equilibrium(rho_cgs,T,pmol,pelm,mu,gamma,&
       wind_CO_ratio, pH_tot, fol, fpy, fqu, fir, fsc, fcarb)
 ! all pressures are in bar
- real, intent(inout) :: T, mu, gamma, pmol(nMolecules), pelm(nElements), rho_cgs
- real, intent(in)    :: wind_CO_ratio, pH_tot, fol, fpy, fqu, fir, fsc, fcarb
- real, dimension(nMolecules)    :: pmol_old
- real    :: Kd(nMolecules+1), err(nElements)
- real    :: pelm_old(nElements)
+ real, intent(inout)            :: T, mu, gamma, pmol(nMolecules), pelm(nElements), rho_cgs
+ real, intent(in)               :: wind_CO_ratio, pH_tot, fol, fpy, fqu, fir, fsc, fcarb
+ real, dimension(nMolecules)    :: pmol_old, Kd
+ real, dimension(nElements)     :: pelm_old, err
  integer :: i, nit, ipass
 
  pelm_old = 0.
@@ -286,9 +471,9 @@ subroutine chemical_equilibrium(rho_cgs,T,pmol,pelm,mu,gamma,&
  do i=1,nMolecules
     Kd(i) = calc_Kd(coefs(:,i), T)
  enddo
- Kd(iTiS)  = calc_Kd_TiS(T)
- Kd(iSiH2) = calc_Kd_SiH2(T)
- Kd(iSiH3) = calc_Kd_SiH3(T)
+ !Kd(iTiS)  = calc_Kd_TiS(T)  !ONLY NEEDED IF USING Sharp's Table for Kp's coefficients
+ !Kd(iSiH2) = calc_Kd_SiH2(T) !ONLY NEEDED IF USING Sharp's Table for Kp's coefficients
+ !Kd(iSiH3) = calc_Kd_SiH3(T) !ONLY NEEDED IF USING Sharp's Table for Kp's coefficients
 
  err   = 1.
  nit   = 0
@@ -526,7 +711,26 @@ pure real function solve_q(a, b, c)
  solve_q = max(solve_q, 1.d-300)
 end function solve_q
 
+!----------------------------------
+!Fit to calculate Kp based on equation 12 by Worters et al. 2017 
+!"Comparison Catalogue of Gas-Equilibrium Constants, Kp" 
+!(valid for temperatures from 100 K to 6000 K)
+!----------------------------------
 pure real function calc_Kd(coefs, T)
+ real, intent(in) :: coefs(5), T
+ real :: Kp_sk, d, T_cap !Kp_sk is Stock & Kitzmann fit for Kp
+ T_cap = max(T,100.) ! limit T to avoid numerical issues
+ Kp_sk = coefs(1) / T_cap + coefs(2) * log(T_cap) &
+       + coefs(3) + coefs(4) * T_cap + coefs(5) * T_gas**2
+ d = max(-exp_lim,min(Kp_sk,exp_lim)) !To ensure Kp_sk between -exp_lim and +exp_lim
+ calc_Kd = exp(d)
+end function calc_Kd
+
+!-----------------------------------------------
+!Funciton to calculate Kp if using Sharp's table
+!(only if temperature between 1000 K and 2000 K)
+!-----------------------------------------------
+pure real function calc_Kd_Sharp(coefs, T)
  real, intent(in) :: coefs(5), T
  real, parameter :: R = 1.987165 !in cal/mol/K
  real :: G, d, T_cap
@@ -535,7 +739,7 @@ pure real function calc_Kd(coefs, T)
  G = coefs(1)/T_cap + coefs(2) + (coefs(3)+(coefs(4)+coefs(5)*T_cap)*T_cap)*T_cap
  d = max(-exp_lim,min(-G/(R*T_cap),exp_lim)) !222
  calc_Kd = exp(d)
-end function calc_Kd
+end function calc_Kd_Sharp
 
 pure real function calc_Kd_TiS(T)
  use physcon, only:patm
