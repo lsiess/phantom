@@ -23,6 +23,8 @@ module chemistry_condensation
 
  !      real :: wind_CO_ratio = 0.34 !Based on Ferrarotti and Gail 2002
 
+ integer, parameter, private :: nMolecules = 70
+
 ! Indices for elements and molecules:
  integer, parameter, public :: nElements = 11
  real, public :: mass_per_H, eps(nElements)
@@ -38,16 +40,18 @@ module chemistry_condensation
       iSiC=53, iSiH2=54, iSiH3=55, iSiN=56, iSiO2=57, iFeO=58, iFeO2H2=59, iCOS=60, iCS=61, &
       iCS2=62, iFeS=63, iH2SO4=64, iMgS=65, iSN=66, iSO=67, iSO2=68, iSO3=69, iTiS=70
 ! Indices for atomic abundances
- integer, parameter, public :: iaH=70, iaHe=71, iaC=72, iaO=73, iaN=74, iaSi=75, iaS=76, iaFe=77, iaMg=78, iaTi=79
+ integer, parameter, public :: iaH=nMolecules+1, iaHe=nMolecules+2, iaC=nMolecules+3, iaO=nMolecules+4, iaN=nMolecules+5,&
+      iaSi=nMolecules+6, iaS=nMolecules+7, iaFe=nMolecules+8, iaMg=nMolecules+9, iaTi=nMolecules+10
 
  private
- integer, parameter :: nMolecules = 69
+ !integer, parameter :: nMolecules = 70
+ integer, parameter :: nKd_sharp = 69
  real, parameter :: exp_lim = 700.,log_lim = exp_lim/2.71828182846
 
  real :: Aw(nElements) = [1.0079, 4.0026, 12.011, 15.9994, 14.0067, 20.17, 28.0855, 32.06, 55.847, 47.867, 24.305]
 
  !Coefficients can be found in  Sharp, C. M. ; Huebner, W. F. 1990, ApJS, 72, 417
- real, parameter :: coefs(5,nMolecules) = reshape([&
+ real, parameter :: coefs(5,nKd_sharp) = reshape([&
       4.25321d+05, -1.07123d+05, 2.69980d+01, 5.48280d-04, -3.81498d-08, & !H2-
       4.15670d+05, -1.05260d+05, 2.54985d+01, 4.78020d-04, -2.82416d-08, & !OH-
       8.66184d+05, -2.27851d+05, 5.61473d+01, 7.62548d-04, -4.95254d-08, & !H2O
@@ -234,7 +238,7 @@ subroutine network(T,rho_cgs,mu,gamma,wind_CO_ratio,pH_tot,fol,fpy,fqu,fir,fsc,f
 
  !convert the pressure of the molecules in number density (cgs, hence the factor patm in fac)
  fac = patm/(kboltz*T)
- do j=1,ncols-9
+ do j=1,nmolecules
     abundance(j) = max(1.d-50,pmol(j)*fac)
  enddo
  abundance(iaH)  = max(1.d-50,pelm(iH) *fac)
@@ -270,7 +274,7 @@ subroutine chemical_equilibrium(rho_cgs,T,pmol,pelm,mu,gamma,&
  real, intent(inout) :: T, mu, gamma, pmol(nMolecules), pelm(nElements), rho_cgs
  real, intent(in)    :: wind_CO_ratio, pH_tot, fol, fpy, fqu, fir, fsc, fcarb
  real, dimension(nMolecules)    :: pmol_old
- real    :: Kd(nMolecules+1), err(nElements)
+ real    :: Kd(nKd_sharp+1), err(nElements)
  real    :: pelm_old(nElements)
  integer :: i, nit, ipass
 
@@ -284,7 +288,7 @@ subroutine chemical_equilibrium(rho_cgs,T,pmol,pelm,mu,gamma,&
  endif
 
 ! Dissociation constants
- do i=1,nMolecules
+ do i=1,nKd_sharp
     Kd(i) = calc_Kd(coefs(:,i), T)
  enddo
  Kd(iTiS)  = calc_Kd_TiS(T)
@@ -367,7 +371,7 @@ subroutine chemical_equilibrium(rho_cgs,T,pmol,pelm,mu,gamma,&
                +pelm(iN)**2*Kd(iN2O)+pelm(iH)*pelm(iMg)*Kd(iMgOH)+pelm(iMg)*Kd(iMgO)+pelm(iFe)*Kd(iFeO) &
                +pelm(iC)*pelm(iS)*Kd(iCOS)+pelm(iS)*Kd(iSO)+pelm(iTi)*Kd(iTiO), &
                (eps(iSi)*(4.*fol+3.*fpy+2.*fqu)-eps(iOx))*pH_tot, &
-               eps(iOx)*pH_tot)        
+               eps(iOx)*pH_tot)
 
           ipass = ipass + 1
 
@@ -381,7 +385,7 @@ subroutine chemical_equilibrium(rho_cgs,T,pmol,pelm,mu,gamma,&
                   +pelm(iOx)*pelm(iH)*pelm(iN)*Kd(iHCNO)+pelm(iSi)*Kd(iSiC)+pelm(iSi)**2*Kd(iSi2C) &
                   +pelm(iOx)*pelm(iS)*Kd(iCOS)+pelm(iS)*Kd(iCS)+pelm(iS)**2*Kd(iCS2), &
                   (fcarb-1.0)*eps(iC)*pH_tot)
-       
+
 
           pelm(iOx) = newton_method(4.*(pelm(iN)**2*Kd(iN2O4)+pelm(iH)**2*pelm(iS)*Kd(iH2SO4)), &
                3.*(pelm(iH)*pelm(iN)*Kd(iHNO3)+pelm(iN)*Kd(iNO3)+pelm(iS)*Kd(iSO3)), &
@@ -397,7 +401,7 @@ subroutine chemical_equilibrium(rho_cgs,T,pmol,pelm,mu,gamma,&
                (eps(iSi)*(4.*fol+3.*fpy+2.*fqu)-eps(iOx))*pH_tot, &
                pelm(iOx))
 
-       endif  !ipass        
+       endif  !ipass
     endif !wind_CO
 
     pelm(iN) = solve_q(2.*(Kd(iN2)+pelm(iC)**2*Kd(iC2N2) &
@@ -755,7 +759,7 @@ pure real function newton_method(a, b, c, d, e, zz)
       enddo
 
       newton_method = x
-end function newton_method     
+end function newton_method
 
 !Fortran subroutine that implements Newton's method for
 !root-finding with the given polynomial function
