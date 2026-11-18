@@ -89,8 +89,6 @@ module analysis
       'nMgN      ', &
       'nMgO      ', &
       'nSiC      ', &
-      'nSiH2     ', &
-      'nSiH3     ', &
       'nSiN      ', &
       'nSiO2     ', &
       'nFeO      ', &
@@ -105,6 +103,9 @@ module analysis
       'nSO       ', &
       'nSO2      ', &
       'nSO3      ', &
+      'nSiH2     ', &
+      'nSiH3     ', &
+      'nTiS      ', &
       'nH        ', &
       'nHe       ', &
       'nC        ', &
@@ -174,7 +175,7 @@ subroutine CO_dependence
  wind_CO_ratio = CO_min
  write(*,'(/,"Input parameters : pressure =",es10.3,", C/O = ",f8.5,", rho = ",es10.4,", T = ",f7.1)') &
          pressure_cgs,wind_CO_ratio,rho_cgs,T
- write(*,*)'********************************************************************************'
+ write(*,'("Varying CO between",f5.3," - ",f5.3," with ",i4," steps")') CO_min,CO_max,nCO
 
  do i = 1,nCO
     wind_CO_ratio = CO_min+(i-1)*(CO_max-CO_min)/(nCO-1)
@@ -246,9 +247,12 @@ subroutine temperature_dependence
  !We condsider a wind with a density distribution rho(T) = rho_0 * (T/Tmax) **2
  !where rho_0 and Tmax are the density and temperature at the base of the wind
  nTstep = 1400  ! number of temperature grid point between Tmin and Tmax
- Tmin  = 600.
+ Tmin  = 500.
  Tmax  = 2000.
  rho_0 = 1.0d-10
+ !wind_CO_ratio = 0.3318 !0.3318 for Figure 10.11 of Gail+SedlMayr Book
+ wind_CO_ratio = 0.33 !0.3318 for Figure 10.11 of Gail+SedlMayr Book
+ !wind_CO_ratio = 0.9 !0.3318 for Figure 10.11 of Gail+SedlMayr Book
  pressure_cgs = 1.d-4 !7 !1.d-4 = 10d-10 barye   !optional variable for comparison with Gail & Sedlmayr calculations
 
 ! Set initial parameters
@@ -256,9 +260,6 @@ subroutine temperature_dependence
  time_final = 1.d5 !A larger value creates wiggles in fir and kappa
  dt = 1.d5
  ! dt = 5d4
- !wind_CO_ratio = 0.3318 !0.3318 for Figure 10.11 of Gail+SedlMayr Book
- wind_CO_ratio = 0.33 !0.3318 for Figure 10.11 of Gail+SedlMayr Book
- !wind_CO_ratio = 0.9 !0.3318 for Figure 10.11 of Gail+SedlMayr Book
 
  call set_abundances
 
@@ -269,8 +270,7 @@ subroutine temperature_dependence
          r_sc(size_array), r_carb(size_array))
 
  write(*,'(/,"Input parameters : pressure =",es14.7,", C/O = ",f8.5,", rho = ",es14.7)') pressure_cgs,wind_CO_ratio,rho_0
- write(*,*)'********************************************************************************'
- print *, size_array
+ write(*,'("Varying temperature between",es9.2," - ",es9.2," with ",i4," steps, ntime=",i3)') Tmin,Tmax,nTstep,size_array
 
  fol = 0.    !degree of condensation of olivine
  fqu = 0.    !degree of condensation of quartz

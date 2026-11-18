@@ -43,14 +43,19 @@ subroutine set_fixedS_softened_core(eos_type,mcore,rcore,rho,r,pres,m,Xcore,Ycor
  integer, intent(out)   :: ierr
  real, allocatable    :: r_alloc(:),rho_alloc(:),pres_alloc(:)
  real                 :: mc,msoft,rc
- integer              :: icore,iverbose
+ integer              :: icore,iverbose,isoft
 
  ierr = 0
  rc = rcore*solarr  ! convert to cm
  mc = mcore*solarm  ! convert to g
  call interpolator(r,rc,icore)  ! find index in r closest to rc
+ call interpolator(m,mc,isoft)  ! find index in m closest to mc
  msoft = m(icore) - mc
- if (msoft<0.) call fatal('setup','mcore cannot exceed m(r=h)')
+ if (msoft<0.) then
+    write(*,'("mcore=",f11.7," Msun, rsoft=",f10.7," Rsun, m(rsoft)=",f11.7," Rsun")') mcore,rcore,m(icore)/solarm
+    write(*,'("m(isoft)=",f11.7," Msun, r(isoft)=",f11.7," Rsun")') m(isoft)/solarm,r(isoft)/solarr
+    call fatal('setup','mcore cannot exceed m(r=h)')
+ endif
 
  if (do_radiation) then
     ientropy = 2

@@ -46,7 +46,7 @@ subroutine read_starevol(filepath,rho,r,pres,m,ene,temp,X_in,Z_in,Xfrac,Yfrac,mu
  character(len=120)                      :: fullfilepath
  character(len=24), allocatable          :: header(:)
  logical                                 :: iexist,usecgs,isstarevolfile,got_column
- real, allocatable :: dat(:,:)
+ real, allocatable :: dat(:,:),s(:),v(:),cs(:),vconv(:),gamma1(:),Lr(:),nabla(:)
 
  usecgs = .false.
  if (present(cgsunits)) usecgs = cgsunits
@@ -87,7 +87,7 @@ subroutine read_starevol(filepath,rho,r,pres,m,ene,temp,X_in,Z_in,Xfrac,Yfrac,mu
 
  allocate(m(lines))
  m = -1.
- allocate(r,pres,rho,ene,temp,Xfrac,Yfrac,mu,source=m)
+ allocate(r,pres,rho,ene,temp,Xfrac,Yfrac,mu,s,v,cs,vconv,gamma1,lr,nabla,source=m)
 
  ! read file forwards, from centre to surface
  do i = 1,lines
@@ -102,33 +102,40 @@ subroutine read_starevol(filepath,rho,r,pres,m,ene,temp,X_in,Z_in,Xfrac,Yfrac,mu
  Xfrac = X_in
  Yfrac = 1. - X_in - Z_in
  mu = 0.
- do i = 2,ncols
-    if (header(i)(1:1) == '#' .and. .not. trim(lcase(header(i)))=='#shell') then
-       print '("Detected wrong header entry : ",a," in file ",a)',trim(lcase(header(i))),trim(fullfilepath)
-       ierr = 2
-       return
-    endif
+ do i = 1,ncols
     got_column = .true.
     select case(trim(lcase(header(i))))
-    case('Mr')
-       m = dat(1:lines,i)
-    case('rho')
-       rho = dat(1:lines,i)
-    case('e')
-       ene = dat(1:lines,i)
     case('r')
        r = dat(1:lines,i)
        if (maxval(r) < 1e-5*solarr) r = r * solarr
-    case('P')
+    case('mr')
+       m = dat(1:lines,i)
+    case('rho')
+       rho = dat(1:lines,i)
+    case('u')
+       ene = dat(1:lines,i)
+    case('p')
        pres = dat(1:lines,i)
-    case('T')
+    case('t')
        temp = dat(1:lines,i)
-    case('H1')
+    case('h1')
        Xfrac = dat(1:lines,i)
-    case('HE4')
+    case('he4')
        Yfrac = dat(1:lines,i)
     case('mu')
        mu = dat(1:lines,i)
+    case('s')
+       s = dat(1:lines,i)
+    case('cs')
+       cs = dat(1:lines,i)
+    case('lr')
+       lr = dat(1:lines,i)
+    case('gamma1')
+       gamma1 = dat(1:lines,i)
+    case('nabla')
+       nabla = dat(1:lines,i)
+    case('v')
+       v = dat(1:lines,i)
     case default
        got_column = .false.
     end select
@@ -186,38 +193,35 @@ subroutine write_starevol(outputpath,m,pres,temp,r,rho,ene,Xfrac,Yfrac,csound,mu
  character(len=*), parameter     :: fmtstring = "(5(es24.16e3,2x),es24.16e3)"
 
  ncols = 6
- headers(1:ncols) = (/'         #M/Msun','       radius_cm','         density', &
-                      ' internal_energy','     temperature','        pressure'/)
+ headers(1:ncols) = (/'              Mr','               r','             rho', &
+                      '               u','               T','               P'/)
 
  ! Add optional columns
  noptionalcols = 0
  allocate(optionalcols(size(r),10))
  if (present(Xfrac)) then
     noptionalcols = noptionalcols + 1
-    headers(noptionalcols+ncols) = '        hydrogen'
+    headers(noptionalcols+ncols) = '              H1'
     optionalcols(:,noptionalcols) = Xfrac
  endif
  if (present(Yfrac)) then
     noptionalcols = noptionalcols + 1
-    headers(noptionalcols+ncols) = '          helium'
+    headers(noptionalcols+ncols) = '             He4'
     optionalcols(:,noptionalcols) = Yfrac
  endif
  if (present(mu)) then
     noptionalcols = noptionalcols + 1
-    headers(noptionalcols+ncols) = 'molecular_weight'
+    headers(noptionalcols+ncols) = '              mu'
     optionalcols(:,noptionalcols) = mu
  endif
  if (present(csound)) then
     noptionalcols = noptionalcols + 1
-    headers(noptionalcols+ncols) = '          csound'
+    headers(noptionalcols+ncols) = '              cs'
     optionalcols(:,noptionalcols) = csound
  endif
 
  open(newunit=iu,file=outputpath,status='replace')
  write(iu,'(a)') '# STAREVOL stellar profile written by Phantom'
- write(iu,'(a)') '# Header line'
- write(iu,'(a)') '# Header line'
- write(iu,'(a)') '# Header line'
  do i = 1,noptionalcols+ncols-1
     write(iu,'(a24,2x)',advance="no") trim(adjustl(headers(i)))
  enddo
@@ -225,9 +229,9 @@ subroutine write_starevol(outputpath,m,pres,temp,r,rho,ene,Xfrac,Yfrac,csound,mu
 
  do i=1,size(r)
     if (noptionalcols <= 0) then
-       write(iu,fmtstring) m(i)/solarm,r(i),rho(i),ene(i),temp(i),pres(i)
+       write(iu,fmtstring) m(i),r(i),rho(i),ene(i),temp(i),pres(i)
     else
-       write(iu,fmtstring,advance="no") m(i)/solarm,r(i),rho(i),ene(i),temp(i),pres(i)
+       write(iu,fmtstring,advance="no") m(i),r(i),rho(i),ene(i),temp(i),pres(i)
        do j=1,noptionalcols
           if (j==noptionalcols) then
              write(iu,'(2x,es24.16e3)') optionalcols(i,j)
