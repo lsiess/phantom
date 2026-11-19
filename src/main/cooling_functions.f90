@@ -109,7 +109,7 @@ subroutine AGB_cooling(T, Tdust, rho_cgs, mu, gamma, K3, Q_cgs, dlnQ_cgs, divv, 
  use dim,              only:nabn_AGB
  use cooling_AGBwinds, only:energ_cooling_AGB
  use dust_formation,   only:mass_per_H, eps, chemical_equilibrium_light, &
-                           icoolTi, Tmol
+                           icoolTi, icoolH, icoolH2, icoolHe, Tmol
  use units,            only:unit_density
  real, intent(in)               :: mu, gamma, K3
  real, intent(in)               :: rho_cgs, T, Tdust
@@ -121,6 +121,7 @@ subroutine AGB_cooling(T, Tdust, rho_cgs, mu, gamma, K3, Q_cgs, dlnQ_cgs, divv, 
  real :: dudti, ndens_H, rhoi, epsC
  real :: Tp, Tm, delta, dQdT, Qp, Qm
  real :: mui, gammai, T_chem, T_cool
+ real :: Q_H2_recomb, Q_H_ion, Q_He_ion
 
  mui    = mu
  gammai = gamma
@@ -167,7 +168,19 @@ subroutine AGB_cooling(T, Tdust, rho_cgs, mu, gamma, K3, Q_cgs, dlnQ_cgs, divv, 
     dlnQ_cgs = dQdT * T_cool / dudti
  end if
 
- Q_cgs = dudti
+! Include H2 recombination heating
+!  Q_H2_recomb = heat_H2_recombination(T_cool,rho_cgs,mu,abundi(icoolH)*ndens_H,abundi(icoolH2)*ndens_H,Tdust)
+
+! Include H ionisation
+ Q_H_ion = cool_H_ionisation(T_cool,rho_cgs,mu,abundi(icoolH)*ndens_H,abundi(icoolHe)*ndens_H)
+
+! Include He ionisation
+ Q_He_ion = cool_He_ionisation(T_cool,rho_cgs,mu,abundi(icoolH)*ndens_H,abundi(icoolHe)*ndens_H)
+
+ Q_cgs = dudti + &
+         ! Q_H2_recomb / rho_cgs - &
+         Q_H_ion / rho_cgs - &
+         Q_He_ion / rho_cgs
 
 ! Return the updated abundances
  if (present(abundi_in)) abundi_in = abundi * ndens_H
