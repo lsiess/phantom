@@ -152,6 +152,7 @@ subroutine equationofstate(eos_type,ponrhoi,spsoundi,rhoi,xi,yi,zi,tempi,eni,gam
  real    :: cgsrhoi,cgseni,cgspresi,presi,gam1,cgsspsoundi
  real    :: uthermconst,kappaBar,kappaPart
  real    :: enthi,pondensi
+ real    :: gamma_eff
  !
  ! Check to see if equation of state is compatible with GR cons2prim routines
  !
@@ -436,6 +437,7 @@ subroutine equationofstate(eos_type,ponrhoi,spsoundi,rhoi,xi,yi,zi,tempi,eni,gam
 !
 !  from HORMONE, Hirai+2020, as used in Lau+2022b
 !
+    gamma_eff = gammai
     cgsrhoi = rhoi * unit_density
     cgseni  = eni * unit_ergg
     imui    = 1./mui
@@ -446,10 +448,10 @@ subroutine equationofstate(eos_type,ponrhoi,spsoundi,rhoi,xi,yi,zi,tempi,eni,gam
     endif
     if (present(radxi)) then
        call equationofstate_gasradrec(cgsrhoi,cgseni*cgsrhoi,temperaturei,imui,X_i,1.-X_i-Z_i,&
-                                      cgspresi,cgsspsoundi,gammai,do_radiation=do_radiation,xi=radxi)
+                                      cgspresi,cgsspsoundi,gamma_eff,do_radiation=do_radiation,xi=radxi)
     else
        call equationofstate_gasradrec(cgsrhoi,cgseni*cgsrhoi,temperaturei,imui,X_i,1.-X_i-Z_i,&
-                                      cgspresi,cgsspsoundi,gammai,do_radiation=do_radiation)
+                                      cgspresi,cgsspsoundi,gamma_eff,do_radiation=do_radiation)
     endif
     ponrhoi  = real(cgspresi / (unit_pressure * rhoi))
     spsoundi = real(cgsspsoundi / unit_velocity)
