@@ -342,7 +342,7 @@ subroutine rotational_CO_cooling_WJ(T, rho_cgs, CO_ab, div_v_cgs, Q_CO, dlnQ_dln
 
     Lambda_TOT = Lambda_TOT_per_nCO * nCO
 
-    Q_CO = -Lambda_TOT  ! Cooling rate is negative
+    Q_CO = -Lambda_TOT/rho_cgs  ! Cooling rate is negative, return in cgs
     dlnQ_dlnT = 0.0  ! For now
 
 end subroutine rotational_CO_cooling_WJ
@@ -483,7 +483,10 @@ subroutine nelectron_mu(T_gas, rho_gas, nH, nHe, n_e, mu)
  endif
 
  n_e       = xx * nH + z1*(1.+z2) * nHe
- mu        = 4./(2.*xH*(1.+yy+2.*xx*yy)+xHe*(1+z1+z1*z2))
+ if (present(mu)) then
+    ! mean molecular weight in units of proton mass
+    mu = 4./(2.*xH*(1.+yy+2.*xx*yy)+xHe*(1+z1+z1*z2))
+ endif
 
 end subroutine nelectron_mu
 
