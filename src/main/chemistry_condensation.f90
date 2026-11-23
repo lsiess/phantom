@@ -17,19 +17,13 @@ module chemistry_condensation
 ! :Dependencies: dump_utils, physcon
 !
 
+ use dust_formation, only: iH,iHe,iC,iOx,iN,iNe,iSi,iS,iFe,iTi,iMg,nElements
  implicit none
- public :: set_abundances_condensation,init_muGamma_condensation,calc_muGamma_condensation,&
-      network,write_headeropts_dust_condensation,read_headeropts_dust_condensation
+ public :: network
 
  !      real :: wind_CO_ratio = 0.34 !Based on Ferrarotti and Gail 2002
 
  integer, parameter, private :: nMolecules = 70
-
-! Indices for elements and molecules:
- integer, parameter, public :: nElements = 11
- real, public :: mass_per_H, eps(nElements)
-! Indices for initial elemental composition
- integer, parameter, public :: iH=1, iHe=2, iC=3, iOx=4, iN=5, iNe=6, iSi=7, iS=8, iFe=9, iTi=10, iMg=11
 
 ! Indices for molecules
  integer, parameter, public :: iH2=1, iOH=2, iH2O=3, iCO=4, iCO2=5, iCH4=6, iC2H=7, iC2H2=8, iN2=9, iNH3=10, iCN=11, &
@@ -48,8 +42,6 @@ module chemistry_condensation
  integer, parameter :: nKd_sharp = 67
  integer, parameter :: nKd_tsuji = 3
  real, parameter :: exp_lim = 700.,log_lim = exp_lim/2.71828182846
-
- real :: Aw(nElements) = [1.0079, 4.0026, 12.011, 15.9994, 14.0067, 20.17, 28.0855, 32.06, 55.847, 47.867, 24.305]
 
  !Coefficients can be found in Sharp, C. M. ; Huebner, W. F. 1990, ApJS, 72, 417
  real, parameter :: coefs(5,nKd_sharp) = reshape([&
@@ -130,85 +122,6 @@ module chemistry_condensation
 
 contains
 
-subroutine set_abundances_condensation(wind_CO_ratio)
- use physcon, only:atomic_mass_unit
- real, intent(in) :: wind_CO_ratio
- logical :: ferrarotti = .true. !A&A 2002, 382, 256
- ! These abundances are with respect to H, so take Table 2.1 of Gail and Sedlmayr (Book) and divide by the listed H abundance.
- if (ferrarotti) then
-    eps(iH)  = 1.0
-    eps(iHe) = 1.04d-1
-    eps(iOx) = 6.87d-4
-    eps(iN)  = 2.52d-4
-    eps(iMg) = 3.85d-5
-    eps(iNe) = 1.17d-4
-    eps(iSi) = 3.58d-5
-    eps(iS)  = 1.85d-5
-    eps(iFe) = 3.24d-5
-    eps(iTi) = 8.6d-8
- else
-    eps(iHe) = 1.009d-1 !1.04d-1
-    eps(iOx) = 7.211d-4 !6.64 6.87d-4
-    eps(iN)  = 2.106d-4 !2.52d-4
-    eps(iMg) = 3.859d-5 !3.85d-5
-    eps(iNe) = 1.18d-4  !1.17d-4
-    eps(iSi) = 3.561d-5 !3.58d-5
-    eps(iS)  = 1.863d-5 !1.85d-5
-    eps(iFe) = 3.241d-5 !3.24d-5
-    eps(iTi) = 8.621d-8 !8.6d-8
- endif
- eps(iC)  = eps(iOx) * wind_CO_ratio
- mass_per_H = atomic_mass_unit*dot_product(Aw,eps)
- !XH  = atomic_mass_unit*eps(iH)/mass_per_H  ! H mass fraction
- !XHe = atomic_mass_unit*eps(iHe)/mass_per_H ! He mass fraction
-end subroutine set_abundances_condensation
-
-!-----------------------------------------------------------------------
-!+
-!  write relevant options to the header of the dump file
-!+
-!-----------------------------------------------------------------------
-subroutine write_headeropts_dust_condensation(wind_CO_ratio,hdr,ierr)
- use dump_utils,        only:dump_h,add_to_rheader
- type(dump_h), intent(inout) :: hdr
- integer,      intent(out)   :: ierr
- real, intent(in) :: wind_CO_ratio
-
-! initial gas composition for dust formation
- call set_abundances_condensation(wind_CO_ratio)
- call add_to_rheader(eps,'epsilon',hdr,ierr) ! array
- call add_to_rheader(Aw,'Amean',hdr,ierr)    ! array
- call add_to_rheader(mass_per_H,'mass_per_H',hdr,ierr) ! real
-
-end subroutine write_headeropts_dust_condensation
-
-!-----------------------------------------------------------------------
-!+
-!  read relevant options from the header of the dump file
-!+
-!-----------------------------------------------------------------------
-subroutine read_headeropts_dust_condensation(wind_CO_ratio,hdr,ierr)
- use dump_utils, only:dump_h,extract
- type(dump_h), intent(in)  :: hdr
- integer,      intent(out) :: ierr
- real :: dum(nElements)
- real, intent(in) :: wind_CO_ratio
-
- ierr = 0
- call extract('mass_per_H',mass_per_H,hdr,ierr) ! real
- ! it is likely that your dump was generated with an old version of phantom
- ! and the chemical properties not stored. restore and save the default values
- if (mass_per_H < tiny(0.)) then
-    print *,'reset dust chemical network properties'
-    call set_abundances_condensation(wind_CO_ratio)
-    call extract('epsilon',dum(1:nElements),hdr,ierr) ! array
-    call extract('Amean',dum(1:nElements),hdr,ierr) ! array
- else
-    call extract('epsilon',eps(1:nElements),hdr,ierr) ! array
-    call extract('Amean',Aw(1:nElements),hdr,ierr) ! array
- endif
-end subroutine read_headeropts_dust_condensation
-
 !-----------------------------------------------------------------------
 !+
 !  driver to solve the chemical network
@@ -217,6 +130,7 @@ end subroutine read_headeropts_dust_condensation
 subroutine network(T,rho_cgs,mu,gamma,wind_CO_ratio,pH_tot,fol,fpy,fqu,fir,fsc,fcarb,abundance,pressure_cgs)
 ! all pressures are in bar
  use physcon, only:patm,kboltz
+ use dust_formation, only:calc_muGamma,eps
  real, intent(in)     :: wind_CO_ratio, fol, fpy, fqu, fir, fsc, fcarb
  real, intent(out)    :: mu,gamma,pH_tot
  real, intent(inout)  :: T, rho_cgs
@@ -229,10 +143,11 @@ subroutine network(T,rho_cgs,mu,gamma,wind_CO_ratio,pH_tot,fol,fpy,fqu,fir,fsc,f
  pelm = 0.
  pmol = 0.
 
+ !compute pH_tot, pH, pH2 and update mu and gamma if ieos = 5
  if (present(pressure_cgs)) then
-    call init_muGamma_condensation(rho_cgs,T,mu,gamma,pH_tot,pelm(iH),pmol(iH2),pressure_cgs)
+    call calc_muGamma(rho_cgs,T,mu,gamma,pH_tot,pelm(iH),pmol(iH2),pressure_cgs)
  else
-    call init_muGamma_condensation(rho_cgs,T,mu,gamma,pH_tot,pelm(iH),pmol(iH2))
+    call calc_muGamma(rho_cgs,T,mu,gamma,pH_tot,pelm(iH),pmol(iH2))
  endif
 
  pelm(iHe) = eps(iHe)*pH_tot
@@ -271,15 +186,16 @@ end subroutine network
 !  Compute partial pressures assuming chemical equilibrum
 !
 !---------------------------------------------------------------
-subroutine chemical_equilibrium(rho_cgs,T,pmol,pelm,mu,gamma,&
+subroutine chemical_equilibrium(rho_cgs,T,pmol,pelm,mu, gamma, &
       wind_CO_ratio, pH_tot, fol, fpy, fqu, fir, fsc, fcarb)
 ! all pressures are in bar
- real, intent(inout) :: T, mu, gamma, pmol(nMolecules), pelm(nElements), rho_cgs
+ use dust_formation, only:eps
+ real, intent(inout) :: T, pmol(nMolecules), pelm(nElements), rho_cgs, mu, gamma
  real, intent(in)    :: wind_CO_ratio, pH_tot, fol, fpy, fqu, fir, fsc, fcarb
 
- integer, parameter :: nit_max   = 100
- integer, parameter :: n_newton  = 2     ! try 2 here once validated
- real,    parameter :: tol       = 1.e-6
+ integer, parameter :: nit_max  = 100
+ integer, parameter :: n_newton = 2     ! try 2 here once validated
+ real,    parameter :: tol      = 1.e-6
 
  real    :: Kd(nKd_sharp+nKd_tsuji)
  real    :: xH, xC, xO, xN, xMg, xSi, xFe, xS, xTi          ! current iterate
@@ -552,7 +468,7 @@ pure elemental real function solve_q(a, b, c)
 ! maxit: maximum number of Newton steps (use a small number such as
 ! 1-3 inside the outer fixed-point loop if you want, 50 = full solve).
 !---------------------------------------------------------------------
-pure real function newton_method(a, b, c, d, e, zz, maxit)
+ real function newton_method(a, b, c, d, e, zz, maxit)
  real,    intent(in) :: a, b, c, d, e, zz
  integer, intent(in) :: maxit
  real, parameter :: tol_step = 1.e-4   ! error after the step ~ tol_step**2
@@ -608,115 +524,5 @@ pure real function calc_Kd_tsuji(coefs, T)
  logKd = max(-log_lim,min(d,log_lim))
  calc_Kd_tsuji = 10.**(-logKd)
 end function calc_Kd_tsuji
-
-!--------------------------------------------
-!
-!  Initialise mean molecular weight and gamma
-!
-!--------------------------------------------
-subroutine init_muGamma_condensation(rho_cgs,T,mu,gamma,pH_tot,pH,pH2,pressure_cgs)
- ! all quantities are in cgs
- real, intent(in)              :: rho_cgs
- real, intent(inout)           :: T, mu, gamma
- real, intent(out)             :: pH_tot, pH, pH2
- real, intent(in),  optional   :: pressure_cgs
-
- if (present(pressure_cgs)) then
-    call calc_muGamma_condensation(rho_cgs,T, mu, gamma, pH, pH_tot, pH2, pressure_cgs)
- else
-    call calc_muGamma_condensation(rho_cgs,T, mu, gamma, pH, pH_tot, pH2)
- endif
-
-end subroutine init_muGamma_condensation
-
-!----------------------------------------
-!
-!  Calculate mean molecular weight, gamma
-!
-!----------------------------------------
-subroutine calc_muGamma_condensation(rho_cgs,T, mu, gamma, pH, pH_tot, pH2, pressure_cgs)
-! unless specified, pressures are in bar
- use physcon, only:patm,kboltz
- use options, only:ieos
- real, intent(in)    :: rho_cgs
- real, intent(inout) :: mu, gamma, T
- real, intent(out)   :: pH, pH_tot, pH2
- real, intent(in), optional   :: pressure_cgs
- real :: KH2
- real :: T_old, mu_old, gamma_old, tol
- logical :: converged
- integer :: i,isolve
- integer, parameter :: itermax = 100
- character(len=30), parameter :: label = 'calc_muGamma'
-
- if (present(pressure_cgs)) then
-    pH_tot = pressure_cgs/(1.+eps(iHe))/patm
- else
-    pH_tot = rho_cgs*T*kboltz/(patm*mass_per_H)
- endif
- if (T > 1.d4) then
-    pH  = pH_tot
-    pH2 = 0.
-    if (ieos == 5) then
-       mu     = (1.+4.*eps(iHe))/(1.+eps(iHe))
-       gamma  = 5./3.
-    endif
- elseif (T > 450.) then
-! iterate to get consistently pH, T, mu and gamma
-    tol       = 1.d-3
-    converged = .false.
-    isolve    = 0
-    pH        = pH_tot ! arbitrary value, overwritten below, to avoid compiler warning
-    T_old     = T
-    i = 0
-    do while (.not. converged .and. i < itermax)
-       i = i+1
-       KH2       = calc_Kd(coefs(:,iH2), T)
-       if (present(pressure_cgs)) then
-          pH = solve_q(1.,(1.+eps(iHe))/((1.+2.*eps(iHe))*KH2), &
-                  -pressure_cgs/patm/((1.+2.*eps(iHe))*KH2))
-          pH2 = KH2*pH**2
-          pH_tot = pH+2.*pH2
-          !rho_cgs = pH_tot*patm*mass_per_H/(T*kboltz)
-       else
-          pH_tot    = rho_cgs*T*kboltz/(patm*mass_per_H)
-          pH        = solve_q(2.*KH2, 1., -pH_tot)
-          pH2       = KH2*pH**2
-       endif
-       if (ieos /= 5) return
-       mu        = (1.+4.*eps(iHe))*pH_tot/(pH+pH2+eps(iHe)*pH_tot)
-       gamma     = (5.*pH+5.*eps(iHe)*pH_tot+7.*pH2)/(3.*pH+3.*eps(iHe)*pH_tot+5.*pH2)
-       if (i==1) then
-          mu_old    = mu
-          gamma_old = gamma
-       else
-          T_old     = T
-          T         = T_old*mu*(gamma-1.)/(mu_old*(gamma_old-1.))
-          converged = (abs(T-T_old)/T_old) < tol
-          !print *,i,T_old,T,gamma_old,gamma,mu_old,mu,abs(T-T_old)/T_old
-          if (i>=itermax .and. .not.converged) then
-             if (isolve==0) then
-                isolve = isolve+1
-                i      = 0
-                tol    = 1.d-2
-                print *,'[calc_muGamma_cond] cannot converge on T(mu,gamma). Trying with lower tolerance'
-             else
-                print *,'Told=',T_old,',T=',T,',gamma_old=',gamma_old,',gamma=',gamma,',mu_old=',&
-                        mu_old,',mu=',mu,',dT/T=',abs(T-T_old)/T_old
-                ! call fatal(label,'cannot converge on T(mu,gamma)')
-             endif
-          endif
-       endif
-    enddo
- else
-! Simplified low-temperature chemistry: all hydrogen in H2 molecules
-    pH2 = pH_tot/2.
-    pH  = 0.
-    if (ieos == 5) then
-       mu    = (1.+4.*eps(iHe))/(0.5+eps(iHe))
-       gamma = (5.*eps(iHe)+3.5)/(3.*eps(iHe)+2.5)
-    endif
- endif
-end subroutine calc_muGamma_condensation
 
 end module chemistry_condensation

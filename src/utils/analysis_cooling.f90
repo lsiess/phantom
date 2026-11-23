@@ -23,7 +23,7 @@ module analysis
  use cooling_functions
  use cooling_solver
  use physcon,          only:mass_proton_cgs,kboltz,atomic_mass_unit,patm
- use dust_formation,   only:init_muGamma,set_abundances,kappa_gas,calc_kappa_bowen,&
+ use dust_formation,   only:calc_muGamma,set_abundances,kappa_gas,calc_kappa_bowen,&
                               chemical_equilibrium_light,mass_per_H
  use dim,              only:nElements
 
@@ -76,6 +76,7 @@ subroutine test_cooling_solvers(dumpfile)
  use physcon,   only:Rg
  use units,     only:unit_ergg,unit_density
  use options,   only:icooling
+ use eos,       only:ieos
  ! For reading the input file:
  use units,            only:utime,umass,udist,set_units
  use infile_utils,     only:open_db_from_file,inopts,read_inopt,close_db
@@ -92,7 +93,7 @@ subroutine test_cooling_solvers(dumpfile)
  real :: T_floor
  ! For reading the input file:
  character(len=*), intent(in) :: dumpfile
- real(kind=8) :: utime_tmp,umass_tmp,udist_tmp
+ real :: utime_tmp,umass_tmp,udist_tmp,pH_tot,pH,pH2
  character(len=120)            :: infile,logfile,evfile,dfile
 
  integer :: i,imethod,ierr,iunit,ifunct,irate
@@ -127,7 +128,7 @@ subroutine test_cooling_solvers(dumpfile)
 
  call init_cooling_solver(ierr)
  call set_abundances
- call init_muGamma(rho_gas, T_gas, mu, gamma)
+ if (ieos == 5) call calc_muGamma(rho_gas, T_gas, mu, gamma, pH_tot, pH, pH2)
 
  print "(29(a,/))", &
       'Select cooling function',&
@@ -291,6 +292,7 @@ real function get_Texact(ifunct,T_gas,time,tcool0,T_floor)
 end function get_Texact
 
 subroutine get_rate
+ use eos, only:ieos
 
  real :: T_gas, rho_gas, mu, gamma, nH, nH2, nHe, nCO, nH2O, nOH, kappa_gas
  real :: pH, pH2, pH_tot
@@ -302,7 +304,7 @@ subroutine get_rate
  rho_gas    = 1.d-15
 
  call set_abundances
- call init_muGamma(rho_gas, T_gas, mu, gamma, pH_tot, pH, pH2)
+ if (ieos == 5) call calc_muGamma(rho_gas, T_gas, mu, gamma, pH_tot, pH, pH2)
  nH         = pH  *(patm*MPH(eps, Aw))/(mu*mass_proton_cgs*kboltz*T_gas)
  nH2        = pH2 *(patm*MPH(eps, Aw))/(mu*mass_proton_cgs*kboltz*T_gas)
 

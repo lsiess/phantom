@@ -9,7 +9,7 @@ module dust_moments
 ! Dust formation using the theory of moments
 !
 ! :References: Gail & Sedlmayr textbook Physics and chemistry of Circumstellar dust shells
-!              Siess +, 2202, A&A
+!              Siess +, 2202, A&A, 667, 75
 !
 ! :Owner: Lionel Siess
 !
@@ -66,8 +66,9 @@ end subroutine evolve_moments
 subroutine evolve_chem(dt, T, rho_cgs, JKmuS)
 !all quantities in cgs
 
- use chemistry_moments, only:mass_per_H,iC,iOx,eps,iHe,psat_C,chemical_equilibrium_light
- use part,           only:idJstar,idK0,idK1,idK2,idK3,idmu,idgamma,idsat
+ use dust_formation,    only:mass_per_H,iC,iOx,eps,iHe
+ use chemistry_moments, only:psat_C,chemical_equilibrium_light
+ use part,              only:idJstar,idK0,idK1,idK2,idK3,idmu,idgamma,idsat
  real, intent(in)    :: dt, rho_cgs
  real, intent(inout) :: T, JKmuS(:)
 
@@ -89,7 +90,6 @@ subroutine evolve_chem(dt, T, rho_cgs, JKmuS)
     call chemical_equilibrium_light(rho_cgs, T, epsC, pC, pC2, pC2H, pC2H2, JKmuS(idmu), JKmuS(idgamma))
     S = pC/psat_C(T)
     if (S > Scrit) then
-       !call nucleation(T, pC, pC2, 0., pC2H, pC2H2, S, JstarS, taustar, taugr)
        call calc_nucleation(T, pC, 0., 0., 0., pC2H2, S, JstarS, taustar, taugr)
        JstarS = JstarS/ nH_tot
        call evol_K(JKmuS(idJstar), JKmuS(idK0:idK3), JstarS, taustar, taugr, dt, Jstar_new, K_new)

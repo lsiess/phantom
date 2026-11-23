@@ -9,7 +9,7 @@ module chemistry_moments
 ! Dust formation using the theory of moments
 !
 ! :References: Gail & Sedlmayr textbook Physics and chemistry of Circumstellar dust shells
-!              Siess +, 2202, A&A
+!              Siess +, 2022, A&A, 667, 75
 !
 ! :Owner: Lionel Siess
 !
@@ -18,16 +18,11 @@ module chemistry_moments
 ! :Dependencies: dump_utils, eos, io, physcon
 !
 
+ use dust_formation, only: iH,iHe,iC,iOx,iN,iNe,iSi,iS,iFe,iTi,iMg
  implicit none
 
- public :: chemical_equilibrium_light,psat_C,set_abundances_moments,&
-      init_muGamma_moments,calc_muGamma_moments,&
-      write_headeropts_dust_moments,read_headeropts_dust_moments
+ public :: chemical_equilibrium_light,psat_C
 
- !number of elements considered in the nucleation chemical network
- integer, public, parameter :: nElements = 10
- real, public :: mass_per_H, eps(nElements)
- real, public :: Aw(nElements) = [1.0079, 4.0026, 12.011, 15.9994, 14.0067, 20.17, 28.0855, 32.06, 55.847, 47.867]
  real, public, parameter :: Scrit = 2. ! Critical saturation ratio
 
  private
@@ -59,79 +54,13 @@ module chemistry_moments
       -4.38897d+05, -1.58111d+05, 2.49224d+01, 1.08714d-03, -5.62504d-08, & !TiO
       -3.32351d+05, -3.04694d+05, 5.86984d+01, 1.17096d-03, -5.06729d-08, & !TiO2
        2.26786d+05, -1.43775d+05, 2.92429d+01, 1.69434d-04, -1.79867d-08], shape(coefs)) !C2
- integer, parameter, public :: iH = 1, iHe=2, iC=3, iOx=4, iN=5, iNe=6, iSi=7, iS=8, iFe=9, iTi=10
  integer, parameter :: iH2=1, iOH=2, iH2O=3, iCO=4, iCO2=5, iCH4=6, iC2H=7, iC2H2=8, iN2=9, &
       iNH3=10, iCN=11, iHCN=12, iSi2=13, iSi3=14, iSiO=15, iSi2C=16, iSiH4=17, iS2=18, &
       iHS=19, iH2S=20, iSiS=21, iSiH=22, iTiO=23, iTiO2=24,iC2 = 25, iTiS=26
 
- character(len=*), parameter :: label = 'dust_formation'
+ character(len=*), parameter :: label = 'chemistry_moments'
 
 contains
-
-subroutine set_abundances_moments(wind_CO_ratio)
-! all quantities in cgs
- use physcon, only:atomic_mass_unit
- real, intent(in) :: wind_CO_ratio
- eps(iH)  = 1.0
- eps(iHe) = 1.04d-1
- eps(iOx) = 6.d-4
- eps(iN)  = 2.52d-4
- eps(iNe) = 1.17d-4
- eps(iSi) = 3.58d-5
- eps(iS)  = 1.85d-5
- eps(iFe) = 3.24d-5
- eps(iTi) = 8.6d-8
- eps(iC)  = eps(iOx) * wind_CO_ratio
- mass_per_H = atomic_mass_unit*dot_product(Aw,eps)
- !XH  = atomic_mass_unit*eps(iH)/mass_per_H  ! H mass fraction
- !XHe = atomic_mass_unit*eps(iHe)/mass_per_H ! He mass fraction
-end subroutine set_abundances_moments
-
-!-----------------------------------------------------------------------
-!+
-!  write relevant options to the header of the dump file
-!+
-!-----------------------------------------------------------------------
-subroutine write_headeropts_dust_moments(wind_CO_ratio,hdr,ierr)
- use dump_utils,        only:dump_h,add_to_rheader
- type(dump_h), intent(inout) :: hdr
- integer,      intent(out)   :: ierr
- real, intent(in) :: wind_CO_ratio
-
-! initial gas composition for dust formation
- call set_abundances_moments(wind_CO_ratio)
- call add_to_rheader(eps,'epsilon',hdr,ierr) ! array
- call add_to_rheader(Aw,'Amean',hdr,ierr)    ! array
- call add_to_rheader(mass_per_H,'mass_per_H',hdr,ierr) ! real
-
-end subroutine write_headeropts_dust_moments
-
-!-----------------------------------------------------------------------
-!+
-!  read relevant options from the header of the dump file
-!+
-!-----------------------------------------------------------------------
-subroutine read_headeropts_dust_moments(wind_CO_ratio,hdr,ierr)
- use dump_utils, only:dump_h,extract
- type(dump_h), intent(in)  :: hdr
- integer,      intent(out) :: ierr
- real :: dum(nElements)
- real, intent(in) :: wind_CO_ratio
-
- ierr = 0
- call extract('mass_per_H',mass_per_H,hdr,ierr) ! real
- ! it is likely that your dump was generated with an old version of phantom
- ! and the chemical properties not stored. restore and save the default values
- if (mass_per_H < tiny(0.)) then
-    print *,'reset dust chemical network properties'
-    call set_abundances_moments(wind_CO_ratio)
-    call extract('epsilon',dum(1:nElements),hdr,ierr) ! array
-    call extract('Amean',dum(1:nElements),hdr,ierr) ! array
- else
-    call extract('epsilon',eps(1:nElements),hdr,ierr) ! array
-    call extract('Amean',Aw(1:nElements),hdr,ierr) ! array
- endif
-end subroutine read_headeropts_dust_moments
 
 !---------------------------------------------------------------
 !
@@ -141,7 +70,8 @@ end subroutine read_headeropts_dust_moments
 subroutine chemical_equilibrium_light(rho_cgs, T, epsC, pC, pC2, pC2H, pC2H2, mu, gamma,&
      nH, nH2, nHe, nCO, nH2O, nOH)
 ! all quantities are in cgs
- use physcon, only:patm,mass_proton_cgs,kboltz
+  use physcon, only:patm,mass_proton_cgs,kboltz
+  use dust_formation, only:calc_muGamma,eps
  real, intent(in)    :: rho_cgs, epsC
  real, intent(inout) :: T, mu, gamma
  real, intent(out)   :: pC, pC2, pC2H, pC2H2
@@ -151,16 +81,18 @@ subroutine chemical_equilibrium_light(rho_cgs, T, epsC, pC, pC2, pC2H, pC2H2, mu
  real    :: pC_old, pO_old, pSi_old, pS_old, pTi_old, cst
  integer :: i, nit
 
- call calc_muGamma_moments(rho_cgs, T, mu, gamma, pH, pH_tot, pH2)
+ !compute pH_tot, pH, pH2 and update mu and gamma if ieos = 5
+ call calc_muGamma(rho_cgs, T, mu, gamma, pH_tot, pH, pH2)
+ if (present(nH)) cst = patm/kboltz*T
  if (T > 1.d4) then
     pC    = eps(iC)*pH_tot
     pC2   = 0.
     pC2H  = 0.
     pC2H2 = 0.
-    if (present(nH)) then
-       nH   = pH  *(patm*mass_per_H)/(mu*mass_proton_cgs*kboltz*T)
+    if (present(nH)) then !for analysis
+       nH   = pH_tot*cst
        nH2  = 1.d-50
-       nHe  = eps(ihe)*pH_tot* (patm*mass_per_H)/(mu*mass_proton_cgs*kboltz*T)
+       nHe  = eps(ihe)*pH_tot*cst
        nCO  = 1.d-50
        nH2O = 1.d-50
        nOH  = 1.d-50
@@ -240,7 +172,6 @@ subroutine chemical_equilibrium_light(rho_cgs, T, epsC, pC, pC2, pC2H, pC2H2, mu
  pC2H  = pC2H*patm
  pC2H2 = pC2H2*patm
  if (present(nH)) then
-    cst = patm*mass_per_H/(mu*mass_proton_cgs*kboltz*T)
     if (T < 450.) then
        nH2 = cst*pH_tot/2.
        nH  = 1.d-99
@@ -254,105 +185,6 @@ subroutine chemical_equilibrium_light(rho_cgs, T, epsC, pC, pC2, pC2H, pC2H2, mu
     nOH  = cst*Kd(iOH) *pH*pO
  endif
 end subroutine chemical_equilibrium_light
-
-!----------------------------------------
-!
-!  Calculate mean molecular weight, gamma
-!
-!----------------------------------------
-subroutine calc_muGamma_moments(rho_cgs, T, mu, gamma, pH, pH_tot, pH2)
-! pressures are in bar
- use io,  only:fatal
- use eos, only:ieos
- use physcon, only:patm,kboltz
-
- real, intent(in)    :: rho_cgs
- real, intent(inout) :: T, mu, gamma
- real, intent(out)   :: pH, pH_tot, pH2
- real :: KH2, x
- real :: T_old, mu_old, gamma_old, tol
- logical :: converged
- integer :: i,isolve
- integer, parameter :: itermax = 100
- character(len=30), parameter :: label = 'calc_muGamma_moments'
-
- pH_tot = rho_cgs*T*kboltz/(patm*mass_per_H)
- if (T > 1.d4) then
-    pH     = pH_tot
-    pH2    = 0.
-    if (ieos == 5) then
-       gamma  = 5./3.
-       mu     = (1.+4.*eps(iHe))/(1.+eps(iHe))
-    endif
- elseif (T > 450.) then
-! iterate to get consistently pH, T, mu and gamma
-    tol       = 1.d-3
-    converged = .false.
-    isolve    = 0
-    pH        = pH_tot ! initial value, overwritten below, to avoid compiler warning
-    i = 0
-    do while (.not. converged .and. i < itermax)
-       i = i+1
-       pH_tot    = rho_cgs*T*kboltz/(patm*mass_per_H)
-       KH2       = calc_Kd(coefs(:,iH2), T)
-       pH        = solve_q(2.*KH2, 1., -pH_tot)
-       pH2       = KH2*pH**2
-       if (ieos /= 5) return
-       mu        = (1.+4.*eps(iHe))/(.5+eps(iHe)+0.5*pH/pH_tot)
-       x         = 2.*(1.+4.*eps(iHe))/mu
-       gamma     = (3.*x+4.+4.*eps(iHe))/(x+4.+4.*eps(iHe))
-       if (i == 1) then
-          mu_old = mu
-          gamma_old = gamma
-       else
-          T_old     = T
-          T         = T_old*mu/mu_old/(gamma_old-1.)*2.*x/(x+4.+4.*eps(iHe))
-          converged = (abs(T-T_old)/T_old) < tol
-          if (i>=itermax .and. .not.converged) then
-             if (isolve==0) then
-                isolve = isolve+1
-                i      = 0
-                tol    = 1.d-2
-                print *,'[calc_muGamma_moments] cannot converge on T(mu,gamma). Trying with lower tolerance'
-             else
-                print *,'Told=',T_old,',T=',T,',gamma_old=',gamma_old,',gamma=',gamma,',mu_old=',&
-                  mu_old,',mu=',mu,',dT/T=',abs(T-T_old)/T_old,', rho=',rho_cgs
-                call fatal(label,'cannot converge on T(mu,gamma)')
-             endif
-          endif
-       endif
-    enddo
- else
-! Simplified low-temperature chemistry: all hydrogen in H2 molecules
-    pH2 = pH_tot/2.
-    pH  = 0.
-    if (ieos == 5) then
-       mu    = (1.+4.*eps(iHe))/(0.5+eps(iHe))
-       gamma = (5.*eps(iHe)+3.5)/(3.*eps(iHe)+2.5)
-    endif
- endif
-
-end subroutine calc_muGamma_moments
-
-!--------------------------------------------
-!
-!  Initialise mean molecular weight and gamma
-!
-!--------------------------------------------
-subroutine init_muGamma_moments(rho_cgs, T, mu, gamma, ppH, ppH2)
-! all quantities are in cgs
- use physcon, only:patm,kboltz
- real, intent(in)              :: rho_cgs
- real, intent(inout)           :: T
- real, intent(out)             :: mu, gamma
- real, intent(out), optional   :: ppH, ppH2
- real :: pH_tot, pH, pH2
-
- call calc_muGamma_moments(rho_cgs, T, mu, gamma, pH, pH_tot, pH2)
- if (present(ppH))  ppH = pH
- if (present(ppH2)) ppH2 = pH2
-
-end subroutine init_muGamma_moments
 
 !-------------------------------------------------------------------------
 !

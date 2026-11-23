@@ -29,7 +29,7 @@ module dust_formation
 
  public :: set_abundances,calc_kappa_dust,calc_kappa_bowen,&
       read_options_dust_formation,write_options_dust_formation,&
-      calc_Eddington_factor,calc_muGamma,init_muGamma,init_dust_formation,&
+      calc_Eddington_factor,calc_muGamma,init_dust_formation,&
       write_headeropts_dust_formation,read_headeropts_dust_formation
 !
 !--runtime settings for this module
@@ -37,6 +37,13 @@ module dust_formation
  real, public :: kappa_gas   = 2.d-4
  real, public :: wind_CO_ratio = 2.
  real, parameter, public :: a_init_dust = 1.0d-7 !cgs units 1nm
+
+!number of elements considered in the chemical networks
+ integer, public, parameter :: nElements = 11
+ real, public :: mass_per_H, eps(nElements)
+ real, public :: Aw(nElements) = [1.0079, 4.0026, 12.011, 15.9994, 14.0067, 20.17, 28.0855, 32.06, 55.847, 47.867, 24.305]
+! Indices for initial elemental composition
+ integer, parameter, public :: iH=1, iHe=2, iC=3, iOx=4, iN=5, iNe=6, iSi=7, iS=8, iFe=9, iTi=10, iMg=11
 
  private
 
@@ -51,62 +58,142 @@ contains
 subroutine set_abundances
 !----------------------------------------------------------------
 ! initialize abundances
- use dim, only:do_nucleation,do_condensation
- use chemistry_moments, only:set_abundances_moments
- use chemistry_condensation, only:set_abundances_condensation
-
- if (do_nucleation) then
-    call set_abundances_moments(wind_CO_ratio)
- elseif (do_condensation) then
-    call set_abundances_condensation(wind_CO_ratio)
+ use physcon, only:atomic_mass_unit
+ logical :: ferrarotti = .true. !A&A 2002, 382, 256
+ ! These abundances are with respect to H, so take Table 2.1 of Gail and Sedlmayr (Book) and divide by the listed H abundance.
+ if (ferrarotti) then
+    eps(iH)  = 1.0
+    eps(iHe) = 1.04d-1
+    eps(iOx) = 6.87d-4
+    eps(iN)  = 2.52d-4
+    eps(iMg) = 3.85d-5
+    eps(iNe) = 1.17d-4
+    eps(iSi) = 3.58d-5
+    eps(iS)  = 1.85d-5
+    eps(iFe) = 3.24d-5
+    eps(iTi) = 8.6d-8
+ else
+    eps(iHe) = 1.009d-1 !1.04d-1
+    eps(iOx) = 7.211d-4 !6.64 6.87d-4
+    eps(iN)  = 2.106d-4 !2.52d-4
+    eps(iMg) = 3.859d-5 !3.85d-5
+    eps(iNe) = 1.18d-4  !1.17d-4
+    eps(iSi) = 3.561d-5 !3.58d-5
+    eps(iS)  = 1.863d-5 !1.85d-5
+    eps(iFe) = 3.241d-5 !3.24d-5
+    eps(iTi) = 8.621d-8 !8.6d-8
  endif
+ eps(iC)  = eps(iOx) * wind_CO_ratio
+ mass_per_H = atomic_mass_unit*dot_product(Aw,eps)
+ !XH  = atomic_mass_unit*eps(iH)/mass_per_H  ! H mass fraction
+ !XHe = atomic_mass_unit*eps(iHe)/mass_per_H ! He mass fraction
 end subroutine set_abundances
 
 !----------------------------------------------------------------
-subroutine init_muGamma(rho_cgs, T, mu, gamma, ppH_tot, ppH, ppH2)
+subroutine calc_muGamma(rho_cgs,T,mu,gamma,pH_tot,pH,pH2,pressure_cgs)
 !----------------------------------------------------------------
 ! all quantities are in cgs
- use dim, only:do_nucleation,do_condensation
- use chemistry_moments, only:init_muGamma_moments
- use chemistry_condensation, only:init_muGamma_condensation
- real, intent(in)              :: rho_cgs
- real, intent(inout)           :: T, mu, gamma
- real, intent(out), optional   :: ppH_tot, ppH, ppH2
- real :: pH_tot,pH,pH2
-
- if (do_nucleation) then
-    call init_muGamma_moments(rho_cgs,T,mu,gamma)
- elseif (do_condensation) then
-    call init_muGamma_condensation(rho_cgs,T,mu,gamma,pH_tot,pH,pH2)
- endif
- if (present(ppH_tot)) ppH_tot = pH_tot
- if (present(ppH))     ppH     = pH
- if (present(ppH2))    ppH2    = pH2
-
-end subroutine init_muGamma
-
-!----------------------------------------------------------------
-subroutine calc_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot, pH2, pressure)
-!----------------------------------------------------------------
-! all quantities are in cgs
- use dim, only:do_nucleation,do_condensation
- use chemistry_moments, only:calc_muGamma_moments
- use chemistry_condensation, only:calc_muGamma_condensation
+ use eos, only:ieos
+ use physcon, only:patm,kboltz
  real, intent(in)              :: rho_cgs
  real, intent(inout)           :: T, mu, gamma
  real, intent(out)             :: pH, pH_tot, pH2
- real, intent(out), optional   :: pressure
+ real, intent(in), optional    :: pressure_cgs
+ real :: KH2
+ real :: T_old, mu_old, gamma_old, tol
+ logical :: converged
+ integer :: i,isolve
+ integer, parameter :: itermax = 100
+ character(len=30), parameter :: label = 'calc_muGamma'
 
- if (do_nucleation) then
-    call calc_muGamma_moments(rho_cgs, T, mu, gamma, pH, pH_tot, pH2)
- elseif (do_condensation) then
-    if (present(pressure)) then
-       call calc_muGamma_condensation(rho_cgs, T, mu, gamma, pH, pH_tot, pH2, pressure)
-    else
-       call calc_muGamma_condensation(rho_cgs, T, mu, gamma, pH, pH_tot, pH2)
+ if (present(pressure_cgs)) then
+    pH_tot = pressure_cgs/(1.+eps(iHe))/patm
+ else
+    pH_tot = rho_cgs*T*kboltz/(patm*mass_per_H)
+ endif
+ if (T > 1.d4) then
+    pH  = pH_tot
+    pH2 = 0.
+    if (ieos == 5) then
+       mu     = (1.+4.*eps(iHe))/(1.+eps(iHe))
+       gamma  = 5./3.
+    endif
+ elseif (T > 450.) then
+! iterate to get consistently pH, T, mu and gamma
+    tol       = 1.d-3
+    converged = .false.
+    isolve    = 0
+    pH        = pH_tot ! arbitrary value, overwritten below, to avoid compiler warning
+    T_old     = T
+    i = 0
+    do while (.not. converged .and. i < itermax)
+       i = i+1
+       KH2 = calc_KH2(T)
+       if (present(pressure_cgs)) then
+          pH = solve_q(1.,(1.+eps(iHe))/((1.+2.*eps(iHe))*KH2), &
+                  -pressure_cgs/patm/((1.+2.*eps(iHe))*KH2))
+          pH2    = KH2*pH**2
+          pH_tot = pH+2.*pH2
+          !rho_cgs = pH_tot*patm*mass_per_H/(T*kboltz)
+       else
+          pH_tot    = rho_cgs*T*kboltz/(patm*mass_per_H)
+          pH        = solve_q(2.*KH2, 1., -pH_tot)
+          pH2       = KH2*pH**2
+       endif
+       if (ieos /= 5) return
+
+       mu    = (1.+4.*eps(iHe))*pH_tot/(pH+pH2+eps(iHe)*pH_tot)
+       gamma = (5.*pH+5.*eps(iHe)*pH_tot+7.*pH2)/(3.*pH+3.*eps(iHe)*pH_tot+5.*pH2)
+       if (i==1) then
+          mu_old    = mu
+          gamma_old = gamma
+       else
+          T_old     = T
+          T         = T_old*mu*(gamma-1.)/(mu_old*(gamma_old-1.))
+          converged = (abs(T-T_old)/T_old) < tol
+          if (i>=itermax .and. .not.converged) then
+             if (isolve==0) then
+                isolve = isolve+1
+                i      = 0
+                tol    = 1.d-2
+                print *,'[calc_muGamma_cond] cannot converge on T(mu,gamma). Trying with lower tolerance'
+             else
+                print *,'Told=',T_old,',T=',T,',gamma_old=',gamma_old,',gamma=',gamma,',mu_old=',&
+                        mu_old,',mu=',mu,',dT/T=',abs(T-T_old)/T_old
+                ! call fatal(label,'cannot converge on T(mu,gamma)')
+             endif
+          endif
+       endif
+    enddo
+ else
+! Simplified low-temperature chemistry: all hydrogen in H2 molecules
+    pH2 = pH_tot/2.
+    pH  = 0.
+    if (ieos == 5) then
+       mu    = (1.+4.*eps(iHe))/(0.5+eps(iHe))
+       gamma = (5.*eps(iHe)+3.5)/(3.*eps(iHe)+2.5)
     endif
  endif
 end subroutine calc_muGamma
+
+pure elemental real function solve_q(a, b, c)
+    ! Citardauq form: avoids cancellation. Assumes b > 0 and c < 0,
+    ! so the denominator is always >= b > 0.
+    real, intent(in) :: a, b, c
+    solve_q = max(-2.*c / (b + sqrt(max(b*b - 4.*a*c, 0.))), tiny(solve_q))
+end function solve_q
+
+pure real function calc_KH2(T)
+! all quantities are in cgs
+ real, intent(in) :: T
+ real, parameter :: R = 1.987165
+ real :: G, d
+ real, parameter :: coefs(5) = (/4.25321d+05, -1.07123d+05, 2.69980d+01, 5.48280d-04, -3.81498d-08/)
+
+ G = coefs(1)/T + coefs(2) + (coefs(3)+(coefs(4)+coefs(5)*T)*T)*T
+ d = min(-G/(R*T),222.)
+ calc_KH2 = exp(d)
+end function calc_KH2
 
 !----------------------------------------------------------------
 subroutine init_dust_formation
@@ -173,7 +260,6 @@ end function calc_kappa_bowen
 pure real function calc_kappa_dust(K3, Tdust, rho_cgs)
 !all quantities in cgs
  use physcon, only:atomic_mass_unit
- use chemistry_moments, only:mass_per_H
  real, intent(in) :: K3, Tdust, rho_cgs
 
  real :: kappa_cgs, fac
@@ -186,7 +272,7 @@ pure real function calc_kappa_dust(K3, Tdust, rho_cgs)
  !kappa_cgs = Qross_ext * fac  ! Rosseland
 
  ! Gail & Sedlmayr, 1985, A&A, 148, 183, eqs 23,24
- !kappa_cgs = 6.7d0 * fac * Tdust  ! planck
+ !kappa_cgs = 6.7 * fac * Tdust  ! planck
  kappa_cgs = 5.9 * fac * Tdust  ! Rosseland
 
  calc_kappa_dust = kappa_cgs + kappa_gas
@@ -216,20 +302,15 @@ end function calc_Eddington_factor
 !+
 !-----------------------------------------------------------------------
 subroutine write_headeropts_dust_formation(hdr,ierr)
- use chemistry_moments, only:write_headeropts_dust_moments
- use chemistry_condensation, only:write_headeropts_dust_condensation
- use dump_utils, only:dump_h
- use dim, only:do_nucleation,do_condensation
-
+ use dump_utils,        only:dump_h,add_to_rheader
  type(dump_h), intent(inout) :: hdr
  integer,      intent(out)   :: ierr
 
- if (do_condensation) then
-    call write_headeropts_dust_condensation(wind_CO_ratio,hdr,ierr)
- elseif (do_nucleation) then
-    call write_headeropts_dust_moments(wind_CO_ratio,hdr,ierr)
- endif
-
+! initial gas composition for dust formation
+ call set_abundances
+ call add_to_rheader(eps,'epsilon',hdr,ierr) ! array
+ call add_to_rheader(Aw,'Amean',hdr,ierr)    ! array
+ call add_to_rheader(mass_per_H,'mass_per_H',hdr,ierr) ! real
 end subroutine write_headeropts_dust_formation
 
 !-----------------------------------------------------------------------
@@ -238,20 +319,24 @@ end subroutine write_headeropts_dust_formation
 !+
 !-----------------------------------------------------------------------
 subroutine read_headeropts_dust_formation(hdr,ierr)
- use chemistry_moments, only:read_headeropts_dust_moments
- use chemistry_condensation, only:read_headeropts_dust_condensation
- use dump_utils, only:dump_h
- use dim, only:do_nucleation,do_condensation
-
+ use dump_utils, only:dump_h,extract
  type(dump_h), intent(in)  :: hdr
  integer,      intent(out) :: ierr
+ real :: dum(nElements)
 
- if (do_condensation) then
-    call read_headeropts_dust_condensation(wind_CO_ratio,hdr,ierr)
- elseif (do_nucleation) then
-    call read_headeropts_dust_moments(wind_CO_ratio,hdr,ierr)
+ ierr = 0
+ call extract('mass_per_H',mass_per_H,hdr,ierr) ! real
+ ! it is likely that your dump was generated with an old version of phantom
+ ! and the chemical properties not stored. restore and save the default values
+ if (mass_per_H < tiny(0.)) then
+    print *,'reset dust chemical network properties'
+    call set_abundances
+    call extract('epsilon',dum(1:nElements),hdr,ierr) ! array
+    call extract('Amean',dum(1:nElements),hdr,ierr) ! array
+ else
+    call extract('epsilon',eps(1:nElements),hdr,ierr) ! array
+    call extract('Amean',Aw(1:nElements),hdr,ierr) ! array
  endif
-
 end subroutine read_headeropts_dust_formation
 
 !-----------------------------------------------------------------------

@@ -91,7 +91,7 @@ subroutine init_inject(ierr)
  real :: tcross,rsonic,tsonic,tfill,tboundary,mu,wind_temperature
  real :: separation_cgs,ecc(3),eccentricity
  integer :: nwinds
- type(wind_params) :: params !reset wind temperature if init_muGamma
+ type(wind_params) :: params
 
  nwinds = count(abs(xyzmh_ptmass(imloss,1:nptmass)) > tiny(0.))
  if (nwinds > 2) call fatal(label,'cannot handle more than 2 emitting sinks (1D wind profile not available)')
@@ -248,7 +248,7 @@ subroutine init_resolution(params,rsonic,neighbour_distance)
 
  real,              intent(in)  :: rsonic
  real,              intent(out) :: neighbour_distance
- type(wind_params), intent(in)  :: params !reset wind temperature if init_muGamma
+ type(wind_params), intent(in)  :: params
 
  integer :: nzones_per_sonic_point
  real    :: mV_on_MdotR,dr,dist_to_sonic_point,mass_of_particles,rho_ini,rinject
