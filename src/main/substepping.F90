@@ -1063,6 +1063,7 @@ subroutine cooling_abundances_update(i,pmassi,xyzh,vxyzu,eos_vars,abundance,nucl
  use cooling,         only:energ_cooling,cooling_in_step
  use eos_HIIR,        only:muion,Tion
  use units,           only:unit_density
+ use eos,             only:ieos
 #ifdef KROME
  use part,            only: T_gas_cool
  use krome_interface, only:update_krome
@@ -1104,8 +1105,10 @@ subroutine cooling_abundances_update(i,pmassi,xyzh,vxyzu,eos_vars,abundance,nucl
  !evolve dust chemistry and compute dust cooling
  if (do_nucleation) then
     call evolve_dust(dt, xyzh(:,i), vxyzu(4,i), nucleation(:,i), dust_temp(i), rhoi)
-    eos_vars(imu,i)    = nucleation(idmu,i)
-    eos_vars(igamma,i) = nucleation(idgamma,i)
+    if (ieos == 5) then
+       eos_vars(imu,i)    = nucleation(idmu,i)
+       eos_vars(igamma,i) = nucleation(idgamma,i)
+    endif
     if (nucleation(5,i) > eps(3)) then
        print*, 'cooling abundances_update: K3 > eps(3) = ',nucleation(5,i),eps(3), 'for particle ',iorig(i)
     endif
@@ -1128,7 +1131,7 @@ subroutine cooling_abundances_update(i,pmassi,xyzh,vxyzu,eos_vars,abundance,nucl
        if (do_nucleation) then
           call energ_cooling(xyzh(1,i),xyzh(2,i),xyzh(3,i),vxyzu(4,i),rhoi,dt,divcurlv(1,i),dudtcool,&
                     dust_temp(i),nucleation(idmu,i),nucleation(idgamma,i),nucleation(idK2,i),nucleation(idkappa,i),&
-                    nucleation(idk3,i))
+                    nucleation(idk3,i),ipart=i)
        elseif (update_muGamma) then
           call energ_cooling(xyzh(1,i),xyzh(2,i),xyzh(3,i),vxyzu(4,i),rhoi,dt,divcurlv(1,i),dudtcool,&
                     dust_temp(i),eos_vars(imu,i), eos_vars(igamma,i))

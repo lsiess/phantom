@@ -365,7 +365,7 @@ subroutine cons2prim_everything(npart,xyzh,vxyzu,dvdx,rad,eos_vars,radprop,&
           X_i = eos_vars(iX,i)
           Z_i = eos_vars(iZ,i)
        endif
-       if (do_nucleation) then
+       if (do_nucleation .and. ieos == 5) then
           mui    = nucleation(idmu,i)
           gammai = nucleation(idgamma,i)
        endif
