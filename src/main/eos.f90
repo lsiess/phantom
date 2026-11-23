@@ -538,7 +538,7 @@ end subroutine equationofstate
 !+
 !-----------------------------------------------------------------------
 subroutine init_eos(eos_type,ierr)
- use units,          only:unit_velocity
+ use units,          only:unit_ergg
  use physcon,        only:Rg
  use io,             only:error,warning
  use eos_mesa,       only:init_eos_mesa
@@ -562,7 +562,7 @@ subroutine init_eos(eos_type,ierr)
  !  included in the function call rather than here
  !  c_s^2 = gamma*P/rho = gamma*kT/(gmw*m_p) -> T = P/rho * (gmw*m_p)/k
  !
- temperature_coef = unit_velocity**2  / Rg
+ temperature_coef = unit_ergg / Rg
 
  select case(eos_type)
  case(6)
@@ -883,14 +883,17 @@ end function get_local_u_internal
 
 !-----------------------------------------------------------------------
 !+
-!  get u from rho, T
+!  get u from rho, T. Returns u in code units
 !+
 !-----------------------------------------------------------------------
 real function get_u_from_rhoT(rho,temp,eos_type,uguess) result(u)
- use eos_mesa, only:get_eos_u_from_rhoT_mesa
+ use eos_mesa,      only:get_eos_u_from_rhoT_mesa
+ use eos_gasradrec, only:calc_uP_from_rhoT_gasradrec
+ use units,         only:unit_ergg
  integer, intent(in) :: eos_type
  real,    intent(in) :: rho,temp
  real,    intent(in), optional :: uguess
+ real     :: p,mu
 
  select case (eos_type)
  case(10) ! MESA EoS
@@ -899,6 +902,11 @@ real function get_u_from_rhoT(rho,temp,eos_type,uguess) result(u)
     else
        call get_eos_u_from_rhoT_mesa(rho,temp,u)
     endif
+    u = u / unit_ergg
+
+ case(20) ! Ideal gas + radiation + recombination (from HORMONE, Hirai et al., 2020)
+    call calc_uP_from_rhoT_gasradrec(rho,temp,X_in,1.-X_in-Z_in,u,p,mu)
+    u = u / unit_ergg
 
  case default
     u = temp/(gmw*temperature_coef*(gamma-1.))

@@ -85,16 +85,19 @@ end subroutine init_cooling_solver
 !   cooling prescription and choice of solver
 !+
 !-----------------------------------------------------------------------
-subroutine energ_cooling_solver(ui,dudt,rho,dt,mu,gamma,Tdust,K2,K3,kappa,divv)
+subroutine energ_cooling_solver(ui,dudt,rho,dt,mu,gamma,Tdust,K2,K3,kappa,divv, &
+                                 xi,yi,zi)
  real, intent(in)  :: ui,rho,dt                       ! in code units
  real(kind=4), intent(in) :: divv                     ! in code units
  real, intent(in)  :: Tdust,mu,gamma,K2,K3,kappa      ! in cgs
+ real, intent(in), optional :: xi,yi,zi
  real, intent(out) :: dudt                            ! in code units
-
+ 
  if (icool_method == 2) then
     call exact_cooling(ui,dudt,rho,dt,mu,gamma,Tdust,K2,K3,kappa,divv)
  elseif (icool_method == 0) then
-    call implicit_cooling(ui,dudt,rho,dt,mu,gamma,Tdust,K2,K3,kappa,divv)
+    call implicit_cooling(ui,dudt,rho,dt,mu,gamma,Tdust,K2,K3,kappa,divv, &
+                         & xi=xi,yi=yi,zi=zi)
  else
     call explicit_cooling(ui,dudt,rho,dt,mu,gamma,Tdust,K2,K3,kappa,divv)
  endif
@@ -140,17 +143,21 @@ end subroutine explicit_cooling
 !   implicit cooling
 !+
 !-----------------------------------------------------------------------
-subroutine implicit_cooling (ui, dudt, rho, dt, mu, gamma, Tdust, K2, K3, kappa, divv)
+subroutine implicit_cooling (ui, dudt, rho, dt, mu_in, gamma_in, Tdust, K2, K3, kappa, divv, &
+                            xi,yi,zi)
 
  use physcon, only:Rg
- use units,   only:unit_ergg
+ use units,   only:unit_ergg,unit_density
  use dim,     only:nabn_AGB
  use io,      only:warning
  use dust_formation, only:icoolTi
+ use part,    only:eos_vars,itemp,igamma,imu
+ use eos,     only:get_temperature_from_u,get_u_from_rhoT,ieos
 
- real, intent(in)  :: ui, rho, dt, mu, gamma
+ real, intent(in)  :: ui, rho, dt, mu_in, gamma_in
  real, intent(in)  :: Tdust, K2, K3, kappa
  real(kind=4), intent(in) :: divv
+ real, intent(in), optional :: xi,yi,zi
  real, intent(out) :: dudt
 
  real, parameter    :: tol = 1.d-3, Tmin = 1.
@@ -162,10 +169,17 @@ subroutine implicit_cooling (ui, dudt, rho, dt, mu, gamma, Tdust, K2, K3, kappa,
  real               :: deltaT, dfdT, dQdT, f
  real               :: Tnew, Tmin_bisect, Tmax_bisect
  real, parameter    :: T_floor = 10.
+ real               :: mu, gamma, rho_cgs
 
- u       = ui
- T_on_u  = (gamma-1.)*mu*unit_ergg/Rg
- T       = ui*T_on_u
+ mu = mu_in
+ gamma = gamma_in
+ rho_cgs = rho*unit_density
+!  T_on_u  = (gamma-1.)*mu*unit_ergg/Rg
+!  T       = ui*T_on_u
+
+ T  = get_temperature_from_u(ieos,xi,yi,zi,rho,ui,gamma,mu)  ! needs rho in code units
+ u = get_u_from_rhoT(rho_cgs,T,ieos)                         ! needs rho in cgs units, returns u in code units
+ T_on_u = T/u
 
  abundi = 0.0
 
@@ -235,13 +249,16 @@ subroutine implicit_cooling (ui, dudt, rho, dt, mu, gamma, Tdust, K2, K3, kappa,
       bisection = .true.
       T = 0.5*(Tmin_bisect + Tmax_bisect)
    endif
+   u = get_u_from_rhoT(rho_cgs,T,ieos)
+   T_on_u = T/u
  enddo
 
  Tmid=T
 
 ! ------ End of Newton-Raphson  -------
  Tmid = max(Tmid, T_floor)    ! To avoid negative internal energy
- u = Tmid/T_on_u
+!  u = Tmid/T_on_u
+ u = get_u_from_rhoT(rho_cgs,Tmid,ieos)
  dudt =(u-ui)/dt
  if (u < 0. .or. isnan(u)) then
     print *,u

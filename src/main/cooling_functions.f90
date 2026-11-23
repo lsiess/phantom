@@ -177,10 +177,10 @@ subroutine AGB_cooling(T, Tdust, rho_cgs, mu, gamma, K3, Q_cgs, dlnQ_cgs, divv, 
 ! Include He ionisation
  Q_He_ion = cool_He_ionisation(T_cool,rho_cgs,mu,abundi(icoolH)*ndens_H,abundi(icoolHe)*ndens_H)
 
- Q_cgs = dudti + &
+ Q_cgs = dudti !+ &
          ! Q_H2_recomb / rho_cgs - &
-         Q_H_ion / rho_cgs - &
-         Q_He_ion / rho_cgs
+         ! Q_H_ion / rho_cgs - &
+         ! Q_He_ion / rho_cgs
 
 ! Return the updated abundances
  if (present(abundi_in)) abundi_in = abundi * ndens_H
