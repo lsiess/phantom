@@ -121,10 +121,10 @@ subroutine dust_growth_condensation(T,rho_cgs,dt,wind_CO_ratio,fol,fqu,fpy,fir,f
  use physcon, only:patm,kboltz,pi,twopi,fourpi
  use chemistry_condensation, only:network,iSiO,iH2O,iH2,iSi2C,iC2H2,ncols,iaMg,iaC,iaFe,iaSi
  use dust_formation, only:kappa_gas,a_init_dust,eps,iH,iHe,iC,iOx,iN,iSi,iS,iFe,iTi,iMg
- real, intent(in)           :: dt,wind_CO_ratio
- real, intent(inout)        :: T,rho_cgs,fol,fqu,fpy,fir,fsc,fcarb,r_ol,r_qu,r_py,r_ir,r_sc,r_carb,Jgr,Jdec
- real, intent(out)          :: kappa_dust
- real, intent(out)          :: mu,gamma,pH_tot
+ real, intent(in)            :: dt,wind_CO_ratio
+ real, intent(inout)         :: T,rho_cgs,fol,fqu,fpy,fir,fsc,fcarb,r_ol,r_qu,r_py,r_ir,r_sc,r_carb,&
+                                mu,gamma,Jgr,Jdec
+ real, intent(out)           :: kappa_dust,pH_tot
  real, intent(out), optional :: abund(ncols)
  real, intent(in), optional  :: pressure_cgs
  real :: Vth_SiO, Vth_Mg, Vth_H2O, Vth_ir, Vth_Si2C, Vth_carb, Vth_C2H2

@@ -132,8 +132,8 @@ subroutine network(T,rho_cgs,mu,gamma,wind_CO_ratio,pH_tot,fol,fpy,fqu,fir,fsc,f
  use physcon, only:patm,kboltz
  use dust_formation, only:calc_muGamma,eps
  real, intent(in)     :: wind_CO_ratio, fol, fpy, fqu, fir, fsc, fcarb
- real, intent(out)    :: mu,gamma,pH_tot
- real, intent(inout)  :: T, rho_cgs
+ real, intent(inout)  :: T, rho_cgs, mu, gamma
+ real, intent(out)    :: pH_tot
  real, intent(out)    :: abundance(ncols)
  real, intent(in), optional :: pressure_cgs
  integer :: j
@@ -151,8 +151,7 @@ subroutine network(T,rho_cgs,mu,gamma,wind_CO_ratio,pH_tot,fol,fpy,fqu,fir,fsc,f
  endif
 
  pelm(iHe) = eps(iHe)*pH_tot
- call chemical_equilibrium(rho_cgs, T, pmol, pelm, mu, gamma, &
-         wind_CO_ratio, pH_tot, fol, fpy, fqu, fir, fsc, fcarb) !, nMolecules)
+ call chemical_equilibrium(rho_cgs,T,pmol,pelm,wind_CO_ratio,pH_tot,fol,fpy,fqu,fir,fsc,fcarb)
 
  !convert the pressure of the molecules in number density (cgs, hence the factor patm in fac)
  fac = patm/(kboltz*T)
@@ -186,11 +185,10 @@ end subroutine network
 !  Compute partial pressures assuming chemical equilibrum
 !
 !---------------------------------------------------------------
-subroutine chemical_equilibrium(rho_cgs,T,pmol,pelm,mu, gamma, &
-      wind_CO_ratio, pH_tot, fol, fpy, fqu, fir, fsc, fcarb)
+subroutine chemical_equilibrium(rho_cgs,T,pmol,pelm,wind_CO_ratio,pH_tot,fol,fpy,fqu,fir,fsc,fcarb)
 ! all pressures are in bar
  use dust_formation, only:eps
- real, intent(inout) :: T, pmol(nMolecules), pelm(nElements), rho_cgs, mu, gamma
+ real, intent(inout) :: T, pmol(nMolecules), pelm(nElements), rho_cgs
  real, intent(in)    :: wind_CO_ratio, pH_tot, fol, fpy, fqu, fir, fsc, fcarb
 
  integer, parameter :: nit_max  = 100
