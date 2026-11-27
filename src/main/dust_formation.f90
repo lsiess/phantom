@@ -160,6 +160,7 @@ end subroutine evolve_dust
 !
 !-----------------------------------------------------------------------
 subroutine evolve_chem(dt, T, rho_cgs, JKmuS)
+ use eos,            only:ieos
 !all quantities in cgs
 
  real, intent(in)    :: dt, rho_cgs
@@ -220,8 +221,10 @@ subroutine evolve_chem(dt, T, rho_cgs, JKmuS)
     endif
     nH  = 0.
     nH2 = nH_tot/2.
-    JKmuS(idmu)    = (1.+4.*eps(iHe))*nH_tot/(nH+nH2+eps(iHe)*nH_tot)
-    JKmuS(idgamma) = (5.*eps(iHe)+3.5)/(3.*eps(iHe)+2.5)
+    if (ieos == 5) then
+       JKmuS(idmu)    = (1.+4.*eps(iHe))*nH_tot/(nH+nH2+eps(iHe)*nH_tot)
+       JKmuS(idgamma) = (5.*eps(iHe)+3.5)/(3.*eps(iHe)+2.5)
+    endif
     pC2H2 = .5*(epsC-eps(iOx))*nH_tot * kboltz * T
     pC2H  = 0.
     S     = 1.d-3
@@ -709,8 +712,10 @@ subroutine calc_muGamma(rho_cgs, T, mu, gamma, pH, pH_tot, ppH2)
 ! Simplified low-temperature chemistry: all hydrogen in H2 molecules
     pH2    = pH_tot/2.
     pH     = 0.
-    mu     = (1.+4.*eps(iHe))/(0.5+eps(iHe))
-    gamma  = (5.*eps(iHe)+3.5)/(3.*eps(iHe)+2.5)
+    if (ieos == 5) then
+       mu     = (1.+4.*eps(iHe))/(0.5+eps(iHe))
+       gamma  = (5.*eps(iHe)+3.5)/(3.*eps(iHe)+2.5)
+    endif 
  endif
 
  if (present(ppH2)) ppH2 = pH2

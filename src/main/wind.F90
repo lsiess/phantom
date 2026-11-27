@@ -61,7 +61,7 @@ subroutine setup_wind(params,u_to_T,rsonic,tsonic,stype)
  use ptmass_radiation, only:iget_tdust
  use units,            only:utime,udist
  use physcon,          only:c,years,pi
- use eos,              only:gamma,gmw
+ use eos,              only:gamma,gmw,ieos
  use dust_formation,   only:set_abundances,init_muGamma,idust_opacity
 
  integer,           intent(in)    :: stype
@@ -81,12 +81,14 @@ subroutine setup_wind(params,u_to_T,rsonic,tsonic,stype)
     rho_cgs      = params%Mdot/(4.*pi*params%Rinject**2*params%vwind)
     wind_gamma   = gamma
     wind_mu      = gmw
-    call init_muGamma(rho_cgs,T0,wind_mu,wind_gamma)
-    print *,'reset gamma : ',gamma,wind_gamma
-    print *,'reset gmw   : ',gmw,wind_mu
     params%Twind = T0
-    gamma = wind_gamma
-    gmw   = wind_mu
+    if (ieos == 5) then 
+       call init_muGamma(rho_cgs,T0,wind_mu,wind_gamma)
+       print *,'reset gamma : ',gamma,wind_gamma
+       print *,'reset gmw   : ',gmw,wind_mu
+       gamma = wind_gamma
+       gmw   = wind_mu
+    endif
  endif
 
  if (iget_tdust == -3) then
@@ -113,7 +115,7 @@ subroutine init_wind(params,time_end,state,tau_lucy_init)
 ! all quantities in cgs
  use physcon,          only:pi,Rg
  use io,               only:fatal
- use eos,              only:gmw
+ use eos,              only:gmw,ieos
  use ptmass_radiation, only:iget_tdust
  use dust_formation,   only:kappa_gas,init_muGamma,idust_opacity
 
@@ -171,7 +173,7 @@ subroutine init_wind(params,time_end,state,tau_lucy_init)
  state%mu        = gmw
  state%gamma     = wind_gamma
  state%JKmuS     = 0.
- if (idust_opacity == 2) call init_muGamma(state%rho,state%Tg,state%mu,state%gamma) !should not be needed because Tg = Twind
+ if (idust_opacity == 2 .and. ieos == 5) call init_muGamma(state%rho,state%Tg,state%mu,state%gamma) !should not be needed because Tg = Twind
  state%alpha          = state%alpha_Edd + params%alpha_rad
  state%JKmuS(idalpha) = state%alpha
  state%JKmuS(idmu)    = state%mu

@@ -270,7 +270,7 @@ module part
  ! please note that in nucleation, we save the *normalized* moments, i.e. \hat{K}_i = K_i/n<H>
  character(len=*), parameter :: nucleation_label(n_nucleation) = &
        (/'Jstar','K0   ','K1   ','K2   ','K3   ',&
-         'mu   ','gamma','S    ','kappa','alphw'/)
+         'mu_d ','gam_d','S    ','kappa','alphw'/)
  integer, parameter :: idJstar = 1, &
                        idK0    = 2, &
                        idK1    = 3, &
