@@ -104,7 +104,7 @@ subroutine init_nucleation
  call set_abundances
 
  !initialize nucleation array
- gamma = 5./3.
+!  gamma = 5./3.
  JKmuS = 0.
  JKmuS(idmu)    = gmw
  JKmuS(idgamma) = gamma
